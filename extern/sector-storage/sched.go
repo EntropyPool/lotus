@@ -23,7 +23,7 @@ var DefaultSchedPriority = 0
 var SelectorTimeout = 5 * time.Second
 
 var (
-	SchedWindows = 2
+	SchedWindows = 1
 )
 
 func getPriority(ctx context.Context) int {
@@ -294,9 +294,11 @@ func (sh *scheduler) trySched() {
 		needRes := ResourceTable[task.taskType][sh.spt]
 
 		task.indexHeap = sqi
+		log.Debugf("tropy: try to find worker for %+v [%+v]", task.taskType, task)
 		for wnd, windowRequest := range sh.openWindows {
 			worker := sh.workers[windowRequest.worker]
 
+			log.Debugf("tropy: check possibility of window %+v/%+v/%+v worker %+v", wnd, windows[wnd], task.taskType, worker)
 			// TODO: allow bigger windows
 			if !windows[wnd].allocated.canHandleRequest(needRes, windowRequest.worker, worker.info.Resources) {
 				continue
@@ -310,6 +312,7 @@ func (sh *scheduler) trySched() {
 				continue
 			}
 
+			log.Debugf("tropy: selected worker %+v: ok = %+v; window %+v", windowRequest.worker, ok, windows[wnd])
 			if !ok {
 				continue
 			}
@@ -353,12 +356,14 @@ func (sh *scheduler) trySched() {
 
 	// Step 2
 	scheduled := 0
+	minWindowTodos := make([]int, len(windows))
 
 	for sqi := 0; sqi < sh.schedQueue.Len(); sqi++ {
 		task := (*sh.schedQueue)[sqi]
 		needRes := ResourceTable[task.taskType][sh.spt]
 
 		selectedWindow := -1
+
 		for _, wnd := range acceptableWindows[task.indexHeap] {
 			wid := sh.openWindows[wnd].worker
 			wr := sh.workers[wid].info.Resources
@@ -370,12 +375,16 @@ func (sh *scheduler) trySched() {
 				continue
 			}
 
-			log.Debugf("SCHED ASSIGNED sqi:%d sector %d to window %d", sqi, task.sector.Number, wnd)
-
-			windows[wnd].allocated.add(wr, needRes)
-
-			selectedWindow = wnd
-			break
+			if len(windows[wnd].todo) < minWindowTodos[wnd] || 0 == minWindowTodos[wnd] {
+				// log.Debugf("SCHED ASSIGNED sqi:%d sector %d to window %d", sqi, task.sector.Number, wnd)
+				log.Debugf("tropy: much better windows found for %d, sector %d, window %d, worker %d, todos %d, min %d, task %+v",
+						sqi, task.sector.Number, wnd, wid, len(windows[wnd].todo), minWindowTodos[wnd], task.taskType)
+				selectedWindow = wnd
+				minWindowTodos[wnd] = len(windows[wnd].todo)
+				if 0 == minWindowTodos[wnd] {
+					break
+				}
+			}
 		}
 
 		if selectedWindow < 0 {
@@ -383,7 +392,10 @@ func (sh *scheduler) trySched() {
 			continue
 		}
 
+		wr := sh.workers[sh.openWindows[selectedWindow].worker].info.Resources
+		windows[selectedWindow].allocated.add(wr, needRes)
 		windows[selectedWindow].todo = append(windows[selectedWindow].todo, task)
+		minWindowTodos[selectedWindow]++
 
 		sh.schedQueue.Remove(sqi)
 		sqi--
@@ -467,6 +479,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 		for {
 			// ask for more windows if we need them
+			log.Warnf("tropy: fill window request for worker %+v, requests %+v, active windows %+v", wid, len(sh.windowRequests), len(activeWindows))
 			for ; windowsRequested < SchedWindows; windowsRequested++ {
 				select {
 				case sh.windowRequests <- &schedWindowRequest{
@@ -484,6 +497,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 			select {
 			case w := <-scheduledWindows:
+				log.Warnf("tropy: active windows for worker %+v, windows %+v, todos %+v", wid, len(activeWindows), len(w.todo))
 				activeWindows = append(activeWindows, w)
 			case <-taskDone:
 				log.Debugw("task done", "workerid", wid)

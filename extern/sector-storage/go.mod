@@ -30,4 +30,4 @@ require (
 
 replace github.com/filecoin-project/storage-fsm => ../storage-fsm
 
-replace github.com/filecoin-project/filecoin-ffi => ../filecoin-ffi
+replace github.com/elastic/go-sysinfo => ../../../go-sysinfo
