@@ -118,15 +118,17 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 
 	log.Debugf("tropy: create sector manager ~")
 	localTasks := []sealtasks.TaskType{
-		sealtasks.TTAddPiece, sealtasks.TTCommit1, sealtasks.TTFinalize, sealtasks.TTFetch, sealtasks.TTReadUnsealed,
+        sealtasks.TTFinalize, sealtasks.TTFetch, sealtasks.TTReadUnsealed,
 	}
 	if sc.AllowPreCommit1 {
+		localTasks = append(localTasks, sealtasks.TTAddPiece)
 		localTasks = append(localTasks, sealtasks.TTPreCommit1)
 	}
 	if sc.AllowPreCommit2 {
 		localTasks = append(localTasks, sealtasks.TTPreCommit2)
 	}
 	if sc.AllowCommit {
+		localTasks = append(localTasks, sealtasks.TTCommit1)
 		localTasks = append(localTasks, sealtasks.TTCommit2)
 	}
 	if sc.AllowUnseal {
