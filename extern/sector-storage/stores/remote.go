@@ -59,6 +59,7 @@ func NewRemote(local *Local, index SectorIndex, auth http.Header, fetchLimit int
 }
 
 func (r *Remote) AcquireSector(ctx context.Context, s abi.SectorID, spt abi.RegisteredSealProof, existing SectorFileType, allocate SectorFileType, pathType PathType, op AcquireMode) (SectorPaths, SectorPaths, error) {
+	log.Debugf("tropy: acquire sector %+v from remote", s.Number)
 	if existing|allocate != existing^allocate {
 		return SectorPaths{}, SectorPaths{}, xerrors.New("can't both find and allocate a sector")
 	}
@@ -90,13 +91,16 @@ func (r *Remote) AcquireSector(ctx context.Context, s abi.SectorID, spt abi.Regi
 		r.fetchLk.Unlock()
 	}()
 
+	log.Debugf("tropy: acquire sector %+v to local storage", s.Number)
 	paths, stores, err := r.local.AcquireSector(ctx, s, spt, existing, allocate, pathType, op)
 	if err != nil {
 		return SectorPaths{}, SectorPaths{}, xerrors.Errorf("local acquire error: %w", err)
 	}
 
+	log.Debugf("tropy: acquire sector %+v to with path type", s.Number)
 	var toFetch SectorFileType
 	for _, fileType := range PathTypes {
+		log.Debugf("tropy: acquire sector %+v filetype %+v existing %+v", s.Number, fileType, existing)
 		if fileType&existing == 0 {
 			continue
 		}

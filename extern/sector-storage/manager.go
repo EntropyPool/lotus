@@ -116,6 +116,7 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 
 	go m.sched.runSched()
 
+	log.Debugf("tropy: create sector manager ~")
 	localTasks := []sealtasks.TaskType{
 		sealtasks.TTAddPiece, sealtasks.TTCommit1, sealtasks.TTFinalize, sealtasks.TTFetch, sealtasks.TTReadUnsealed,
 	}
@@ -167,6 +168,7 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 		return xerrors.Errorf("getting worker info: %w", err)
 	}
 
+	log.Debugf("add worker: %+v", info)
 	m.sched.newWorkers <- &workerHandle{
 		w: w,
 		wt: &workTracker{
