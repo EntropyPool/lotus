@@ -87,7 +87,7 @@ var sealingWorkersCmd = &cli.Command{
 				if 0 < len(taskTypes) {
 					taskTypes += " | "
 				}
-				lastSpec += taskSpecs[len(taskSpecs) - 1]
+				lastSpec := taskSpecs[len(taskSpecs) - 1]
 				isNum := regexp.MustCompile(`[0-9]+`)
 				if isNum.MatchString(lastSpec) {
 					taskTypes += taskSpecs[len(taskSpecs) - 2]
