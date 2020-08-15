@@ -216,7 +216,7 @@ var runCmd = &cli.Command{
 		}
         */
 		if cctx.Bool("precommit1") {
-		    localTasks = append(localTasks, sealtasks.TTAddPiece)
+		    taskTypes = append(taskTypes, sealtasks.TTAddPiece)
 			taskTypes = append(taskTypes, sealtasks.TTPreCommit1)
 		}
 		if cctx.Bool("unseal") {
