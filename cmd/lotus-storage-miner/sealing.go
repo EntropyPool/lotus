@@ -14,6 +14,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/filecoin-project/sector-storage/storiface"
+	"github.com/filecoin-project/sector-storage/sealtasks"
 
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
@@ -73,7 +74,22 @@ var sealingWorkersCmd = &cli.Command{
 				gpuUse = ""
 			}
 
-			fmt.Printf("Worker %d, host %s\n", stat.id, color.MagentaString(stat.Info.Hostname))
+			addressStr := stat.Info.Address
+			if 0 == len(addressStr) {
+				addressStr = "localhost"
+			}
+			fmt.Printf("Worker %d, host %s/%s[%s]\n", stat.id, color.MagentaString(stat.Info.Hostname),
+				color.MagentaString(addressStr), color.MagentaString(stat.Info.GroupName))
+
+			taskTypes := ""
+			for taskType := range stat.Info.SupportTasks {
+				taskSpecs := strings.Split(taskType, "/")
+				if 0 < len(taskTypes) {
+					taskTypes += " | "
+				}
+				taskTypes += taskSpecs[len(taskSpecs) - 1]
+			}
+			fmt.Printf("\tTSK: %s\n", taskTypes)
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)
