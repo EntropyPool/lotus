@@ -294,7 +294,8 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 	}
 
 	return storiface.WorkerInfo{
-		Hostname: hostname + "/" + l.Address,
+		Hostname: hostname,
+		Address: l.Address,
 		GroupName: l.GroupName,
 		SupportTasks: taskTypes,
 		Resources: storiface.WorkerResources{

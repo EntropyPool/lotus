@@ -9,6 +9,7 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+	"regexp"
 
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v2"
@@ -85,6 +86,11 @@ var sealingWorkersCmd = &cli.Command{
 				taskSpecs := strings.Split(string(taskType), "/")
 				if 0 < len(taskTypes) {
 					taskTypes += " | "
+				}
+				lastSpec += taskSpecs[len(taskSpecs) - 1]
+				isNum := regexp.MustCompile(`[0-9]+`)
+				if isNum.MatchString(lastSpec) {
+					taskTypes += taskSpecs[len(taskSpecs) - 2]
 				}
 				taskTypes += taskSpecs[len(taskSpecs) - 1]
 			}
