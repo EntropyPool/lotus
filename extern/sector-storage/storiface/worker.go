@@ -10,6 +10,7 @@ import (
 type WorkerInfo struct {
 	Hostname     string
 	GroupName    string
+	Address      string
 	SupportTasks []sealtasks.TaskType
 	Resources    WorkerResources
 }

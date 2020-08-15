@@ -14,7 +14,6 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/filecoin-project/sector-storage/storiface"
-	"github.com/filecoin-project/sector-storage/sealtasks"
 
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
@@ -82,8 +81,8 @@ var sealingWorkersCmd = &cli.Command{
 				color.MagentaString(addressStr), color.MagentaString(stat.Info.GroupName))
 
 			taskTypes := ""
-			for taskType := range stat.Info.SupportTasks {
-				taskSpecs := strings.Split(taskType, "/")
+			for _, taskType := range stat.Info.SupportTasks {
+				taskSpecs := strings.Split(string(taskType), "/")
 				if 0 < len(taskTypes) {
 					taskTypes += " | "
 				}

@@ -288,9 +288,9 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 	log.Debugf("worker %s, physical mem %+v, swap %+v, virtual used %+v, mem available %+v, cpus %+v, gpus %+v",
 				hostname, mem.Total, mem.VirtualTotal, mem.VirtualUsed, mem.Available, runtime.NumCPU, gpus)
 
-	taskTypes := []
+	taskTypes := make([]sealtasks.TaskType, 0)
 	for task, _ := range l.acceptTasks {
-		taskTypes += append(taskTypes, task)
+		taskTypes = append(taskTypes, task)
 	}
 
 	return storiface.WorkerInfo{
