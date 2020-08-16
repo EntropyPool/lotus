@@ -308,10 +308,10 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		p, err := w.AddPiece(ctx, sector, existingPieces, sz, r)
 		end := time.Now().Unix()
 		if err != nil {
-			log.Errorf("fail to run sector %v add piece, elapsed %v ms: %w", sector.Number, end - start, err)
+			log.Errorf("fail to run sector %v add piece, elapsed %v s: %w", sector.Number, end - start, err)
 			return err
 		}
-		log.Errorf("success to run sector %v add piece, elapsed %v ms", sector.Number, end - start)
+		log.Errorf("success to run sector %v add piece, elapsed %v s", sector.Number, end - start)
 		out = p
 		return nil
 	})
@@ -336,10 +336,10 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 		p, err := w.SealPreCommit1(ctx, sector, ticket, pieces)
 		end := time.Now().Unix()
 		if err != nil {
-			log.Errorf("fail to run sector %v precommit1, elapsed %v ms: %w", sector.Number, end - start, err)
+			log.Errorf("fail to run sector %v precommit1, elapsed %v s: %w", sector.Number, end - start, err)
 			return err
 		}
-		log.Errorf("success to run sector %v precommit1, elapsed %v ms", sector.Number, end - start)
+		log.Errorf("success to run sector %v precommit1, elapsed %v s", sector.Number, end - start)
 		out = p
 		return nil
 	})
@@ -362,10 +362,10 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		p, err := w.SealPreCommit2(ctx, sector, phase1Out)
 		end := time.Now().Unix()
 		if err != nil {
-			log.Errorf("fail to run sector %v precommit2, elapsed %v ms: %w", sector.Number, end - start, err)
+			log.Errorf("fail to run sector %v precommit2, elapsed %v s: %w", sector.Number, end - start, err)
 			return err
 		}
-		log.Errorf("success to run sector %v precommit2, elapsed %v ms", sector.Number, end - start)
+		log.Errorf("success to run sector %v precommit2, elapsed %v s", sector.Number, end - start)
 		out = p
 		return nil
 	})
@@ -390,10 +390,10 @@ func (m *Manager) SealCommit1(ctx context.Context, sector abi.SectorID, ticket a
 		p, err := w.SealCommit1(ctx, sector, ticket, seed, pieces, cids)
 		end := time.Now().Unix()
 		if err != nil {
-			log.Errorf("fail to run sector %v commit1, elapsed %v ms: %w", sector.Number, end - start, err)
+			log.Errorf("fail to run sector %v commit1, elapsed %v s: %w", sector.Number, end - start, err)
 			return err
 		}
-		log.Errorf("success to run sector %v commit1, elapsed %v ms", sector.Number, end - start)
+		log.Errorf("success to run sector %v commit1, elapsed %v s", sector.Number, end - start)
 		out = p
 		return nil
 	})
@@ -408,10 +408,10 @@ func (m *Manager) SealCommit2(ctx context.Context, sector abi.SectorID, phase1Ou
 		p, err := w.SealCommit2(ctx, sector, phase1Out)
 		end := time.Now().Unix()
 		if err != nil {
-			log.Errorf("fail to run sector %v commit2, elapsed %v ms: %w", sector.Number, end - start, err)
+			log.Errorf("fail to run sector %v commit2, elapsed %v s: %w", sector.Number, end - start, err)
 			return err
 		}
-		log.Errorf("success to run sector %v commit2, elapsed %v ms", sector.Number, end - start)
+		log.Errorf("success to run sector %v commit2, elapsed %v s", sector.Number, end - start)
 		out = p
 		return nil
 	})
