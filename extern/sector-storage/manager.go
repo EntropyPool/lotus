@@ -362,8 +362,14 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		p, err := w.SealPreCommit2(ctx, sector, phase1Out)
 		end := time.Now().Unix()
 		if err != nil {
-			info := w.Info(ctx)
-			log.Errorf("fail to run sector %v precommit2, elapsed %v s: %v [%s]", sector.Number, end-start, err, info.Address)
+			info, ierr := w.Info(ctx)
+			address := ""
+			if nil != ierr {
+				address = ierr.Error()
+			} else {
+				address = info.Address
+			}
+			log.Errorf("fail to run sector %v precommit2, elapsed %v s: %v [%s]", sector.Number, end-start, err, address)
 			return err
 		}
 		log.Errorf("success to run sector %v precommit2, elapsed %v s", sector.Number, end-start)
