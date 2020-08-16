@@ -6,6 +6,7 @@ import (
 	"github.com/filecoin-project/sector-storage/fsutil"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
@@ -303,10 +304,14 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 
 	var out abi.PieceInfo
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTAddPiece, selector, schedNop, func(ctx context.Context, w Worker) error {
+		start := time.Now().Unix()
 		p, err := w.AddPiece(ctx, sector, existingPieces, sz, r)
+		end := time.Now().Unix()
 		if err != nil {
+			log.Errorf("fail to run sector %v add piece, elapsed %v ms: %w", sector.Number, end - start, err)
 			return err
 		}
+		log.Errorf("success to run sector %v add piece, elapsed %v ms", sector.Number, end - start)
 		out = p
 		return nil
 	})
@@ -327,10 +332,14 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 	selector := newAllocSelector(m.index, stores.FTCache|stores.FTSealed, stores.PathSealing)
 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit1, selector, schedFetch(sector, stores.FTUnsealed, stores.PathSealing, stores.AcquireMove), func(ctx context.Context, w Worker) error {
+		start := time.Now().Unix()
 		p, err := w.SealPreCommit1(ctx, sector, ticket, pieces)
+		end := time.Now().Unix()
 		if err != nil {
+			log.Errorf("fail to run sector %v precommit1, elapsed %v ms: %w", sector.Number, end - start, err)
 			return err
 		}
+		log.Errorf("success to run sector %v precommit1, elapsed %v ms", sector.Number, end - start)
 		out = p
 		return nil
 	})
@@ -349,10 +358,14 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 	selector := newExistingSelector(m.index, sector, stores.FTCache|stores.FTSealed, true)
 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit2, selector, schedFetch(sector, stores.FTCache|stores.FTSealed, stores.PathSealing, stores.AcquireMove), func(ctx context.Context, w Worker) error {
+		start := time.Now().Unix()
 		p, err := w.SealPreCommit2(ctx, sector, phase1Out)
+		end := time.Now().Unix()
 		if err != nil {
+			log.Errorf("fail to run sector %v precommit2, elapsed %v ms: %w", sector.Number, end - start, err)
 			return err
 		}
+		log.Errorf("success to run sector %v precommit2, elapsed %v ms", sector.Number, end - start)
 		out = p
 		return nil
 	})
@@ -373,10 +386,14 @@ func (m *Manager) SealCommit1(ctx context.Context, sector abi.SectorID, ticket a
 	selector := newExistingSelector(m.index, sector, stores.FTCache|stores.FTSealed, false)
 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTCommit1, selector, schedFetch(sector, stores.FTCache|stores.FTSealed, stores.PathSealing, stores.AcquireMove), func(ctx context.Context, w Worker) error {
+		start := time.Now().Unix()
 		p, err := w.SealCommit1(ctx, sector, ticket, seed, pieces, cids)
+		end := time.Now().Unix()
 		if err != nil {
+			log.Errorf("fail to run sector %v commit1, elapsed %v ms: %w", sector.Number, end - start, err)
 			return err
 		}
+		log.Errorf("success to run sector %v commit1, elapsed %v ms", sector.Number, end - start)
 		out = p
 		return nil
 	})
@@ -387,10 +404,14 @@ func (m *Manager) SealCommit2(ctx context.Context, sector abi.SectorID, phase1Ou
 	selector := newTaskSelector()
 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTCommit2, selector, schedNop, func(ctx context.Context, w Worker) error {
+		start := time.Now().Unix()
 		p, err := w.SealCommit2(ctx, sector, phase1Out)
+		end := time.Now().Unix()
 		if err != nil {
+			log.Errorf("fail to run sector %v commit2, elapsed %v ms: %w", sector.Number, end - start, err)
 			return err
 		}
+		log.Errorf("success to run sector %v commit2, elapsed %v ms", sector.Number, end - start)
 		out = p
 		return nil
 	})
