@@ -286,6 +286,21 @@ func (m *Manager) NewSector(ctx context.Context, sector abi.SectorID) error {
 	return nil
 }
 
+func sealingElapseStatistic(ctx context.Context, worker Worker, taskType sealtasks.TaskType, sector abi.SectorID, start int64, end int64, err error) {
+	info, ierr := worker.Info(ctx)
+	var address string
+	if nil != ierr {
+		address = ierr.Error()
+	} else {
+		address = info.Address
+	}
+	if nil != err {
+		log.Errorf("fail to run sector %v %v, elapsed %v s [%v, %v]: %v [%s]", sector.Number, taskType, end-start, start, end, err, address)
+		return
+	}
+	log.Debugf("success to run sector %v %v, elapsed %v s [%v, %v]", sector.Number, taskType, end-start, start, end)
+}
+
 func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPieces []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, r io.Reader) (abi.PieceInfo, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -307,11 +322,10 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		start := time.Now().Unix()
 		p, err := w.AddPiece(ctx, sector, existingPieces, sz, r)
 		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTAddPiece, sector, start, end, err)
 		if err != nil {
-			log.Errorf("fail to run sector %v add piece, elapsed %v s: %v", sector.Number, end-start, err)
 			return err
 		}
-		log.Errorf("success to run sector %v add piece, elapsed %v s", sector.Number, end-start)
 		out = p
 		return nil
 	})
@@ -335,11 +349,10 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 		start := time.Now().Unix()
 		p, err := w.SealPreCommit1(ctx, sector, ticket, pieces)
 		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, err)
 		if err != nil {
-			log.Errorf("fail to run sector %v precommit1, elapsed %v s: %v", sector.Number, end-start, err)
 			return err
 		}
-		log.Errorf("success to run sector %v precommit1, elapsed %v s", sector.Number, end-start)
 		out = p
 		return nil
 	})
@@ -361,18 +374,10 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		start := time.Now().Unix()
 		p, err := w.SealPreCommit2(ctx, sector, phase1Out)
 		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, err)
 		if err != nil {
-			info, ierr := w.Info(ctx)
-			address := ""
-			if nil != ierr {
-				address = ierr.Error()
-			} else {
-				address = info.Address
-			}
-			log.Errorf("fail to run sector %v precommit2, elapsed %v s: %v [%s]", sector.Number, end-start, err, address)
 			return err
 		}
-		log.Errorf("success to run sector %v precommit2, elapsed %v s", sector.Number, end-start)
 		out = p
 		return nil
 	})
@@ -396,11 +401,10 @@ func (m *Manager) SealCommit1(ctx context.Context, sector abi.SectorID, ticket a
 		start := time.Now().Unix()
 		p, err := w.SealCommit1(ctx, sector, ticket, seed, pieces, cids)
 		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTCommit1, sector, start, end, err)
 		if err != nil {
-			log.Errorf("fail to run sector %v commit1, elapsed %v s: %v", sector.Number, end-start, err)
 			return err
 		}
-		log.Errorf("success to run sector %v commit1, elapsed %v s", sector.Number, end-start)
 		out = p
 		return nil
 	})
@@ -414,11 +418,10 @@ func (m *Manager) SealCommit2(ctx context.Context, sector abi.SectorID, phase1Ou
 		start := time.Now().Unix()
 		p, err := w.SealCommit2(ctx, sector, phase1Out)
 		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTCommit2, sector, start, end, err)
 		if err != nil {
-			log.Errorf("fail to run sector %v commit2, elapsed %v s: %v", sector.Number, end-start, err)
 			return err
 		}
-		log.Errorf("success to run sector %v commit2, elapsed %v s", sector.Number, end-start)
 		out = p
 		return nil
 	})
@@ -451,7 +454,11 @@ func (m *Manager) FinalizeSector(ctx context.Context, sector abi.SectorID, keepU
 	err := m.sched.Schedule(ctx, sector, sealtasks.TTFinalize, selector,
 		schedFetch(sector, stores.FTCache|stores.FTSealed|unsealed, stores.PathSealing, stores.AcquireMove),
 		func(ctx context.Context, w Worker) error {
-			return w.FinalizeSector(ctx, sector, keepUnsealed)
+			start := time.Now().Unix()
+			werr := w.FinalizeSector(ctx, sector, keepUnsealed)
+			end := time.Now().Unix()
+			sealingElapseStatistic(ctx, w, sealtasks.TTFinalize, sector, start, end, werr)
+			return werr
 		})
 	if err != nil {
 		return err
@@ -468,7 +475,11 @@ func (m *Manager) FinalizeSector(ctx context.Context, sector abi.SectorID, keepU
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTFetch, fetchSel,
 		schedFetch(sector, stores.FTCache|stores.FTSealed|moveUnsealed, stores.PathStorage, stores.AcquireMove),
 		func(ctx context.Context, w Worker) error {
-			return w.MoveStorage(ctx, sector)
+			start := time.Now().Unix()
+			werr := w.MoveStorage(ctx, sector)
+			end := time.Now().Unix()
+			sealingElapseStatistic(ctx, w, sealtasks.TTFetch, sector, start, end, werr)
+			return werr
 		})
 	if err != nil {
 		return xerrors.Errorf("moving sector to storage: %v", err)
