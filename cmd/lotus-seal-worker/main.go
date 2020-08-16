@@ -229,9 +229,9 @@ var runCmd = &cli.Command{
 		}
 		if cctx.Bool("precommit2") {
 			taskTypes = append(taskTypes, sealtasks.TTPreCommit2)
+			taskTypes = append(taskTypes, sealtasks.TTCommit1)
 		}
 		if cctx.Bool("commit") {
-			taskTypes = append(taskTypes, sealtasks.TTCommit1)
 			taskTypes = append(taskTypes, sealtasks.TTCommit2)
 		}
 

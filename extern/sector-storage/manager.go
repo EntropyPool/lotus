@@ -126,9 +126,9 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 	}
 	if sc.AllowPreCommit2 {
 		localTasks = append(localTasks, sealtasks.TTPreCommit2)
+		localTasks = append(localTasks, sealtasks.TTCommit1)
 	}
 	if sc.AllowCommit {
-		localTasks = append(localTasks, sealtasks.TTCommit1)
 		localTasks = append(localTasks, sealtasks.TTCommit2)
 	}
 	if sc.AllowUnseal {
