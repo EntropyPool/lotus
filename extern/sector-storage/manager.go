@@ -298,7 +298,7 @@ func sealingElapseStatistic(ctx context.Context, worker Worker, taskType sealtas
 		log.Errorf("fail to run sector %v %v, elapsed %v s [%v, %v]: %v [%s]", sector.Number, taskType, end-start, start, end, err, address)
 		return
 	}
-	log.Debugf("success to run sector %v %v, elapsed %v s [%v, %v]", sector.Number, taskType, end-start, start, end)
+	log.Debugf("success to run sector %v %v, elapsed %v s [%v, %v]: [%s]", sector.Number, taskType, end-start, start, end, address)
 }
 
 func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPieces []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, r io.Reader) (abi.PieceInfo, error) {
