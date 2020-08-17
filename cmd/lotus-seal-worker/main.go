@@ -215,13 +215,12 @@ var runCmd = &cli.Command{
 
 		taskTypes = append(taskTypes, sealtasks.TTFetch, sealtasks.TTFinalize)
 
-        /*
 		if cctx.Bool("addpiece") {
 			taskTypes = append(taskTypes, sealtasks.TTAddPiece)
 		}
-        */
+
 		if cctx.Bool("precommit1") {
-		    taskTypes = append(taskTypes, sealtasks.TTAddPiece)
+			taskTypes = append(taskTypes, sealtasks.TTAddPiece)
 			taskTypes = append(taskTypes, sealtasks.TTPreCommit1)
 		}
 		if cctx.Bool("unseal") {
@@ -348,7 +347,7 @@ var runCmd = &cli.Command{
 			LocalWorker: sectorstorage.NewLocalWorker(sectorstorage.WorkerConfig{
 				SealProof: spt,
 				TaskTypes: taskTypes,
-				Address: address,
+				Address:   address,
 				GroupName: groupName,
 			}, remote, localStore, nodeApi),
 		}

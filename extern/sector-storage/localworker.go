@@ -36,8 +36,8 @@ type LocalWorker struct {
 	localStore *stores.Local
 	sindex     stores.SectorIndex
 
-	Address    string
-	GroupName  string
+	Address   string
+	GroupName string
 
 	acceptTasks map[sealtasks.TaskType]struct{}
 }
@@ -56,8 +56,8 @@ func NewLocalWorker(wcfg WorkerConfig, store stores.Store, local *stores.Local, 
 		localStore: local,
 		sindex:     sindex,
 
-		Address:    wcfg.Address,
-		GroupName:  wcfg.GroupName,
+		Address:   wcfg.Address,
+		GroupName: wcfg.GroupName,
 
 		acceptTasks: acceptTasks,
 	}
@@ -286,7 +286,7 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 	}
 
 	log.Debugf("worker %s, physical mem %+v, swap %+v, virtual used %+v, mem available %+v, cpus %+v, gpus %+v",
-				hostname, mem.Total, mem.VirtualTotal, mem.VirtualUsed, mem.Available, runtime.NumCPU, gpus)
+		hostname, mem.Total, mem.VirtualTotal, mem.VirtualUsed, mem.Available, runtime.NumCPU, gpus)
 
 	taskTypes := make([]sealtasks.TaskType, 0)
 	for task, _ := range l.acceptTasks {
@@ -294,9 +294,9 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 	}
 
 	return storiface.WorkerInfo{
-		Hostname: hostname,
-		Address: l.Address,
-		GroupName: l.GroupName,
+		Hostname:     hostname,
+		Address:      l.Address,
+		GroupName:    l.GroupName,
 		SupportTasks: taskTypes,
 		Resources: storiface.WorkerResources{
 			MemPhysical: mem.Total,
