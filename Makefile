@@ -49,6 +49,7 @@ build/.update-modules:
 	touch $@
 else
 build/.update-modules:
+	git submodule update --init --recursive
 	git submodule update --init --recursive --remote --merge
 	touch $@
 endif
