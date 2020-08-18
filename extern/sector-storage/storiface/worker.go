@@ -9,7 +9,7 @@ import (
 
 type WorkerInfo struct {
 	Hostname string
-
+	GroupName string
 	Resources WorkerResources
 }
 
