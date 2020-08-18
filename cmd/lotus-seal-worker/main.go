@@ -114,7 +114,7 @@ var runCmd = &cli.Command{
 		&cli.BoolFlag{
 			Name:  "addpiece",
 			Usage: "enable addpiece",
-			Value: true,
+			Value: false,
 		},
 		&cli.BoolFlag{
 			Name:  "precommit1",
