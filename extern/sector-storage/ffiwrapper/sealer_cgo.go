@@ -53,6 +53,7 @@ func (sb *Sealer) NewSector(ctx context.Context, sector abi.SectorID) error {
 }
 
 func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPieceSizes []abi.UnpaddedPieceSize, pieceSize abi.UnpaddedPieceSize, file storage.Data) (abi.PieceInfo, error) {
+	log.Debugf("tropy: add pieces for %+v pieces ~", len(existingPieceSizes))
 	var offset abi.UnpaddedPieceSize
 	for _, size := range existingPieceSizes {
 		offset += size
@@ -81,16 +82,20 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 	}()
 
 	var stagedPath stores.SectorPaths
+	log.Debugf("tropy: acruire sector for %+v pieces ~", len(existingPieceSizes))
 	if len(existingPieceSizes) == 0 {
+		log.Debugf("tropy: acruire sector ~")
 		stagedPath, done, err = sb.sectors.AcquireSector(ctx, sector, 0, stores.FTUnsealed, stores.PathSealing)
 		if err != nil {
 			return abi.PieceInfo{}, xerrors.Errorf("acquire unsealed sector: %w", err)
 		}
 
+		log.Debugf("tropy: create unsealed sector file %+v ~", maxPieceSize)
 		stagedFile, err = createPartialFile(maxPieceSize, stagedPath.Unsealed)
 		if err != nil {
 			return abi.PieceInfo{}, xerrors.Errorf("creating unsealed sector file: %w", err)
 		}
+		log.Debugf("tropy: success to create unsealed sector file %+v ~", stagedFile)
 	} else {
 		stagedPath, done, err = sb.sectors.AcquireSector(ctx, sector, stores.FTUnsealed, 0, stores.PathSealing)
 		if err != nil {
@@ -117,6 +122,7 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 	buf := make([]byte, chunk.Unpadded())
 	var pieceCids []abi.PieceInfo
 
+	log.Debugf("tropy: fill sector ~")
 	for {
 		var read int
 		for rbuf := buf; len(rbuf) > 0; {
@@ -145,6 +151,7 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 			PieceCID: c,
 		})
 	}
+	log.Debugf("tropy: sector filled %+v ~", len(pieceCids))
 
 	if err := pw.Close(); err != nil {
 		return abi.PieceInfo{}, xerrors.Errorf("closing padded writer: %w", err)
