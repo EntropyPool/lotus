@@ -30,39 +30,41 @@ func newExistingSelector(index stores.SectorIndex, sector abi.SectorID, alloc st
 func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, whnd *workerHandle) (bool, error) {
 	tasks, err := whnd.w.TaskTypes(ctx)
 	if err != nil {
-		log.Warnf("cannot get support worker task type: %v", err)
+		log.Infof("tropy: cannot get support worker task type: %v", err)
 		return false, xerrors.Errorf("getting supported worker task types: %w", err)
 	}
 	if _, supported := tasks[task]; !supported {
-		log.Warnf("task %v is not supported in %v", task, tasks)
+		log.Infof("tropy: task %v is not supported in %v", task, tasks)
 		return false, nil
 	}
 
 	paths, err := whnd.w.Paths(ctx)
 	if err != nil {
-		log.Warnf("cannot get worker paths: %v", err)
+		log.Infof("tropy: cannot get worker paths: %v", err)
 		return false, xerrors.Errorf("getting worker paths: %w", err)
 	}
-	log.Warnf("find worker paths: %v", paths)
 
 	have := map[stores.ID]struct{}{}
 	for _, path := range paths {
+		log.Warnf("tropy: find worker path [%v]: %v", path.ID, path.LocalPath)
 		have[path.ID] = struct{}{}
 	}
 
 	best, err := s.index.StorageFindSector(ctx, s.sector, s.alloc, spt, s.allowFetch)
 	if err != nil {
+		log.Infof("tropy: cannot find best storage path for [%v]: %v", s.sector.Number, err)
 		return false, xerrors.Errorf("finding best storage: %w", err)
 	}
 
 	for _, info := range best {
-		log.Warnf("best candidate path: %v", info)
+		log.Infof("tropy: best candidate path: %v / %v", info.ID, info.URLs)
 		if _, ok := have[info.ID]; ok {
+			log.Infof("tropy: best selected path for sector [%v]: %v", s.sector.Number, info.ID)
 			return true, nil
 		}
 	}
 
-	log.Warnf("cannot find best path for task %v", task)
+	log.Warnf("tropy: cannot find best path for task %v sector [%v]", task, s.sector.Number)
 	return false, nil
 }
 

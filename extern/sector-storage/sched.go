@@ -294,11 +294,11 @@ func (sh *scheduler) trySched() {
 		needRes := ResourceTable[task.taskType][sh.spt]
 
 		task.indexHeap = sqi
-		log.Debugf("tropy: try to find worker for %+v [%+v]", task.taskType, task)
+		log.Infof("tropy: try to find worker for sector [%v]'s %v", task.sector.Number, task.taskType)
 		for wnd, windowRequest := range sh.openWindows {
 			worker := sh.workers[windowRequest.worker]
 
-			log.Debugf("tropy: check possibility of window %+v/%+v/%+v worker %+v", wnd, windows[wnd], task.taskType, worker)
+			log.Infof("tropy: check possibility of window [%+v] %+v [%v]", wnd, worker.info.SupportTasks, worker.info.Address)
 			// TODO: allow bigger windows
 			if !windows[wnd].allocated.canHandleRequest(needRes, windowRequest.worker, worker.info.Resources) {
 				continue
@@ -308,11 +308,9 @@ func (sh *scheduler) trySched() {
 			ok, err := task.sel.Ok(rpcCtx, task.taskType, sh.spt, worker)
 			cancel()
 			if err != nil {
-				log.Errorf("trySched(1) req.sel.Ok error: %+v", err)
 				continue
 			}
 
-			log.Debugf("tropy: selected worker %+v: ok = %+v; window %+v", windowRequest.worker, ok, windows[wnd])
 			if !ok {
 				continue
 			}
@@ -378,7 +376,7 @@ func (sh *scheduler) trySched() {
 			if len(windows[wnd].todo) < minWindowTodos[wnd] || 0 == minWindowTodos[wnd] {
 				// log.Debugf("SCHED ASSIGNED sqi:%d sector %d to window %d", sqi, task.sector.Number, wnd)
 				log.Debugf("tropy: much better windows found for %d, sector %d, window %d, worker %d, todos %d, min %d, task %+v",
-						sqi, task.sector.Number, wnd, wid, len(windows[wnd].todo), minWindowTodos[wnd], task.taskType)
+					sqi, task.sector.Number, wnd, wid, len(windows[wnd].todo), minWindowTodos[wnd], task.taskType)
 				selectedWindow = wnd
 				minWindowTodos[wnd] = len(windows[wnd].todo)
 				if 0 == minWindowTodos[wnd] {
