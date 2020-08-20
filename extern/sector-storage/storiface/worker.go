@@ -8,9 +8,11 @@ import (
 )
 
 type WorkerInfo struct {
-	Hostname string
-
-	Resources WorkerResources
+	Hostname     string
+	GroupName    string
+	Address      string
+	SupportTasks []sealtasks.TaskType
+	Resources    WorkerResources
 }
 
 type WorkerResources struct {

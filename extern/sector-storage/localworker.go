@@ -26,6 +26,8 @@ var pathTypes = []stores.SectorFileType{stores.FTUnsealed, stores.FTSealed, stor
 type WorkerConfig struct {
 	SealProof abi.RegisteredSealProof
 	TaskTypes []sealtasks.TaskType
+	GroupName string
+	Address   string
 }
 
 type LocalWorker struct {
@@ -33,6 +35,9 @@ type LocalWorker struct {
 	storage    stores.Store
 	localStore *stores.Local
 	sindex     stores.SectorIndex
+
+	Address   string
+	GroupName string
 
 	acceptTasks map[sealtasks.TaskType]struct{}
 }
@@ -50,6 +55,9 @@ func NewLocalWorker(wcfg WorkerConfig, store stores.Store, local *stores.Local, 
 		storage:    store,
 		localStore: local,
 		sindex:     sindex,
+
+		Address:   wcfg.Address,
+		GroupName: wcfg.GroupName,
 
 		acceptTasks: acceptTasks,
 	}
@@ -92,6 +100,7 @@ func (l *localWorkerPathProvider) AcquireSector(ctx context.Context, sector abi.
 }
 
 func (l *LocalWorker) sb() (ffiwrapper.Storage, error) {
+	log.Debugf("tropy: get ffi storage implementation ~")
 	return ffiwrapper.New(&localWorkerPathProvider{w: l}, l.scfg)
 }
 
@@ -101,6 +110,7 @@ func (l *LocalWorker) NewSector(ctx context.Context, sector abi.SectorID) error 
 		return err
 	}
 
+	log.Debugf("tropy: create sector for %+v", sector.Number)
 	return sb.NewSector(ctx, sector)
 }
 
@@ -109,7 +119,7 @@ func (l *LocalWorker) AddPiece(ctx context.Context, sector abi.SectorID, epcs []
 	if err != nil {
 		return abi.PieceInfo{}, err
 	}
-
+	log.Debugf("tropy: add piece in local worker for %+v", sector.Number)
 	return sb.AddPiece(ctx, sector, epcs, sz, r)
 }
 
@@ -275,12 +285,24 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 		return storiface.WorkerInfo{}, xerrors.Errorf("getting memory info: %w", err)
 	}
 
+	log.Debugf("worker %s, physical mem %+v, swap %+v, virtual used %+v, mem available %+v, cpus %+v, gpus %+v",
+		hostname, mem.Total, mem.VirtualTotal, mem.VirtualUsed, mem.Available, runtime.NumCPU, gpus)
+
+	taskTypes := make([]sealtasks.TaskType, 0)
+	for task, _ := range l.acceptTasks {
+		taskTypes = append(taskTypes, task)
+	}
+
 	return storiface.WorkerInfo{
-		Hostname: hostname,
+		Hostname:     hostname,
+		Address:      l.Address,
+		GroupName:    l.GroupName,
+		SupportTasks: taskTypes,
 		Resources: storiface.WorkerResources{
 			MemPhysical: mem.Total,
 			MemSwap:     mem.VirtualTotal,
-			MemReserved: mem.VirtualUsed + mem.Total - mem.Available, // TODO: sub this process
+			// MemReserved: mem.VirtualUsed + mem.Total - mem.Available, // TODO: sub this process
+			MemReserved: 0,
 			CPUs:        uint64(runtime.NumCPU()),
 			GPUs:        gpus,
 		},
