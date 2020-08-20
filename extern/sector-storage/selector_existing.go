@@ -46,25 +46,25 @@ func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt 
 
 	have := map[stores.ID]struct{}{}
 	for _, path := range paths {
-		log.Warnf("tropy: find worker path [%v]: %v", path.ID, path.LocalPath)
+		log.Infof("tropy: find worker path [%v]: %v", path.ID, path.LocalPath)
 		have[path.ID] = struct{}{}
 	}
 
 	best, err := s.index.StorageFindSector(ctx, s.sector, s.alloc, spt, s.allowFetch)
 	if err != nil {
-		log.Infof("tropy: cannot find best storage path for [%v]: %v", s.sector.Number, err)
+		log.Infof("tropy: cannot find best storage path: %v", err)
 		return false, xerrors.Errorf("finding best storage: %w", err)
 	}
 
 	for _, info := range best {
 		log.Infof("tropy: best candidate path: %v / %v", info.ID, info.URLs)
 		if _, ok := have[info.ID]; ok {
-			log.Infof("tropy: best selected path for sector [%v]: %v", s.sector.Number, info.ID)
+			log.Infof("tropy: best selected path for: %v worker [%v]", info.ID, whnd.info.Address)
 			return true, nil
 		}
 	}
 
-	log.Warnf("tropy: cannot find best path for task %v sector [%v]", task, s.sector.Number)
+	log.Infof("tropy: cannot find best path for task %v worker [%v]", task, whnd.info.Address)
 	return false, nil
 }
 
