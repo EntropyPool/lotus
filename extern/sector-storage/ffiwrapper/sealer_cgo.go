@@ -54,12 +54,22 @@ func (sb *Sealer) NewSector(ctx context.Context, sector abi.SectorID) error {
 	return nil
 }
 
+func presetDir() string {
+	tmpdir, ok := os.LookupEnv("TMPDIR")
+	if !ok {
+		tmpdir = "/var/tmp"
+	}
+	presetDir := fmt.Sprintf("%s/preset", tmpdir)
+	os.MkdirAll(presetDir, os.ModePerm)
+	return presetDir
+}
+
 func (sb *Sealer) presetSectorFilename() string {
-	return fmt.Sprintf("%s/preset/sector-%v", os.Getenv("TMPDIR"), abi.PaddedPieceSize(sb.ssize))
+	return fmt.Sprintf("%s/sector-%v", presetDir(), abi.PaddedPieceSize(sb.ssize))
 }
 
 func (sb *Sealer) presetSectorPieceCidFilename() string {
-	return fmt.Sprintf("%s/preset/sector-piece-cid-%v", os.Getenv("TMPDIR"), abi.PaddedPieceSize(sb.ssize))
+	return fmt.Sprintf("%s/sector-piece-cid-%v", presetDir(), abi.PaddedPieceSize(sb.ssize))
 }
 
 func (sb *Sealer) presetSectorPieceCid() (string, error) {
@@ -116,6 +126,7 @@ func (sb *Sealer) tryCreateUnsealedFileFromPreset(ctx context.Context, sector ab
 		if nil == err {
 			stagedFile, err := openPartialFile(maxPieceSize, stagedPath.Unsealed)
 			if nil == err {
+				log.Debugf("success to create unseal from preset file")
 				return stagedFile, true, done, nil
 			}
 		}
@@ -144,7 +155,7 @@ func (sb *Sealer) presetPieceCids(stagedFile *partialFile, pieceSize abi.Unpadde
 
 	for total := 0; total < int(pieceSize.Padded()); total += int(chunk) {
 		pieceCids = append(pieceCids, abi.PieceInfo{
-			Size:     abi.UnpaddedPieceSize(chunk).Padded(),
+			Size:     chunk.Unpadded().Padded(),
 			PieceCID: presetCidV,
 		})
 	}
@@ -215,7 +226,6 @@ func (sb *Sealer) pieceCids(stagedFile *partialFile, pieceSize abi.UnpaddedPiece
 }
 
 func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPieceSizes []abi.UnpaddedPieceSize, pieceSize abi.UnpaddedPieceSize, file storage.Data) (abi.PieceInfo, error) {
-	log.Debugf("tropy: add pieces for %+v pieces ~", len(existingPieceSizes))
 	var offset abi.UnpaddedPieceSize
 	for _, size := range existingPieceSizes {
 		offset += size

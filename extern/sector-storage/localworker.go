@@ -100,7 +100,6 @@ func (l *localWorkerPathProvider) AcquireSector(ctx context.Context, sector abi.
 }
 
 func (l *LocalWorker) sb() (ffiwrapper.Storage, error) {
-	log.Debugf("tropy: get ffi storage implementation ~")
 	return ffiwrapper.New(&localWorkerPathProvider{w: l}, l.scfg)
 }
 
@@ -110,7 +109,6 @@ func (l *LocalWorker) NewSector(ctx context.Context, sector abi.SectorID) error 
 		return err
 	}
 
-	log.Debugf("tropy: create sector for %+v", sector.Number)
 	return sb.NewSector(ctx, sector)
 }
 
@@ -119,7 +117,6 @@ func (l *LocalWorker) AddPiece(ctx context.Context, sector abi.SectorID, epcs []
 	if err != nil {
 		return abi.PieceInfo{}, err
 	}
-	log.Debugf("tropy: add piece in local worker for %+v", sector.Number)
 	return sb.AddPiece(ctx, sector, epcs, sz, r)
 }
 
