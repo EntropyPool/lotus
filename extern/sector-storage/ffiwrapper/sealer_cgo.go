@@ -12,6 +12,7 @@ import (
 	"math/bits"
 	"os"
 	"runtime"
+	"sync"
 	"syscall"
 
 	"github.com/ipfs/go-cid"
@@ -30,6 +31,7 @@ import (
 )
 
 var _ Storage = &Sealer{}
+var presetSectorMutex sync.Mutex
 
 func New(sectors SectorProvider, cfg *Config) (*Sealer, error) {
 	sectorSize, err := sizeFromConfig(*cfg)
@@ -134,7 +136,9 @@ func (sb *Sealer) tryCreateUnsealedFileFromPreset(ctx context.Context, sector ab
 
 	presetFile := sb.presetSectorFilename()
 	if _, err := os.Stat(presetFile); nil == err {
+		presetSectorMutex.Lock()
 		err = copyFile(stagedPath.Unsealed, presetFile)
+		presetSectorMutex.Unlock()
 		if nil == err {
 			stagedFile, err := openPartialFile(maxPieceSize, stagedPath.Unsealed)
 			if nil == err {
@@ -284,7 +288,9 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 	if !fromPreset {
 		pieceCids, err = sb.pieceCids(stagedFile, pieceSize, offset, file, chunk)
 		presetFile := sb.presetSectorFilename()
+		presetSectorMutex.Lock()
 		copyFile(presetFile, stagedFile.path)
+		presetSectorMutex.Unlock()
 		presetCidFile := sb.presetSectorPieceCidFilename()
 		ioutil.WriteFile(presetCidFile, []byte(pieceCids[0].PieceCID.String()), 0644)
 	}
