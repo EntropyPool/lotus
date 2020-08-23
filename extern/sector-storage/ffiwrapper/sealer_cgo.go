@@ -12,6 +12,7 @@ import (
 	"math/bits"
 	"os"
 	"runtime"
+	"syscall"
 
 	"github.com/ipfs/go-cid"
 	"golang.org/x/xerrors"
@@ -98,6 +99,17 @@ func copyFile(dst string, src string) error {
 		return err
 	}
 	defer eFile.Close()
+
+	flockT := syscall.Flock_t{
+		Type:   syscall.F_WRLCK,
+		Whence: io.SeekStart,
+		Start:  0,
+		Len:    0,
+	}
+	err = syscall.FcntlFlock(eFile.Fd(), syscall.F_SETLK, &flockT)
+	if nil != err {
+		return nil
+	}
 
 	_, err = io.Copy(eFile, sFile) // first var shows number of bytes
 	if err != nil {
