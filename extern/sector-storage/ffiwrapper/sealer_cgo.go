@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"sync"
 	"syscall"
+	"encoding/json"
 
 	"github.com/ipfs/go-cid"
 	"golang.org/x/xerrors"
@@ -75,16 +76,22 @@ func (sb *Sealer) presetSectorPieceCidFilename() string {
 	return fmt.Sprintf("%s/sector-piece-cid-%v", presetDir(), abi.PaddedPieceSize(sb.ssize))
 }
 
-func (sb *Sealer) presetSectorPieceCid() (string, error) {
+func (sb *Sealer) presetSectorPieceCid() ([]abi.PieceInfo, error) {
+	var pieceCids []abi.PieceInfo
+
 	cidFilename := sb.presetSectorPieceCidFilename()
 	if _, err := os.Stat(cidFilename); os.IsNotExist(err) {
-		return "", xerrors.Errorf("preset sector piece cid is not exist")
+		return pieceCids, xerrors.Errorf("preset sector piece cids is not exist")
 	}
-	cid, err := ioutil.ReadFile(cidFilename)
+	body, err := ioutil.ReadFile(cidFilename)
 	if nil != err {
-		return "", xerrors.Errorf("cannot read preset sector piece cid")
+		return pieceCids, xerrors.Errorf("cannot read preset sector piece cids")
 	}
-	return string(cid), nil
+	err = json.Unmarshal(body, &pieceCids)
+	if nil != err {
+		return pieceCids, xerrors.Errorf("cannot parse preset sector piece cids")
+	}
+	return pieceCids, nil
 }
 
 func copyFile(dst string, src string) error {
@@ -157,26 +164,7 @@ func (sb *Sealer) tryCreateUnsealedFileFromPreset(ctx context.Context, sector ab
 }
 
 func (sb *Sealer) presetPieceCids(stagedFile *partialFile, pieceSize abi.UnpaddedPieceSize, chunk abi.PaddedPieceSize) ([]abi.PieceInfo, error) {
-	var pieceCids []abi.PieceInfo
-
-	presetCid, err := sb.presetSectorPieceCid()
-	if nil != err {
-		return pieceCids, err
-	}
-
-	presetCidV, err := cid.Decode(presetCid)
-	if nil != err {
-		return pieceCids, err
-	}
-
-	for total := 0; total < int(pieceSize.Padded()); total += int(chunk) {
-		pieceCids = append(pieceCids, abi.PieceInfo{
-			Size:     chunk.Unpadded().Padded(),
-			PieceCID: presetCidV,
-		})
-	}
-
-	return pieceCids, nil
+	return sb.presetSectorPieceCid()
 }
 
 func (sb *Sealer) openExistUnsealedFile(ctx context.Context, sector abi.SectorID, maxPieceSize abi.PaddedPieceSize) (*partialFile, func(), error) {
@@ -228,6 +216,7 @@ func (sb *Sealer) pieceCids(stagedFile *partialFile, pieceSize abi.UnpaddedPiece
 		if err != nil {
 			return pieceCids, xerrors.Errorf("pieceCid error: %w", err)
 		}
+		log.Warnf("%v", c)
 		pieceCids = append(pieceCids, abi.PieceInfo{
 			Size:     abi.UnpaddedPieceSize(len(buf[:read])).Padded(),
 			PieceCID: c,
@@ -290,9 +279,10 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		presetFile := sb.presetSectorFilename()
 		presetSectorMutex.Lock()
 		copyFile(presetFile, stagedFile.path)
-		presetSectorMutex.Unlock()
 		presetCidFile := sb.presetSectorPieceCidFilename()
-		ioutil.WriteFile(presetCidFile, []byte(pieceCids[0].PieceCID.String()), 0644)
+		json, _ := json.Marshal(pieceCids)
+		ioutil.WriteFile(presetCidFile, json, 0644)
+		presetSectorMutex.Unlock()
 	}
 
 	if err := stagedFile.MarkAllocated(storiface.UnpaddedByteIndex(offset).Padded(), pieceSize.Padded()); err != nil {
