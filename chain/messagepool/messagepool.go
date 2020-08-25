@@ -12,6 +12,7 @@ import (
 
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
+	"github.com/hashicorp/go-multierror"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
@@ -314,6 +315,10 @@ func (mp *MessagePool) checkMessage(m *types.SignedMessage) error {
 	// big messages are bad, anti DOS
 	if m.Size() > 32*1024 {
 		return xerrors.Errorf("mpool message too large (%dB): %w", m.Size(), ErrMessageTooBig)
+	}
+
+	if err := m.Message.ValidForBlockInclusion(0); err != nil {
+		return xerrors.Errorf("message not valid for block inclusion: %d", err)
 	}
 
 	if m.Message.To == address.Undef {
@@ -744,18 +749,24 @@ func (mp *MessagePool) HeadChange(revert []*types.TipSet, apply []*types.TipSet)
 		}
 	}
 
+	var merr error
+
 	for _, ts := range revert {
 		pts, err := mp.api.LoadTipSet(ts.Parents())
 		if err != nil {
-			return err
-		}
-
-		msgs, err := mp.MessagesForBlocks(ts.Blocks())
-		if err != nil {
-			return err
+			log.Errorf("error loading reverted tipset parent: %s", err)
+			merr = multierror.Append(merr, err)
+			continue
 		}
 
 		mp.curTs = pts
+
+		msgs, err := mp.MessagesForBlocks(ts.Blocks())
+		if err != nil {
+			log.Errorf("error retrieving messages for reverted block: %s", err)
+			merr = multierror.Append(merr, err)
+			continue
+		}
 
 		for _, msg := range msgs {
 			add(msg)
@@ -763,11 +774,17 @@ func (mp *MessagePool) HeadChange(revert []*types.TipSet, apply []*types.TipSet)
 	}
 
 	for _, ts := range apply {
+		mp.curTs = ts
+
 		for _, b := range ts.Blocks() {
 			bmsgs, smsgs, err := mp.api.MessagesForBlock(b)
 			if err != nil {
-				return xerrors.Errorf("failed to get messages for apply block %s(height %d) (msgroot = %s): %w", b.Cid(), b.Height, b.Messages, err)
+				xerr := xerrors.Errorf("failed to get messages for apply block %s(height %d) (msgroot = %s): %w", b.Cid(), b.Height, b.Messages, err)
+				log.Errorf("error retrieving messages for block: %s", xerr)
+				merr = multierror.Append(merr, xerr)
+				continue
 			}
+
 			for _, msg := range smsgs {
 				rm(msg.Message.From, msg.Message.Nonce)
 				maybeRepub(msg.Cid())
@@ -778,8 +795,6 @@ func (mp *MessagePool) HeadChange(revert []*types.TipSet, apply []*types.TipSet)
 				maybeRepub(msg.Cid())
 			}
 		}
-
-		mp.curTs = ts
 	}
 
 	if repubTrigger {
@@ -862,7 +877,7 @@ func (mp *MessagePool) HeadChange(revert []*types.TipSet, apply []*types.TipSet)
 		}
 	}
 
-	return nil
+	return merr
 }
 
 type statBucket struct {
@@ -961,4 +976,41 @@ func (mp *MessagePool) loadLocal() error {
 	}
 
 	return nil
+}
+
+func (mp *MessagePool) Clear(local bool) {
+	mp.lk.Lock()
+	defer mp.lk.Unlock()
+
+	// remove everything if local is true, including removing local messages from
+	// the datastore
+	if local {
+		for a := range mp.localAddrs {
+			mset, ok := mp.pending[a]
+			if !ok {
+				continue
+			}
+
+			for _, m := range mset.msgs {
+				err := mp.localMsgs.Delete(datastore.NewKey(string(m.Cid().Bytes())))
+				if err != nil {
+					log.Warnf("error deleting local message: %s", err)
+				}
+			}
+		}
+
+		mp.pending = make(map[address.Address]*msgSet)
+		mp.republished = nil
+
+		return
+	}
+
+	// remove everything except the local messages
+	for a := range mp.pending {
+		_, isLocal := mp.localAddrs[a]
+		if isLocal {
+			continue
+		}
+		delete(mp.pending, a)
+	}
 }
