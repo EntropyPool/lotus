@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -14,7 +15,6 @@ import (
 	"runtime"
 	"sync"
 	"syscall"
-	"encoding/json"
 
 	"github.com/ipfs/go-cid"
 	"golang.org/x/xerrors"
@@ -216,7 +216,6 @@ func (sb *Sealer) pieceCids(stagedFile *partialFile, pieceSize abi.UnpaddedPiece
 		if err != nil {
 			return pieceCids, xerrors.Errorf("pieceCid error: %w", err)
 		}
-		log.Warnf("%v", c)
 		pieceCids = append(pieceCids, abi.PieceInfo{
 			Size:     abi.UnpaddedPieceSize(len(buf[:read])).Padded(),
 			PieceCID: c,
