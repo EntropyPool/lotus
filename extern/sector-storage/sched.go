@@ -373,9 +373,7 @@ func (sh *scheduler) trySched() {
 	}
 
 	wg.Wait()
-
-	log.Debugf("SCHED windows: %+v", windows)
-	log.Debugf("SCHED Acceptable win: %+v", acceptableWindows)
+	log.Debugf("SCHED Acceptable win: %+v/queue: %v", acceptableWindows, sh.schedQueue.Len())
 
 	// Step 2
 	scheduled := 0
@@ -432,6 +430,8 @@ func (sh *scheduler) trySched() {
 	}
 
 	scheduledWindows := map[int]struct{}{}
+	keepAliveWindows := map[int]struct{}{}
+
 	for wnd, window := range windows {
 		if len(window.todo) == 0 {
 			// Nothing scheduled here, keep the window open
@@ -439,6 +439,13 @@ func (sh *scheduler) trySched() {
 		}
 
 		scheduledWindows[wnd] = struct{}{}
+
+		for _, todo := range window.todo {
+			if todo.taskType == sealtasks.TTPreCommit1 {
+				keepAliveWindows[wnd] = struct{}{}
+				break
+			}
+		}
 
 		window := window // copy
 		select {
@@ -453,7 +460,9 @@ func (sh *scheduler) trySched() {
 	for wnd, window := range sh.openWindows {
 		if _, scheduled := scheduledWindows[wnd]; scheduled {
 			// keep unscheduled windows open
-			continue
+			if _, keepAlive := keepAliveWindows[wnd]; !keepAlive {
+				continue
+			}
 		}
 
 		newOpenWindows = append(newOpenWindows, window)
@@ -502,7 +511,8 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 		for {
 			// ask for more windows if we need them
-			log.Warnf("tropy: fill window request for worker %+v, requests %+v, active windows %+v", wid, len(sh.windowRequests), len(activeWindows))
+			log.Warnf("tropy: fill window request for worker %+v, requests %+v, cap [%v, %v], active windows %+v",
+				wid, len(sh.windowRequests), windowsRequested, SchedWindows, len(activeWindows))
 			for ; windowsRequested < SchedWindows; windowsRequested++ {
 				select {
 				case sh.windowRequests <- &schedWindowRequest{
