@@ -8,11 +8,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/mitchellh/go-homedir"
 	"io"
 	"io/ioutil"
 	"math/bits"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -600,6 +604,46 @@ func (sb *Sealer) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 	return p1o, nil
 }
 
+
+func move(from, to string) error {
+	from, err := homedir.Expand(from)
+	if err != nil {
+		return xerrors.Errorf("move: expanding from: %w", err)
+	}
+
+	to, err = homedir.Expand(to)
+	if err != nil {
+		return xerrors.Errorf("move: expanding to: %w", err)
+	}
+
+	if filepath.Base(from) != filepath.Base(to) {
+		return xerrors.Errorf("move: base names must match ('%s' != '%s')", filepath.Base(from), filepath.Base(to))
+	}
+
+	toDir := filepath.Dir(to)
+
+	// `mv` has decades of experience in moving files quickly; don't pretend we
+	//  can do better
+	var errOut bytes.Buffer
+	cmd := exec.Command("/usr/bin/env", "mv", "-t", toDir, from)
+	cmd.Stderr = &errOut
+	if err := cmd.Run(); err != nil {
+		return xerrors.Errorf("exec mv (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+	}
+	log.Infow("move sector data", "from:", from, "to:", to)
+
+	//make soft link
+	cmdln := exec.Command("/usr/bin/env", "ln", "-s", to, from)
+	cmdln.Stderr = &errOut
+	if err := cmdln.Run(); err != nil {
+		return xerrors.Errorf("exec mv (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+	}
+	log.Infow("link sector data", "from:", from, "to:", to)
+
+	return nil
+}
+
+
 func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase1Out storage.PreCommit1Out) (storage.SectorCids, error) {
 	paths, done, err := sb.sectors.AcquireSector(ctx, sector, stores.FTSealed|stores.FTCache, 0, stores.PathSealing)
 	if err != nil {
@@ -611,6 +655,29 @@ func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 	if err != nil {
 		return storage.SectorCids{}, xerrors.Errorf("presealing sector %d (%s): %w", sector.Number, paths.Unsealed, err)
 	}
+
+
+	sect_dir, err := ioutil.ReadDir(paths.Cache)
+	cache_hdd := os.Getenv("LOTUS_CHACHE_HDD")
+	if err == nil && cache_hdd != "" {
+		cache_hdd, _ = homedir.Expand(cache_hdd)
+		spl := strings.Split(paths.Cache, string(os.PathSeparator))
+		cache_hdd = cache_hdd + string(os.PathSeparator) +spl[len(spl)-1]
+		log.Infow("Get hdd cache", "cache_hdd",cache_hdd)
+		err = os.MkdirAll(cache_hdd,0755)
+		if err != nil {
+			log.Warnf("Create hdd cache(%s) err: %s",cache_hdd,err)
+		}
+
+		for _, fi := range sect_dir {
+			if strings.Index(fi.Name(), "-data-layer-") > -1 {
+				if err := move(paths.Cache+"/"+fi.Name(), cache_hdd+"/"+fi.Name()); err != nil {
+					log.Warnf("Move hdd cache(%s) err: %s",cache_hdd+fi.Name(),err)
+				}
+			}
+		}
+	}
+
 
 	return storage.SectorCids{
 		Unsealed: unsealedCID,
