@@ -519,21 +519,25 @@ func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ SectorF
 		log.Errorf("removing sector (%v) from %s: %+v", sid, spath, err)
 	}
 
-
 	if typ == FTCache {
-		cache_hdd := os.Getenv("LOTUS_CHACHE_HDD")
-		if cache_hdd != "" {
+		env_hdd := os.Getenv("LOTUS_CHACHE_HDD")
+		if env_hdd == "" {
+			return nil
+		}
+
+		hdd := strings.Split(env_hdd, ";")
+		for index := 0; index < len(hdd); index++ {
+			cache_hdd := hdd[index]
 			cache_hdd, _ = homedir.Expand(cache_hdd)
 			spl := strings.Split(spath, string(os.PathSeparator))
 			cache_hdd = cache_hdd + string(os.PathSeparator) + spl[len(spl)-1]
 			if err := os.RemoveAll(cache_hdd); err != nil {
 				log.Errorf("removing hdd cache sector (%v) from %s: %+v", sid, cache_hdd, err)
+				continue
 			}
 			log.Infof("remove hdd cache %s", cache_hdd)
 		}
-
 	}
-
 
 	return nil
 }
