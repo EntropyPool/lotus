@@ -548,7 +548,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 		for {
 			// ask for more windows if we need them
 			log.Warnf("tropy: fill window request for worker %+v, requests %+v, cap [%v, %v], active windows %+v",
-				wid, len(sh.windowRequests), windowsRequested, SchedWindows, len(activeWindows))
+				wid, len(sh.windowRequests), windowsRequested, SchedWindows, len(worker.activeWindows))
 			for ; windowsRequested < SchedWindows; windowsRequested++ {
 				select {
 				case sh.windowRequests <- &schedWindowRequest{
@@ -566,7 +566,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 			select {
 			case w := <-scheduledWindows:
-				log.Warnf("tropy: active windows for worker %+v, windows %+v, todos %+v", wid, len(activeWindows), len(w.todo))
+				log.Warnf("tropy: active windows for worker %+v, windows %+v, todos %+v", wid, len(worker.activeWindows), len(w.todo))
 				worker.wndLk.Lock()
 				worker.activeWindows = append(worker.activeWindows, w)
 				worker.wndLk.Unlock()
