@@ -385,17 +385,17 @@ func (i *Index) StorageBestAlloc(ctx context.Context, allocate SectorFileType, s
 		}
 
 		if spaceReq > uint64(p.fsi.Available) {
-			log.Debugf("not allocating on %s, out of space (available: %d, need: %d)", p.info.ID, p.fsi.Available, spaceReq)
+			log.Debugf("not allocating on %s, out of space (available: %d, need: %d) [%v]", p.info.ID, p.fsi.Available, spaceReq, p.info.URLs)
 			continue
 		}
 
 		if time.Since(p.lastHeartbeat) > SkippedHeartbeatThresh {
-			log.Debugf("not allocating on %s, didn't receive heartbeats for %s", p.info.ID, time.Since(p.lastHeartbeat))
+			log.Debugf("not allocating on %s, didn't receive heartbeats for %s [%v]", p.info.ID, time.Since(p.lastHeartbeat), p.info.URLs)
 			continue
 		}
 
 		if p.heartbeatErr != nil {
-			log.Debugf("not allocating on %s, heartbeat error: %s", p.info.ID, p.heartbeatErr)
+			log.Debugf("not allocating on %s, heartbeat error: %s [%v]", p.info.ID, p.heartbeatErr, p.info.URLs)
 			continue
 		}
 
