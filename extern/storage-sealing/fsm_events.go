@@ -112,7 +112,6 @@ func (evt SectorPreCommit1) apply(state *SectorInfo) {
 	state.TicketEpoch = evt.TicketEpoch
 	state.TicketValue = evt.TicketValue
 	state.PreCommit2Fails = 0
-	state.PreCommit1Fails = 0
 }
 
 type SectorPreCommit2 struct {
