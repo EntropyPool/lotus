@@ -6,8 +6,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
 	"github.com/mitchellh/go-homedir"
 	"io"
 	"io/ioutil"
@@ -17,7 +15,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"syscall"
 
 	"github.com/ipfs/go-cid"
@@ -36,7 +33,6 @@ import (
 )
 
 var _ Storage = &Sealer{}
-var presetSectorMutex sync.Mutex
 
 func New(sectors SectorProvider, cfg *Config) (*Sealer, error) {
 	sectorSize, err := sizeFromConfig(*cfg)
@@ -60,177 +56,6 @@ func (sb *Sealer) NewSector(ctx context.Context, sector abi.SectorID) error {
 	// TODO: Allocate the sector here instead of in addpiece
 
 	return nil
-}
-
-func presetDir() string {
-	tmpdir, ok := os.LookupEnv("TMPDIR")
-	if !ok {
-		tmpdir = "/var/tmp"
-	}
-	presetDir := fmt.Sprintf("%s/preset", tmpdir)
-	os.MkdirAll(presetDir, os.ModePerm)
-	return presetDir
-}
-
-func (sb *Sealer) presetSectorFilename() string {
-	return fmt.Sprintf("%s/sector-%v", presetDir(), abi.PaddedPieceSize(sb.ssize))
-}
-
-func (sb *Sealer) presetSectorPieceCidFilename() string {
-	return fmt.Sprintf("%s/sector-piece-cid-%v", presetDir(), abi.PaddedPieceSize(sb.ssize))
-}
-
-func (sb *Sealer) presetSectorPieceCid() ([]abi.PieceInfo, error) {
-	var pieceCids []abi.PieceInfo
-
-	cidFilename := sb.presetSectorPieceCidFilename()
-	if _, err := os.Stat(cidFilename); os.IsNotExist(err) {
-		return pieceCids, xerrors.Errorf("preset sector piece cids is not exist")
-	}
-	body, err := ioutil.ReadFile(cidFilename)
-	if nil != err {
-		return pieceCids, xerrors.Errorf("cannot read preset sector piece cids")
-	}
-	err = json.Unmarshal(body, &pieceCids)
-	if nil != err {
-		return pieceCids, xerrors.Errorf("cannot parse preset sector piece cids")
-	}
-	return pieceCids, nil
-}
-
-func copyFile(dst string, src string) error {
-	sFile, err := os.Open(src)
-	if err != nil {
-		log.Warnf("cannot open %+v: %+v", src, err)
-		return err
-	}
-	defer sFile.Close()
-
-	eFile, err := os.Create(dst)
-	if err != nil {
-		log.Warnf("cannot create %+v: %+v", dst, err)
-		return err
-	}
-	defer eFile.Close()
-
-	flockT := syscall.Flock_t{
-		Type:   syscall.F_WRLCK,
-		Whence: io.SeekStart,
-		Start:  0,
-		Len:    0,
-	}
-	err = syscall.FcntlFlock(eFile.Fd(), syscall.F_SETLK, &flockT)
-	if nil != err {
-		return nil
-	}
-
-	_, err = io.Copy(eFile, sFile) // first var shows number of bytes
-	if err != nil {
-		log.Warnf("cannot copy %+v -> %+v: %+v", src, dst, err)
-		return err
-	}
-
-	err = eFile.Sync()
-	if err != nil {
-		log.Warnf("cannot sync %+v: %+v", dst, err)
-		return err
-	}
-
-	return nil
-}
-
-func (sb *Sealer) tryCreateUnsealedFileFromPreset(ctx context.Context, sector abi.SectorID, maxPieceSize abi.PaddedPieceSize) (*partialFile, bool, func(), error) {
-	stagedPath, done, err := sb.sectors.AcquireSector(ctx, sector, 0, stores.FTUnsealed, stores.PathSealing)
-	if err != nil {
-		return nil, false, done, xerrors.Errorf("acquire unsealed sector: %w", err)
-	}
-
-	presetFile := sb.presetSectorFilename()
-	if _, err := os.Stat(presetFile); nil == err {
-		presetSectorMutex.Lock()
-		err = copyFile(stagedPath.Unsealed, presetFile)
-		presetSectorMutex.Unlock()
-		if nil == err {
-			stagedFile, err := openPartialFile(maxPieceSize, stagedPath.Unsealed)
-			if nil == err {
-				log.Debugf("success to create unseal from preset file")
-				return stagedFile, true, done, nil
-			}
-		}
-	}
-
-	stagedFile, err := createPartialFile(maxPieceSize, stagedPath.Unsealed)
-	if err != nil {
-		return nil, false, done, xerrors.Errorf("creating unsealed sector file: %w", err)
-	}
-	return stagedFile, false, done, nil
-
-}
-
-func (sb *Sealer) presetPieceCids(stagedFile *partialFile, pieceSize abi.UnpaddedPieceSize, chunk abi.PaddedPieceSize) ([]abi.PieceInfo, error) {
-	return sb.presetSectorPieceCid()
-}
-
-func (sb *Sealer) openExistUnsealedFile(ctx context.Context, sector abi.SectorID, maxPieceSize abi.PaddedPieceSize) (*partialFile, func(), error) {
-	stagedPath, done, err := sb.sectors.AcquireSector(ctx, sector, stores.FTUnsealed, 0, stores.PathSealing)
-	if err != nil {
-		return nil, done, xerrors.Errorf("acquire unsealed sector: %w", err)
-	}
-
-	stagedFile, err := openPartialFile(maxPieceSize, stagedPath.Unsealed)
-	if err != nil {
-		return nil, done, xerrors.Errorf("opening unsealed sector file: %w", err)
-	}
-
-	return stagedFile, done, nil
-}
-
-func (sb *Sealer) pieceCids(stagedFile *partialFile, pieceSize abi.UnpaddedPieceSize, offset abi.UnpaddedPieceSize, file storage.Data, chunk abi.PaddedPieceSize) ([]abi.PieceInfo, error) {
-	var pieceCids []abi.PieceInfo
-
-	w, err := stagedFile.Writer(storiface.UnpaddedByteIndex(offset).Padded(), pieceSize.Padded())
-	if err != nil {
-		return pieceCids, xerrors.Errorf("getting partial file writer: %w", err)
-	}
-
-	pw := fr32.NewPadWriter(w)
-	pr := io.TeeReader(io.LimitReader(file, int64(pieceSize)), pw)
-	buf := make([]byte, chunk.Unpadded())
-
-	for {
-		var read int
-		for rbuf := buf; len(rbuf) > 0; {
-			n, err := pr.Read(rbuf)
-			if err != nil && err != io.EOF {
-				return pieceCids, xerrors.Errorf("pr read error: %w", err)
-			}
-
-			rbuf = rbuf[n:]
-			read += n
-
-			if err == io.EOF {
-				break
-			}
-		}
-		if read == 0 {
-			break
-		}
-
-		c, err := sb.pieceCid(buf[:read])
-		if err != nil {
-			return pieceCids, xerrors.Errorf("pieceCid error: %w", err)
-		}
-		pieceCids = append(pieceCids, abi.PieceInfo{
-			Size:     abi.UnpaddedPieceSize(len(buf[:read])).Padded(),
-			PieceCID: c,
-		})
-	}
-
-	if err := pw.Close(); err != nil {
-		return pieceCids, xerrors.Errorf("closing padded writer: %w", err)
-	}
-
-	return pieceCids, nil
 }
 
 func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPieceSizes []abi.UnpaddedPieceSize, pieceSize abi.UnpaddedPieceSize, file storage.Data) (abi.PieceInfo, error) {
@@ -261,31 +86,74 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		}
 	}()
 
-	fromPreset := false
-	var pieceCids []abi.PieceInfo
-	chunk := abi.PaddedPieceSize(4 << 20)
-
+	var stagedPath stores.SectorPaths
 	if len(existingPieceSizes) == 0 {
-		stagedFile, fromPreset, done, err = sb.tryCreateUnsealedFileFromPreset(ctx, sector, maxPieceSize)
-		if fromPreset {
-			pieceCids, err = sb.presetPieceCids(stagedFile, pieceSize, chunk)
-			if nil != err {
-				fromPreset = false
-			}
+		stagedPath, done, err = sb.sectors.AcquireSector(ctx, sector, 0, stores.FTUnsealed, stores.PathSealing)
+		if err != nil {
+			return abi.PieceInfo{}, xerrors.Errorf("acquire unsealed sector: %w", err)
+		}
+
+		stagedFile, err = createPartialFile(maxPieceSize, stagedPath.Unsealed)
+		if err != nil {
+			return abi.PieceInfo{}, xerrors.Errorf("creating unsealed sector file: %w", err)
 		}
 	} else {
-		stagedFile, done, err = sb.openExistUnsealedFile(ctx, sector, maxPieceSize)
+		stagedPath, done, err = sb.sectors.AcquireSector(ctx, sector, stores.FTUnsealed, 0, stores.PathSealing)
+		if err != nil {
+			return abi.PieceInfo{}, xerrors.Errorf("acquire unsealed sector: %w", err)
+		}
+
+		stagedFile, err = openPartialFile(maxPieceSize, stagedPath.Unsealed)
+		if err != nil {
+			return abi.PieceInfo{}, xerrors.Errorf("opening unsealed sector file: %w", err)
+		}
 	}
 
-	if !fromPreset {
-		pieceCids, err = sb.pieceCids(stagedFile, pieceSize, offset, file, chunk)
-		presetFile := sb.presetSectorFilename()
-		presetSectorMutex.Lock()
-		copyFile(presetFile, stagedFile.path)
-		presetCidFile := sb.presetSectorPieceCidFilename()
-		json, _ := json.Marshal(pieceCids)
-		ioutil.WriteFile(presetCidFile, json, 0644)
-		presetSectorMutex.Unlock()
+	w, err := stagedFile.Writer(storiface.UnpaddedByteIndex(offset).Padded(), pieceSize.Padded())
+	if err != nil {
+		return abi.PieceInfo{}, xerrors.Errorf("getting partial file writer: %w", err)
+	}
+
+	pw := fr32.NewPadWriter(w)
+
+	pr := io.TeeReader(io.LimitReader(file, int64(pieceSize)), pw)
+
+	chunk := abi.PaddedPieceSize(4 << 20)
+
+	buf := make([]byte, chunk.Unpadded())
+	var pieceCids []abi.PieceInfo
+
+	for {
+		var read int
+		for rbuf := buf; len(rbuf) > 0; {
+			n, err := pr.Read(rbuf)
+			if err != nil && err != io.EOF {
+				return abi.PieceInfo{}, xerrors.Errorf("pr read error: %w", err)
+			}
+
+			rbuf = rbuf[n:]
+			read += n
+
+			if err == io.EOF {
+				break
+			}
+		}
+		if read == 0 {
+			break
+		}
+
+		c, err := sb.pieceCid(buf[:read])
+		if err != nil {
+			return abi.PieceInfo{}, xerrors.Errorf("pieceCid error: %w", err)
+		}
+		pieceCids = append(pieceCids, abi.PieceInfo{
+			Size:     abi.UnpaddedPieceSize(len(buf[:read])).Padded(),
+			PieceCID: c,
+		})
+	}
+
+	if err := pw.Close(); err != nil {
+		return abi.PieceInfo{}, xerrors.Errorf("closing padded writer: %w", err)
 	}
 
 	if err := stagedFile.MarkAllocated(storiface.UnpaddedByteIndex(offset).Padded(), pieceSize.Padded()); err != nil {
@@ -641,6 +509,7 @@ func move(from, to string) error {
 
 	return nil
 }
+
 func get_cache_hdd() string {
 
 	env_hdd := os.Getenv("LOTUS_CHACHE_HDD")
