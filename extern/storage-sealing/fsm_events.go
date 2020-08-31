@@ -112,6 +112,7 @@ func (evt SectorPreCommit1) apply(state *SectorInfo) {
 	state.TicketEpoch = evt.TicketEpoch
 	state.TicketValue = evt.TicketValue
 	state.PreCommit2Fails = 0
+	state.PreCommit1Fails = 0
 }
 
 type SectorPreCommit2 struct {
@@ -140,6 +141,7 @@ func (evt SectorSealPreCommit1Failed) FormatError(xerrors.Printer) (next error) 
 func (evt SectorSealPreCommit1Failed) apply(si *SectorInfo) {
 	si.InvalidProofs = 0 // reset counter
 	si.PreCommit2Fails = 0
+	si.PreCommit1Fails++
 }
 
 type SectorSealPreCommit2Failed struct{ error }
@@ -148,6 +150,7 @@ func (evt SectorSealPreCommit2Failed) FormatError(xerrors.Printer) (next error) 
 func (evt SectorSealPreCommit2Failed) apply(si *SectorInfo) {
 	si.InvalidProofs = 0 // reset counter
 	si.PreCommit2Fails++
+	si.PreCommit1Fails = 0
 }
 
 type SectorChainPreCommitFailed struct{ error }

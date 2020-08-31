@@ -22,7 +22,7 @@ func failedCooldown(ctx statemachine.Context, sector SectorInfo) error {
 
 	retryStart := time.Unix(int64(sector.Log[len(sector.Log)-1].Timestamp), 0).Add(minRetryTime)
 	if len(sector.Log) > 0 && !time.Now().After(retryStart) {
-		log.Infof("%s(%d), waiting %s before retrying", sector.State, sector.SectorNumber, time.Until(retryStart))
+		log.Infof("%s(%d), waiting %s before retrying, fails (%d)", sector.State, sector.SectorNumber, time.Until(retryStart), sector.PreCommit1Fails)
 		select {
 		case <-time.After(time.Until(retryStart)):
 		case <-ctx.Context().Done():
@@ -54,6 +54,11 @@ func (m *Sealing) handleSealPrecommit1Failed(ctx statemachine.Context, sector Se
 		return err
 	}
 
+	log.Warnf("pre commit1 fails(%v) sector (%v)", sector.PreCommit1Fails, sector.SectorNumber)
+	if sector.PreCommit1Fails > 2 {
+		return ctx.Send(SectorRemove{})
+	}
+
 	return ctx.Send(SectorRetrySealPreCommit1{})
 }
 
@@ -62,6 +67,7 @@ func (m *Sealing) handleSealPrecommit2Failed(ctx statemachine.Context, sector Se
 		return err
 	}
 
+	log.Warnf("pre commit2 fails(%v) sector (%v)", sector.PreCommit2Fails, sector.SectorNumber)
 	if sector.PreCommit2Fails > 1 {
 		return ctx.Send(SectorRetrySealPreCommit1{})
 	}

@@ -88,6 +88,7 @@ type SectorInfo struct {
 	PreCommitTipSet  TipSetToken
 
 	PreCommit2Fails uint64
+	PreCommit1Fails uint64
 
 	// WaitSeed
 	SeedValue abi.InteractiveSealRandomness
