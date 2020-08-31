@@ -94,7 +94,9 @@ func (m *Sealing) handlePreCommit1(ctx statemachine.Context, sector SectorInfo) 
 			log.Warnf("expired dealIDs in sector: %w", err)
 			return ctx.Send(SectorRemove{})
 		default:
-			return xerrors.Errorf("checkPieces sanity check error: %w", err)
+			// return xerrors.Errorf("checkPieces sanity check error: %w", err)
+			log.Warnf("checkPieces sanity check error: %w", err)
+			return ctx.Send(SectorRemove{})
 		}
 	}
 
