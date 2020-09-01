@@ -24,7 +24,7 @@ var SelectorTimeout = 5 * time.Second
 var InitWait = 3 * time.Second
 
 var (
-	SchedWindows = 2
+	SchedWindows = 1
 )
 
 func getPriority(ctx context.Context) int {
@@ -411,18 +411,18 @@ func (sh *scheduler) trySched() {
 	}
 
 	wg.Wait()
-
-	log.Debugf("SCHED windows: %+v", windows)
-	log.Debugf("SCHED Acceptable win: %+v", acceptableWindows)
+	log.Debugf("SCHED Acceptable win: %+v/queue: %v", acceptableWindows, sh.schedQueue.Len())
 
 	// Step 2
 	scheduled := 0
+	minWindowTodos := make([]int, len(windows))
 
 	for sqi := 0; sqi < sh.schedQueue.Len(); sqi++ {
 		task := (*sh.schedQueue)[sqi]
 		needRes := ResourceTable[task.taskType][sh.spt]
 
 		selectedWindow := -1
+
 		for _, wnd := range acceptableWindows[task.indexHeap] {
 			wid := sh.openWindows[wnd].worker
 			wr := sh.workers[wid].info.Resources
@@ -434,16 +434,16 @@ func (sh *scheduler) trySched() {
 				continue
 			}
 
-			log.Debugf("SCHED ASSIGNED sqi:%d sector %d task %s to window %d", sqi, task.sector.Number, task.taskType, wnd)
-
-			windows[wnd].allocated.add(wr, needRes)
-			// TODO: We probably want to re-sort acceptableWindows here based on new
-			//  workerHandle.utilization + windows[wnd].allocated.utilization (workerHandle.utilization is used in all
-			//  task selectors, but not in the same way, so need to figure out how to do that in a non-O(n^2 way), and
-			//  without additional network roundtrips (O(n^2) could be avoided by turning acceptableWindows.[] into heaps))
-
-			selectedWindow = wnd
-			break
+			if len(windows[wnd].todo) < minWindowTodos[wnd] || 0 == minWindowTodos[wnd] {
+				// log.Debugf("SCHED ASSIGNED sqi:%d sector %d to window %d", sqi, task.sector.Number, wnd)
+				log.Debugf("tropy: much better windows found for %d, sector %d, window %d, worker %d, todos %d, min %d, task %+v",
+					sqi, task.sector.Number, wnd, wid, len(windows[wnd].todo), minWindowTodos[wnd], task.taskType)
+				selectedWindow = wnd
+				minWindowTodos[wnd] = len(windows[wnd].todo)
+				if 0 == minWindowTodos[wnd] {
+					break
+				}
+			}
 		}
 
 		if selectedWindow < 0 {
@@ -451,7 +451,11 @@ func (sh *scheduler) trySched() {
 			continue
 		}
 
+		log.Debugf("SCHED ASSIGNED sqi:%d sector %d task %s to window %d", sqi, task.sector.Number, task.taskType, selectedWindow)
+		wr := sh.workers[sh.openWindows[selectedWindow].worker].info.Resources
+		windows[selectedWindow].allocated.add(wr, needRes)
 		windows[selectedWindow].todo = append(windows[selectedWindow].todo, task)
+		minWindowTodos[selectedWindow]++
 
 		sh.schedQueue.Remove(sqi)
 		sqi--
@@ -465,6 +469,8 @@ func (sh *scheduler) trySched() {
 	}
 
 	scheduledWindows := map[int]struct{}{}
+	keepAliveWindows := map[int]struct{}{}
+
 	for wnd, window := range windows {
 		if len(window.todo) == 0 {
 			// Nothing scheduled here, keep the window open
@@ -472,6 +478,13 @@ func (sh *scheduler) trySched() {
 		}
 
 		scheduledWindows[wnd] = struct{}{}
+
+		for _, todo := range window.todo {
+			if todo.taskType == sealtasks.TTPreCommit1 {
+				keepAliveWindows[wnd] = struct{}{}
+				break
+			}
+		}
 
 		window := window // copy
 		select {
@@ -486,7 +499,9 @@ func (sh *scheduler) trySched() {
 	for wnd, window := range sh.openWindows {
 		if _, scheduled := scheduledWindows[wnd]; scheduled {
 			// keep unscheduled windows open
-			continue
+			if _, keepAlive := keepAliveWindows[wnd]; !keepAlive {
+				continue
+			}
 		}
 
 		newOpenWindows = append(newOpenWindows, window)
@@ -533,6 +548,8 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 		for {
 			// ask for more windows if we need them
+			log.Warnf("tropy: fill window request for worker %+v, requests %+v, cap [%v, %v], active windows %+v",
+				wid, len(sh.windowRequests), windowsRequested, SchedWindows, len(worker.activeWindows))
 			for ; windowsRequested < SchedWindows; windowsRequested++ {
 				select {
 				case sh.windowRequests <- &schedWindowRequest{
@@ -550,6 +567,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 			select {
 			case w := <-scheduledWindows:
+				log.Warnf("tropy: active windows for worker %+v, windows %+v, todos %+v", wid, len(worker.activeWindows), len(w.todo))
 				worker.wndLk.Lock()
 				worker.activeWindows = append(worker.activeWindows, w)
 				worker.wndLk.Unlock()

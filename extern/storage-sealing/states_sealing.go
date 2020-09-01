@@ -86,7 +86,6 @@ func (m *Sealing) handlePreCommit1(ctx statemachine.Context, sector SectorInfo) 
 			log.Errorf("handlePreCommit1: api error, not proceeding: %+v", err)
 			return nil
 		case *ErrInvalidDeals:
-			log.Warnf("invalid deals in sector %d: %v", sector.SectorNumber, err)
 			return ctx.Send(SectorInvalidDealIDs{Return: RetPreCommit1})
 		case *ErrExpiredDeals: // Probably not much we can do here, maybe re-pack the sector?
 			return ctx.Send(SectorDealsExpired{xerrors.Errorf("expired dealIDs in sector: %w", err)})

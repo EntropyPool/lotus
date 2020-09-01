@@ -117,8 +117,8 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 }
 
 func (handler *FetchHandler) remoteDeleteSector(w http.ResponseWriter, r *http.Request) {
-	log.Infof("SERVE DELETE %s", r.URL)
 	vars := mux.Vars(r)
+	log.Infof("SERVE DELETE %s [%v]", r.URL, vars)
 
 	id, err := ParseSectorID(vars["id"])
 	if err != nil {
