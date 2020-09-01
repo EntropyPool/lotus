@@ -89,6 +89,8 @@ func (m *Sealing) handlePreCommit1(ctx statemachine.Context, sector SectorInfo) 
 			return ctx.Send(SectorInvalidDealIDs{Return: RetPreCommit1})
 		case *ErrExpiredDeals: // Probably not much we can do here, maybe re-pack the sector?
 			return ctx.Send(SectorDealsExpired{xerrors.Errorf("expired dealIDs in sector: %w", err)})
+		case *ErrInvalidPiece:
+			return ctx.Send(SectorRemove{})
 		default:
 			return xerrors.Errorf("checkPieces sanity check error: %w", err)
 		}
