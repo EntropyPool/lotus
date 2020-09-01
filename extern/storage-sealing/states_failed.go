@@ -179,6 +179,9 @@ func (m *Sealing) handleCommitFailed(ctx statemachine.Context, sector SectorInfo
 		case *ErrInvalidDeals:
 			log.Warnf("invalid deals in sector %d: %v", sector.SectorNumber, err)
 			return ctx.Send(SectorInvalidDealIDs{Return: RetCommitFailed})
+		case *ErrInvalidPiece:
+			log.Warnf("invalid piece in sector %d: %v", sector.SectorNumber, err)
+			return ctx.Send(SectorRemove{})
 		case *ErrExpiredDeals:
 			return ctx.Send(SectorDealsExpired{xerrors.Errorf("sector deals expired: %w", err)})
 		case nil:
@@ -293,7 +296,7 @@ func (m *Sealing) handleRecoverDealIDs(ctx statemachine.Context, sector SectorIn
 		if p.DealInfo == nil {
 			exp := zerocomm.ZeroPieceCommitment(p.Piece.Size.Unpadded())
 			if !p.Piece.PieceCID.Equals(exp) {
-				return xerrors.Errorf("sector %d piece %d had non-zero PieceCID %+v", sector.SectorNumber, i, p.Piece.PieceCID)
+				return &ErrInvalidPiece{xerrors.Errorf("sector %d piece %d had non-zero PieceCID %+v", sector.SectorNumber, i, p.Piece.PieceCID)}
 			}
 			continue
 		}
