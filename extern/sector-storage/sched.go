@@ -814,6 +814,13 @@ func (sh *scheduler) workerCleanup(wid WorkerID, w *workerHandle) {
 		}
 		sh.openWindows = newWindows
 
+
+		for _, window := range w.activeWindows {
+			for _, todo := range window.todo {
+				sh.schedule <- todo
+			}
+		}
+
 		log.Debugf("dropWorker %d", wid)
 
 		go func() {
