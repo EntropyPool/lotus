@@ -152,7 +152,7 @@ func newScheduler(spt abi.RegisteredSealProof) *scheduler {
 		watchClosing:  make(chan WorkerID),
 		workerClosing: make(chan WorkerID),
 
-		schedule:       make(chan *workerRequest),
+		schedule:       make(chan *workerRequest, 10),
 		windowRequests: make(chan *schedWindowRequest, 20),
 
 		schedQueue: &requestQueue{},
@@ -817,7 +817,7 @@ func (sh *scheduler) workerCleanup(wid WorkerID, w *workerHandle) {
 
 		for _, window := range w.activeWindows {
 			for _, todo := range window.todo {
-				sh.schedule <- todo
+				go func(*workerRequest) { sh.schedule <- todo } (todo)
 			}
 		}
 
