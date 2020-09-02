@@ -472,6 +472,7 @@ func (sb *Sealer) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 	return p1o, nil
 }
 
+
 func move(from, to string) error {
 	from, err := homedir.Expand(from)
 	if err != nil {
@@ -509,12 +510,11 @@ func move(from, to string) error {
 
 	return nil
 }
-
 func get_cache_hdd() string {
 
-	env_hdd := os.Getenv("LOTUS_CHACHE_HDD")
+	env_hdd := os.Getenv("LOTUS_CACHE_HDD")
 	if env_hdd == "" {
-		log.Warnw("There is no environment variable LOTUS_CHACHE_HDD")
+		log.Warnw("There is no environment variable LOTUS_CACHE_HDD")
 		return ""
 	}
 	cache := ""
@@ -526,7 +526,7 @@ func get_cache_hdd() string {
 			log.Errorw("Get system stats error", "path", hdd[index], "error", err)
 			continue
 		}
-		if fs.Bfree*uint64(fs.Bsize) > 1024*1024*1024*2 {
+		if fs.Bfree*uint64(fs.Bsize) > 1024*1024*1024*32 {
 			cache = hdd[index]
 			log.Infow("select cache in hdd", "path", cache, "disk free", fs.Bfree*uint64(fs.Bsize))
 			break
@@ -536,6 +536,7 @@ func get_cache_hdd() string {
 
 	return cache
 }
+
 
 func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase1Out storage.PreCommit1Out) (storage.SectorCids, error) {
 	paths, done, err := sb.sectors.AcquireSector(ctx, sector, stores.FTSealed|stores.FTCache, 0, stores.PathSealing)
@@ -549,29 +550,33 @@ func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		return storage.SectorCids{}, xerrors.Errorf("presealing sector %d (%s): %w", sector.Number, paths.Unsealed, err)
 	}
 
-	sect_dir, err := ioutil.ReadDir(paths.Cache)
-	cache_hdd := get_cache_hdd()
-	if err == nil && cache_hdd != "" {
-		cache_hdd, _ = homedir.Expand(cache_hdd)
-		spl := strings.Split(paths.Cache, string(os.PathSeparator))
-		cache_hdd = cache_hdd + string(os.PathSeparator) + spl[len(spl)-1]
-		log.Infow("Get hdd cache", "cache_hdd", cache_hdd)
-		err = os.MkdirAll(cache_hdd, 0755)
-		if err != nil {
-			log.Warnf("Create hdd cache(%s) err: %s", cache_hdd, err)
-		}
 
-		for _, fi := range sect_dir {
-			if fi.IsDir() {
-				continue
+	go func() {
+		sect_dir, err := ioutil.ReadDir(paths.Cache)
+		cache_hdd := get_cache_hdd()
+		if err == nil && cache_hdd != "" {
+			cache_hdd, _ = homedir.Expand(cache_hdd)
+			spl := strings.Split(paths.Cache, string(os.PathSeparator))
+			cache_hdd = cache_hdd + string(os.PathSeparator) + spl[len(spl)-1]
+			log.Infow("Get hdd cache", "cache_hdd", cache_hdd)
+			err = os.MkdirAll(cache_hdd, 0755)
+			if err != nil {
+				log.Warnf("Create hdd cache(%s) err: %s", cache_hdd, err)
 			}
-			if strings.Index(fi.Name(), "-data-layer-") > -1 {
+
+			for _, fi := range sect_dir {
+				if fi.IsDir() {
+					continue
+				}
+				//if strings.Index(fi.Name(), "-data-layer-") > -1 {
 				if err := move(paths.Cache+"/"+fi.Name(), cache_hdd+"/"+fi.Name()); err != nil {
 					log.Warnf("Move hdd cache(%s) err: %s", cache_hdd+fi.Name(), err)
 				}
+				//}
 			}
 		}
-	}
+	}()
+
 
 	return storage.SectorCids{
 		Unsealed: unsealedCID,
