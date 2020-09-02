@@ -292,13 +292,8 @@ func (m *Manager) NewSector(ctx context.Context, sector abi.SectorID) error {
 }
 
 func sealingElapseStatistic(ctx context.Context, worker Worker, taskType sealtasks.TaskType, sector abi.SectorID, start int64, end int64, err error) {
-	info, ierr := worker.Info(ctx)
-	var address string
-	if nil != ierr {
-		address = ierr.Error()
-	} else {
-		address = info.Address
-	}
+	info, _ := worker.Info(ctx)
+	address := info.Address
 	if nil != err {
 		log.Errorf("fail to run sector %v %v, elapsed %v s [%v, %v]: %v [%s]", sector.Number, taskType, end-start, start, end, err, address)
 		return

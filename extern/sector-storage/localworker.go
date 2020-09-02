@@ -274,12 +274,12 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 
 	h, err := sysinfo.Host()
 	if err != nil {
-		return storiface.WorkerInfo{}, xerrors.Errorf("getting host info: %w", err)
+		return storiface.WorkerInfo{Address: l.Address}, xerrors.Errorf("getting host info: %w", err)
 	}
 
 	mem, err := h.Memory()
 	if err != nil {
-		return storiface.WorkerInfo{}, xerrors.Errorf("getting memory info: %w", err)
+		return storiface.WorkerInfo{Address: l.Address}, xerrors.Errorf("getting memory info: %w", err)
 	}
 
 	log.Debugf("worker %s, physical mem %+v, swap %+v, virtual used %+v, mem available %+v, cpus %+v, gpus %+v",
