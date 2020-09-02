@@ -487,13 +487,13 @@ func (sh *scheduler) trySched() {
 		}
 
 		window := window // copy
-		go func(schedWindow) {
+		go func(done chan *schedWindow, window schedWindow) {
 			select {
-			case sh.openWindows[wnd].done <- &window:
+			case done <- &window:
 			default:
 				log.Error("expected sh.openWindows[wnd].done to be buffered")
 			}
-		} (window)
+		} (sh.openWindows[wnd].done, window)
 	}
 
 	// Rewrite sh.openWindows array, removing scheduled windows
@@ -819,7 +819,7 @@ func (sh *scheduler) workerCleanup(wid WorkerID, w *workerHandle) {
 
 		for _, window := range w.activeWindows {
 			for _, todo := range window.todo {
-				go func(*workerRequest) { sh.schedule <- todo } (todo)
+				go func(todo *workerRequest) { sh.schedule <- todo } (todo)
 			}
 		}
 
