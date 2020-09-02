@@ -487,11 +487,13 @@ func (sh *scheduler) trySched() {
 		}
 
 		window := window // copy
-		select {
-		case sh.openWindows[wnd].done <- &window:
-		default:
-			log.Error("expected sh.openWindows[wnd].done to be buffered")
-		}
+		go func(schedWindow) {
+			select {
+			case sh.openWindows[wnd].done <- &window:
+			default:
+				log.Error("expected sh.openWindows[wnd].done to be buffered")
+			}
+		} (window)
 	}
 
 	// Rewrite sh.openWindows array, removing scheduled windows
