@@ -152,7 +152,7 @@ func newScheduler(spt abi.RegisteredSealProof) *scheduler {
 		watchClosing:  make(chan WorkerID),
 		workerClosing: make(chan WorkerID),
 
-		schedule:       make(chan *workerRequest),
+		schedule:       make(chan *workerRequest, 10),
 		windowRequests: make(chan *schedWindowRequest, 20),
 
 		schedQueue: &requestQueue{},
@@ -487,11 +487,13 @@ func (sh *scheduler) trySched() {
 		}
 
 		window := window // copy
-		select {
-		case sh.openWindows[wnd].done <- &window:
-		default:
-			log.Error("expected sh.openWindows[wnd].done to be buffered")
-		}
+		go func(done chan *schedWindow, window schedWindow) {
+			select {
+			case done <- &window:
+			default:
+				log.Error("expected sh.openWindows[wnd].done to be buffered")
+			}
+		} (sh.openWindows[wnd].done, window)
 	}
 
 	// Rewrite sh.openWindows array, removing scheduled windows
@@ -813,6 +815,13 @@ func (sh *scheduler) workerCleanup(wid WorkerID, w *workerHandle) {
 			}
 		}
 		sh.openWindows = newWindows
+
+
+		for _, window := range w.activeWindows {
+			for _, todo := range window.todo {
+				go func(todo *workerRequest) { sh.schedule <- todo } (todo)
+			}
+		}
 
 		log.Debugf("dropWorker %d", wid)
 
