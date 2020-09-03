@@ -491,6 +491,9 @@ func (sh *scheduler) trySched() {
 			select {
 			case done <- &window:
 			default:
+				for _, todo := range window.todo {
+					go func(todo *workerRequest) { sh.schedule <- todo } (todo)
+				}
 				log.Error("expected sh.openWindows[wnd].done to be buffered")
 			}
 		} (sh.openWindows[wnd].done, window)
@@ -530,7 +533,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 		defer close(worker.closedMgr)
 
-		scheduledWindows := make(chan *schedWindow, SchedWindows)
+		scheduledWindows := make(chan *schedWindow, SchedWindows * 10)
 		taskDone := make(chan struct{}, 1)
 		windowsRequested := 0
 
