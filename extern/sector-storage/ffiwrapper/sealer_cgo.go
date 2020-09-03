@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+    "sync"
 	"syscall"
 
 	"github.com/ipfs/go-cid"
@@ -538,6 +539,115 @@ func get_cache_hdd() string {
 }
 
 
+
+func copy(from, to string) error {
+
+	var errOut bytes.Buffer
+	cmd := exec.Command("/usr/bin/env", "mv", "-f", from, to)
+	cmd.Stderr = &errOut
+	if err := cmd.Run(); err != nil {
+		return xerrors.Errorf("exec cp (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+	}
+	log.Infow("copy sector data", "from:", from, "to:", to)
+
+	//make soft link
+	cmdln := exec.Command("/usr/bin/env", "ln", "-s", to, from)
+	cmdln.Stderr = &errOut
+	if err := cmdln.Run(); err != nil {
+		return xerrors.Errorf("exec ln (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+	}
+	log.Infow("link sector data", "from:", from, "to:", to)
+
+	return nil
+}
+func move_cache_ex(che_path string) {
+	log.Infow("move cache to hdd starting...")
+	var mv_files []string
+	var hd_paths []string
+	var sect_name string
+	//////////////////////////////////////////////
+	spl := strings.Split(che_path, string(os.PathSeparator))
+	sect_name = spl[len(spl)-1]
+
+	if sect_dir, err := ioutil.ReadDir(che_path); err == nil  {
+		for _, fi := range sect_dir {
+			if fi.IsDir() {
+				continue
+			}
+			mv_files = append(mv_files, fi.Name())
+		}
+	}
+	log.Infow("all files to move","files",mv_files)
+
+	env := os.Getenv("LOTUS_CACHE_HDD")
+	if env == "" {
+		log.Warnw("There is no environment variable LOTUS_CACHE_HDD")
+		return
+	}
+	hdd := strings.Split(env, ";")
+	for index := 0; index < len(hdd); index++ {
+		fs := syscall.Statfs_t{}
+		if err := syscall.Statfs(hdd[index], &fs); err != nil {
+			log.Errorw("Get system stats error", "path", hdd[index], "error", err)
+			continue
+		}
+		if fs.Bfree*uint64(fs.Bsize) < 1024*1024*1024*64 {
+			log.Errorw("no enough space", "path", che_path, "disk free", fs.Bfree*uint64(fs.Bsize))
+			continue
+		}
+		path :=  hdd[index] + string(os.PathSeparator) + sect_name
+		if err := os.MkdirAll(path, 0755); err != nil {
+			log.Warnf("Create hdd cache(%s) err: %s", path, err)
+			continue
+		}
+		hd_paths = append(hd_paths,path)
+	}
+	log.Infow("all hdd for cache","hdd_path",hd_paths)
+
+	if len(mv_files) == 0 || len(hd_paths) == 0 {
+		log.Warnw("no enough to move cache to hdd.")
+		return
+	}
+	//////////////////////////////////////////////
+	jobs := make(chan string, len(mv_files))
+	wait := &sync.WaitGroup{}
+
+	wait.Add(1)
+	go func(fis []string, ch chan string, wt *sync.WaitGroup) {
+		defer wt.Done()
+		for i := 0; i < len(fis); i++ {
+			ch <- che_path + string(os.PathSeparator) + fis[i]
+		}
+		close(ch)
+	}(mv_files, jobs, wait)
+
+	for i := 0; i < len(hd_paths); i++ {
+		wait.Add(1)
+		go func(to_path string, ch chan string, wt *sync.WaitGroup) {
+			defer wt.Done()
+			for {
+				from, ok := <-ch
+				if !ok {
+					log.Infow("there is no more move jobs", "to-hdd", to_path)
+					break
+				}
+				to := to_path + string(os.PathSeparator) + filepath.Base(from)
+				if err := copy(from, to); err != nil {
+					log.Errorw("copy file to hdd err", "from", from, "to", to, "error",err)
+					continue
+				}
+				log.Infow("copy file to hdd over", "from", from, "to", to)
+			}
+		}(hd_paths[i], jobs, wait)
+	}
+
+	wait.Wait()
+	log.Infow("move cache to hdd over.")
+	//////////////////////////////////////////////
+}
+
+
+
 func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase1Out storage.PreCommit1Out) (storage.SectorCids, error) {
 	paths, done, err := sb.sectors.AcquireSector(ctx, sector, stores.FTSealed|stores.FTCache, 0, stores.PathSealing)
 	if err != nil {
@@ -551,32 +661,7 @@ func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 	}
 
 
-	go func() {
-		sect_dir, err := ioutil.ReadDir(paths.Cache)
-		cache_hdd := get_cache_hdd()
-		if err == nil && cache_hdd != "" {
-			cache_hdd, _ = homedir.Expand(cache_hdd)
-			spl := strings.Split(paths.Cache, string(os.PathSeparator))
-			cache_hdd = cache_hdd + string(os.PathSeparator) + spl[len(spl)-1]
-			log.Infow("Get hdd cache", "cache_hdd", cache_hdd)
-			err = os.MkdirAll(cache_hdd, 0755)
-			if err != nil {
-				log.Warnf("Create hdd cache(%s) err: %s", cache_hdd, err)
-			}
-
-			for _, fi := range sect_dir {
-				if fi.IsDir() {
-					continue
-				}
-				//if strings.Index(fi.Name(), "-data-layer-") > -1 {
-				if err := move(paths.Cache+"/"+fi.Name(), cache_hdd+"/"+fi.Name()); err != nil {
-					log.Warnf("Move hdd cache(%s) err: %s", cache_hdd+fi.Name(), err)
-				}
-				//}
-			}
-		}
-	}()
-
+    go move_cache_ex(paths.Cache)
 
 	return storage.SectorCids{
 		Unsealed: unsealedCID,
