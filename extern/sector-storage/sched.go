@@ -608,7 +608,6 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 					worker.lk.Unlock()
 
 					if tidx == -1 {
-						sh.workersLk.RUnlock()
 						break assignLoop
 					}
 
@@ -795,14 +794,19 @@ func (sh *scheduler) dropWorker(wid WorkerID) {
 }
 
 func (sh *scheduler) workerCleanup(wid WorkerID, w *workerHandle) {
-	if !w.cleanupStarted {
+	select {
+	case <-w.closingMgr:
+	default:
 		close(w.closingMgr)
 	}
+
+	sh.workersLk.Unlock()
 	select {
 	case <-w.closedMgr:
 	case <-time.After(time.Second):
 		log.Errorf("timeout closing worker manager goroutine %d", wid)
 	}
+	sh.workersLk.Lock()
 
 	if !w.cleanupStarted {
 		w.cleanupStarted = true
