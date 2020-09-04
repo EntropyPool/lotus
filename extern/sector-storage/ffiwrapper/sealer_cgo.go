@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+    "sort"
 	"strings"
     "sync"
 	"syscall"
@@ -560,6 +561,18 @@ func copy(from, to string) error {
 
 	return nil
 }
+
+func sort_by_size(pl []os.FileInfo) []os.FileInfo {
+	sort.Slice(pl, func(i, j int) bool {
+		flag := false
+		if pl[i].Size() > pl[j].Size() {
+			flag = true
+		}
+		return flag
+	})
+	return pl
+}
+
 func move_cache_ex(che_path string) {
 	log.Infow("move cache to hdd starting...")
 	var mv_files []string
@@ -570,13 +583,15 @@ func move_cache_ex(che_path string) {
 	sect_name = spl[len(spl)-1]
 
 	if sect_dir, err := ioutil.ReadDir(che_path); err == nil  {
-		for _, fi := range sect_dir {
+		sect_dir_sort := sort_by_size(sect_dir)
+		for _, fi := range sect_dir_sort {
 			if fi.IsDir() {
 				continue
 			}
 			mv_files = append(mv_files, fi.Name())
 		}
 	}
+
 	log.Infow("all files to move","files",mv_files)
 
 	env := os.Getenv("LOTUS_CACHE_HDD")
