@@ -331,18 +331,6 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 	if len(targets) == 0 {
 		return xerrors.Errorf("There is no file to fetch")
 	}
-	////////////////////////////////////////////////////////
-	jobs := make(chan string, len(targets))
-	wait := &sync.WaitGroup{}
-
-	wait.Add(1)
-	go func(fis []string, ch chan string, wt *sync.WaitGroup) {
-		defer wt.Done()
-		for i := 0; i < len(fis); i++ {
-			ch <- url + string(os.PathSeparator) + fis[i]
-		}
-		close(ch)
-	}(targets, jobs, wait)
 
 	//TODO: check bandwith
 	parallel := int(3)
@@ -351,25 +339,41 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 		parallel = n
 	}
 
+	taskCh := make(chan string, parallel)
+	doneCh := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(parallel)
+
 	for i := 0; i < parallel; i++ {
-		wait.Add(1)
-		go func(ct context.Context, out string, ch chan string, wt *sync.WaitGroup) {
-			defer wt.Done()
+		go func(ctx context.Context, out string) {
 			for {
-				file_url, ok := <-ch
-				if !ok {
-					log.Infow("there is no more move fetch jobs")
-					break
+				select {
+				case url := <-taskCh:
+					if err := r.fetchFile(ctx, url, out); err != nil {
+						log.Errorw("fetch file err", "url", url, "outname", out, "error", err)
+					}
+				case <-doneCh:
+					wg.Done()
+					return
 				}
-				if err := r.fetchFile(ct, file_url, out); err != nil {
-					log.Errorw("fetch file err", "url", file_url, "outname", out, "error", err)
-					continue
-				}
-				log.Infow("fetch file over", "url", file_url, "outname", out)
 			}
-		}(ctx, outname, jobs, wait)
+		} (ctx, outname)
 	}
-	wait.Wait()
+
+	for _, target := range targets {
+		targetUrl := url
+		if 0 != len(target) {
+			targetUrl += string(os.PathSeparator) + target
+		}
+		taskCh <- targetUrl
+	}
+
+	for i := 0; i < parallel; i++ {
+		doneCh <- 1
+	}
+
+	wg.Wait()
+
 	log.Infow("fetch sector all over.", "url", url, "outname", outname)
 
 	//TODO check fetch results
