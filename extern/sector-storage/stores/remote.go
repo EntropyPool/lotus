@@ -357,7 +357,7 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 					return
 				}
 			}
-		} (ctx, outname)
+		}(ctx, outname)
 	}
 
 	for _, target := range targets {
@@ -373,6 +373,8 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 	}
 
 	wg.Wait()
+	close(taskCh)
+	close(doneCh)
 
 	log.Infow("fetch sector all over.", "url", url, "outname", outname)
 
