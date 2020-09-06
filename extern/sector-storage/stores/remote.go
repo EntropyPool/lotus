@@ -382,6 +382,8 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 	}
 
 	wg.Wait()
+	close(taskCh)
+	close(doneCh)
 
 	log.Infow("fetch sector all over.", "url", url, "outname", outname)
 
