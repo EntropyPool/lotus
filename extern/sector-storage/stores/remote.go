@@ -339,33 +339,42 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 		parallel = n
 	}
 
-	taskCh := make(chan string, parallel)
+	type remoteFileDesc struct {
+		url string
+		out string
+	}
+
+	taskCh := make(chan remoteFileDesc, parallel)
 	doneCh := make(chan int)
 	var wg sync.WaitGroup
 	wg.Add(parallel)
 
 	for i := 0; i < parallel; i++ {
-		go func(ctx context.Context, out string) {
+		go func(ctx context.Context) {
 			for {
 				select {
-				case url := <-taskCh:
-					if err := r.fetchFile(ctx, url, out); err != nil {
-						log.Errorw("fetch file err", "url", url, "outname", out, "error", err)
+				case remoteFile := <-taskCh:
+					if err := r.fetchFile(ctx, remoteFile.url, remoteFile.out); err != nil {
+						log.Errorw("fetch file err", "url", remoteFile.url, "outname", remoteFile.out, "error", err)
+						continue
 					}
+					log.Infow("fetch file", "url", remoteFile.url, "outname", remoteFile.out)
 				case <-doneCh:
 					wg.Done()
 					return
 				}
 			}
-		} (ctx, outname)
+		} (ctx)
 	}
 
 	for _, target := range targets {
 		targetUrl := url
+		outName := outname
 		if 0 != len(target) {
 			targetUrl += string(os.PathSeparator) + target
+			outName += string(os.PathSeparator) + target
 		}
-		taskCh <- targetUrl
+		taskCh <- remoteFileDesc{url: targetUrl, out: outName}
 	}
 
 	for i := 0; i < parallel; i++ {
