@@ -325,6 +325,7 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 		return xerrors.Errorf("removing dest: %w", err)
 	}
 
+
 	flists := resp.Header.Get("Files-List")
 	log.Infow("FetchEx get remote Files-List", "files", flists)
 	targets := strings.Split(flists, ";")
@@ -371,6 +372,9 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 		targetUrl := url
 		outName := outname
 		if 0 != len(target) {
+			if err := os.MkdirAll(outname, 0755); err != nil { // nolint
+				return xerrors.Errorf("mkdir: %w", err)
+			}
 			targetUrl += string(os.PathSeparator) + target
 			outName += string(os.PathSeparator) + target
 		}
