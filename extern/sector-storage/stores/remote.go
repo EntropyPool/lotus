@@ -346,7 +346,6 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 	}
 
 	taskCh := make(chan remoteFileDesc, parallel)
-	doneCh := make(chan int)
 	var wg sync.WaitGroup
 	wg.Add(parallel)
 
@@ -355,14 +354,16 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 			for {
 				select {
 				case remoteFile := <-taskCh:
+					if remoteFile.url == "file:///finish" {
+						wg.Done()
+						log.Infow("fetch done", url, " -> ", outname)
+						return
+					}
 					if err := r.fetchFile(ctx, remoteFile.url, remoteFile.out); err != nil {
 						log.Errorw("fetch file err", "url", remoteFile.url, "outname", remoteFile.out, "error", err)
 						continue
 					}
 					log.Infow("fetch file", "url", remoteFile.url, "outname", remoteFile.out)
-				case <-doneCh:
-					wg.Done()
-					return
 				}
 			}
 		} (ctx)
@@ -382,12 +383,11 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 	}
 
 	for i := 0; i < parallel; i++ {
-		doneCh <- 1
+		taskCh <- remoteFileDesc{url: "file:///finish", out: ""}
 	}
 
 	wg.Wait()
 	close(taskCh)
-	close(doneCh)
 
 	log.Infow("fetch sector all over.", "url", url, "outname", outname)
 
