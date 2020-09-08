@@ -42,7 +42,11 @@ require (
 	github.com/filecoin-project/specs-actors v0.9.7
 	github.com/filecoin-project/specs-storage v0.1.1-0.20200907031224-ed2e5cd13796
 	github.com/filecoin-project/statediff v0.0.1
+<<<<<<< HEAD
 	github.com/filecoin-project/test-vectors v0.0.0-20200907193218-2c0739eccce6
+=======
+	github.com/filecoin-project/test-vectors v0.0.0-20200902131127-9806d09b005d
+>>>>>>> 67c5de813c3d6490201ae0b6071f68c77a2a1a7d
 	github.com/gbrlsnchs/jwt/v3 v3.0.0-beta.1
 	github.com/go-kit/kit v0.10.0
 	github.com/google/uuid v1.1.1
@@ -134,6 +138,8 @@ require (
 replace github.com/golangci/golangci-lint => github.com/golangci/golangci-lint v1.18.0
 
 replace github.com/filecoin-project/filecoin-ffi => ./extern/filecoin-ffi
+
+replace github.com/elastic/go-sysinfo v1.3.0 => ../go-sysinfo
 
 replace github.com/dgraph-io/badger/v2 => github.com/dgraph-io/badger/v2 v2.0.1-rc1.0.20200716180832-3ab515320794
 
