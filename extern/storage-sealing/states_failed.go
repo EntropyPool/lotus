@@ -37,21 +37,26 @@ func (m *Sealing) checkPreCommitted(ctx statemachine.Context, sector SectorInfo)
 	tok, _, err := m.api.ChainHead(ctx.Context())
 	if err != nil {
 		log.Errorf("handleSealPrecommit1Failed(%d): temp error: %+v", sector.SectorNumber, err)
-		return nil, true
+		return nil, false
 	}
 
 	info, err := m.api.StateSectorPreCommitInfo(ctx.Context(), m.maddr, sector.SectorNumber, tok)
 	if err != nil {
 		log.Errorf("handleSealPrecommit1Failed(%d): temp error: %+v", sector.SectorNumber, err)
-		return nil, true
+		return nil, false
 	}
 
-	return info, false
+	return info, true
 }
 
 func (m *Sealing) handleSealPrecommit1Failed(ctx statemachine.Context, sector SectorInfo) error {
 	if err := failedCooldown(ctx, sector); err != nil {
 		return err
+	}
+
+	log.Warnf("pre commit1 fails(%v) sector (%v)", sector.PreCommit1Fails, sector.SectorNumber)
+	if sector.PreCommit1Fails > 5 {
+		// return ctx.Send(SectorRemove{})
 	}
 
 	return ctx.Send(SectorRetrySealPreCommit1{})
@@ -62,8 +67,9 @@ func (m *Sealing) handleSealPrecommit2Failed(ctx statemachine.Context, sector Se
 		return err
 	}
 
-	if sector.PreCommit2Fails > 1 {
-		return ctx.Send(SectorRetrySealPreCommit1{})
+	log.Warnf("pre commit2 fails(%v) sector (%v)", sector.PreCommit2Fails, sector.SectorNumber)
+	if sector.PreCommit2Fails > 5 {
+		// return ctx.Send(SectorRetrySealPreCommit1{})
 	}
 
 	return ctx.Send(SectorRetrySealPreCommit2{})
@@ -127,7 +133,7 @@ func (m *Sealing) handlePreCommitFailed(ctx statemachine.Context, sector SectorI
 		return ctx.Send(SectorRetryWaitSeed{})
 	}
 
-	if sector.PreCommitMessage != nil {
+	if sector.PreCommitMessage == nil {
 		log.Warn("retrying precommit even though the message failed to apply")
 	}
 
@@ -287,7 +293,8 @@ func (m *Sealing) handleRecoverDealIDs(ctx statemachine.Context, sector SectorIn
 		if p.DealInfo == nil {
 			exp := zerocomm.ZeroPieceCommitment(p.Piece.Size.Unpadded())
 			if !p.Piece.PieceCID.Equals(exp) {
-				return xerrors.Errorf("sector %d piece %d had non-zero PieceCID %+v", sector.SectorNumber, i, p.Piece.PieceCID)
+				log.Errorf("sector %d piece %d had non-zero PieceCID %+v", sector.SectorNumber, i, p.Piece.PieceCID)
+				return ctx.Send(SectorRemove{})
 			}
 			continue
 		}
