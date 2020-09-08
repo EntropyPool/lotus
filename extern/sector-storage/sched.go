@@ -225,6 +225,10 @@ func (sh *scheduler) runSched() {
 	iw := time.After(InitWait)
 	var initialised bool
 
+	intv := 3 * time.Minute
+	timeout := time.NewTimer(intv)
+	defer timeout.Stop()
+
 	for {
 		var doSched bool
 
@@ -252,6 +256,10 @@ func (sh *scheduler) runSched() {
 			initialised = true
 			iw = nil
 			doSched = true
+		case <-timeout.C:
+			log.Warnf("Every 3 Minute try to do schedule")
+			doSched = true
+			timeout.Reset(intv)
 		case <-sh.closing:
 			sh.schedClose()
 			return
