@@ -24,7 +24,7 @@ var SelectorTimeout = 5 * time.Second
 var InitWait = 3 * time.Second
 
 var (
-	SchedWindows = 1
+	SchedWindows = 10
 )
 
 func getPriority(ctx context.Context) int {
@@ -492,11 +492,11 @@ func (sh *scheduler) trySched() {
 			case done <- &window:
 			default:
 				for _, todo := range window.todo {
-					go func(todo *workerRequest) { sh.schedule <- todo } (todo)
+					go func(todo *workerRequest) { sh.schedule <- todo }(todo)
 				}
 				log.Error("expected sh.openWindows[wnd].done to be buffered")
 			}
-		} (sh.openWindows[wnd].done, window)
+		}(sh.openWindows[wnd].done, window)
 	}
 
 	// Rewrite sh.openWindows array, removing scheduled windows
@@ -533,7 +533,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 		defer close(worker.closedMgr)
 
-		scheduledWindows := make(chan *schedWindow, SchedWindows * 10)
+		scheduledWindows := make(chan *schedWindow, SchedWindows*10)
 		taskDone := make(chan struct{}, 1)
 		windowsRequested := 0
 
@@ -822,10 +822,9 @@ func (sh *scheduler) workerCleanup(wid WorkerID, w *workerHandle) {
 		}
 		sh.openWindows = newWindows
 
-
 		for _, window := range w.activeWindows {
 			for _, todo := range window.todo {
-				go func(todo *workerRequest) { sh.schedule <- todo } (todo)
+				go func(todo *workerRequest) { sh.schedule <- todo }(todo)
 			}
 		}
 
