@@ -3,11 +3,13 @@ package stores
 import (
 	"context"
 	"encoding/json"
+	"github.com/mitchellh/go-homedir"
 	"io/ioutil"
 	"math/bits"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -496,6 +498,18 @@ func (st *Local) RemoveCopies(ctx context.Context, sid abi.SectorID, typ SectorF
 	return nil
 }
 
+
+func pathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ SectorFileType, storage ID) error {
 	p, ok := st.paths[storage]
 	if !ok {
@@ -515,6 +529,33 @@ func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ SectorF
 
 	if err := os.RemoveAll(spath); err != nil {
 		log.Errorf("removing sector (%v) from %s: %+v", sid, spath, err)
+	}
+
+
+	if typ == FTCache {
+		env_hdd := os.Getenv("LOTUS_CACHE_HDD")
+		if env_hdd == "" {
+			return nil
+		}
+
+		hdd := strings.Split(env_hdd, ";")
+		for index := 0; index < len(hdd); index++ {
+			cache_hdd := hdd[index]
+			cache_hdd, _ = homedir.Expand(cache_hdd)
+			spl := strings.Split(spath, string(os.PathSeparator))
+			cache_hdd = cache_hdd + string(os.PathSeparator) + spl[len(spl)-1]
+
+			if flag, err := pathExists(cache_hdd); !flag {
+				log.Infof("check hdd cache sector (%v) not in %s: %+v", sid, cache_hdd,err)
+				continue
+			}
+
+			if err := os.RemoveAll(cache_hdd); err != nil {
+				log.Errorf("removing hdd cache sector (%v) from %s: %+v", sid, cache_hdd, err)
+				continue
+			}
+			log.Infof("remove hdd cache %s", cache_hdd)
+		}
 	}
 
 	return nil

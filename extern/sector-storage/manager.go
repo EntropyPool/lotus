@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/go-cid"
@@ -97,7 +98,7 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 
 	prover, err := ffiwrapper.New(&readonlyProvider{stor: lstor, index: si}, cfg)
 	if err != nil {
-		return nil, xerrors.Errorf("creating prover instance: %w", err)
+		return nil, xerrors.Errorf("creating prover instance: %v", err)
 	}
 
 	stor := stores.NewRemote(lstor, si, http.Header(sa), sc.ParallelFetchLimit)
@@ -118,17 +119,20 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 
 	go m.sched.runSched()
 
+	log.Debugf("tropy: create sector manager ~")
 	localTasks := []sealtasks.TaskType{
-		sealtasks.TTCommit1, sealtasks.TTFinalize, sealtasks.TTFetch, sealtasks.TTReadUnsealed,
+		sealtasks.TTFinalize, sealtasks.TTFetch, sealtasks.TTReadUnsealed,
 	}
 	if sc.AllowAddPiece {
 		localTasks = append(localTasks, sealtasks.TTAddPiece)
 	}
 	if sc.AllowPreCommit1 {
+		localTasks = append(localTasks, sealtasks.TTAddPiece)
 		localTasks = append(localTasks, sealtasks.TTPreCommit1)
 	}
 	if sc.AllowPreCommit2 {
 		localTasks = append(localTasks, sealtasks.TTPreCommit2)
+		localTasks = append(localTasks, sealtasks.TTCommit1)
 	}
 	if sc.AllowCommit {
 		localTasks = append(localTasks, sealtasks.TTCommit2)
@@ -142,7 +146,7 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 		TaskTypes: localTasks,
 	}, stor, lstor, si))
 	if err != nil {
-		return nil, xerrors.Errorf("adding local worker: %w", err)
+		return nil, xerrors.Errorf("adding local worker: %v", err)
 	}
 
 	return m, nil
@@ -151,17 +155,17 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 	path, err := homedir.Expand(path)
 	if err != nil {
-		return xerrors.Errorf("expanding local path: %w", err)
+		return xerrors.Errorf("expanding local path: %v", err)
 	}
 
 	if err := m.localStore.OpenPath(ctx, path); err != nil {
-		return xerrors.Errorf("opening local path: %w", err)
+		return xerrors.Errorf("opening local path: %v", err)
 	}
 
 	if err := m.ls.SetStorage(func(sc *stores.StorageConfig) {
 		sc.StoragePaths = append(sc.StoragePaths, stores.LocalPath{Path: path})
 	}); err != nil {
-		return xerrors.Errorf("get storage config: %w", err)
+		return xerrors.Errorf("get storage config: %v", err)
 	}
 	return nil
 }
@@ -169,9 +173,10 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 	info, err := w.Info(ctx)
 	if err != nil {
-		return xerrors.Errorf("getting worker info: %w", err)
+		return xerrors.Errorf("getting worker info: %v", err)
 	}
 
+	log.Debugf("add worker: %+v", info)
 	m.sched.newWorkers <- &workerHandle{
 		w: w,
 		wt: &workTracker{
@@ -208,13 +213,13 @@ func (m *Manager) ReadPiece(ctx context.Context, sink io.Writer, sector abi.Sect
 	defer cancel()
 
 	if err := m.index.StorageLock(ctx, sector, stores.FTSealed|stores.FTCache, stores.FTUnsealed); err != nil {
-		return xerrors.Errorf("acquiring sector lock: %w", err)
+		return xerrors.Errorf("acquiring sector lock: %v", err)
 	}
 
 	// passing 0 spt because we only need it when allowFetch is true
 	best, err := m.index.StorageFindSector(ctx, sector, stores.FTUnsealed, 0, false)
 	if err != nil {
-		return xerrors.Errorf("read piece: checking for already existing unsealed sector: %w", err)
+		return xerrors.Errorf("read piece: checking for already existing unsealed sector: %v", err)
 	}
 
 	var readOk bool
@@ -231,7 +236,7 @@ func (m *Manager) ReadPiece(ctx context.Context, sink io.Writer, sector abi.Sect
 			return err
 		})
 		if err != nil {
-			return xerrors.Errorf("reading piece from sealed sector: %w", err)
+			return xerrors.Errorf("reading piece from sealed sector: %v", err)
 		}
 
 		if readOk {
@@ -241,12 +246,12 @@ func (m *Manager) ReadPiece(ctx context.Context, sink io.Writer, sector abi.Sect
 
 	unsealFetch := func(ctx context.Context, worker Worker) error {
 		if err := worker.Fetch(ctx, sector, stores.FTSealed|stores.FTCache, stores.PathSealing, stores.AcquireCopy); err != nil {
-			return xerrors.Errorf("copy sealed/cache sector data: %w", err)
+			return xerrors.Errorf("copy sealed/cache sector data: %v", err)
 		}
 
 		if len(best) > 0 {
 			if err := worker.Fetch(ctx, sector, stores.FTUnsealed, stores.PathSealing, stores.AcquireMove); err != nil {
-				return xerrors.Errorf("copy unsealed sector data: %w", err)
+				return xerrors.Errorf("copy unsealed sector data: %v", err)
 			}
 		}
 		return nil
@@ -269,7 +274,7 @@ func (m *Manager) ReadPiece(ctx context.Context, sink io.Writer, sector abi.Sect
 		return err
 	})
 	if err != nil {
-		return xerrors.Errorf("reading piece from sealed sector: %w", err)
+		return xerrors.Errorf("reading piece from sealed sector: %v", err)
 	}
 
 	if !readOk {
@@ -284,12 +289,22 @@ func (m *Manager) NewSector(ctx context.Context, sector abi.SectorID) error {
 	return nil
 }
 
+func sealingElapseStatistic(ctx context.Context, worker Worker, taskType sealtasks.TaskType, sector abi.SectorID, start int64, end int64, err error) {
+	info, _ := worker.Info(ctx)
+	address := info.Address
+	if nil != err {
+		log.Errorf("fail to run sector %v %v, elapsed %v s [%v, %v]: %v [%s]", sector.Number, taskType, end-start, start, end, err, address)
+		return
+	}
+	log.Debugf("success to run sector %v %v, elapsed %v s [%v, %v]: [%s]", sector.Number, taskType, end-start, start, end, address)
+}
+
 func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPieces []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, r io.Reader) (abi.PieceInfo, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	if err := m.index.StorageLock(ctx, sector, stores.FTNone, stores.FTUnsealed); err != nil {
-		return abi.PieceInfo{}, xerrors.Errorf("acquiring sector lock: %w", err)
+		return abi.PieceInfo{}, xerrors.Errorf("acquiring sector lock: %v", err)
 	}
 
 	var selector WorkerSelector
@@ -302,7 +317,10 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 
 	var out abi.PieceInfo
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTAddPiece, selector, schedNop, func(ctx context.Context, w Worker) error {
+		start := time.Now().Unix()
 		p, err := w.AddPiece(ctx, sector, existingPieces, sz, r)
+		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTAddPiece, sector, start, end, err)
 		if err != nil {
 			return err
 		}
@@ -318,7 +336,7 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 	defer cancel()
 
 	if err := m.index.StorageLock(ctx, sector, stores.FTUnsealed, stores.FTSealed|stores.FTCache); err != nil {
-		return nil, xerrors.Errorf("acquiring sector lock: %w", err)
+		return nil, xerrors.Errorf("acquiring sector lock: %v", err)
 	}
 
 	// TODO: also consider where the unsealed data sits
@@ -326,7 +344,10 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 	selector := newAllocSelector(m.index, stores.FTCache|stores.FTSealed, stores.PathSealing)
 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit1, selector, schedFetch(sector, stores.FTUnsealed, stores.PathSealing, stores.AcquireMove), func(ctx context.Context, w Worker) error {
+		start := time.Now().Unix()
 		p, err := w.SealPreCommit1(ctx, sector, ticket, pieces)
+		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, err)
 		if err != nil {
 			return err
 		}
@@ -342,13 +363,16 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 	defer cancel()
 
 	if err := m.index.StorageLock(ctx, sector, stores.FTSealed, stores.FTCache); err != nil {
-		return storage.SectorCids{}, xerrors.Errorf("acquiring sector lock: %w", err)
+		return storage.SectorCids{}, xerrors.Errorf("acquiring sector lock: %v", err)
 	}
 
 	selector := newExistingSelector(m.index, sector, stores.FTCache|stores.FTSealed, true)
 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit2, selector, schedFetch(sector, stores.FTCache|stores.FTSealed, stores.PathSealing, stores.AcquireMove), func(ctx context.Context, w Worker) error {
+		start := time.Now().Unix()
 		p, err := w.SealPreCommit2(ctx, sector, phase1Out)
+		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, err)
 		if err != nil {
 			return err
 		}
@@ -363,7 +387,7 @@ func (m *Manager) SealCommit1(ctx context.Context, sector abi.SectorID, ticket a
 	defer cancel()
 
 	if err := m.index.StorageLock(ctx, sector, stores.FTSealed, stores.FTCache); err != nil {
-		return storage.Commit1Out{}, xerrors.Errorf("acquiring sector lock: %w", err)
+		return storage.Commit1Out{}, xerrors.Errorf("acquiring sector lock: %v", err)
 	}
 
 	// NOTE: We set allowFetch to false in so that we always execute on a worker
@@ -372,7 +396,10 @@ func (m *Manager) SealCommit1(ctx context.Context, sector abi.SectorID, ticket a
 	selector := newExistingSelector(m.index, sector, stores.FTCache|stores.FTSealed, false)
 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTCommit1, selector, schedFetch(sector, stores.FTCache|stores.FTSealed, stores.PathSealing, stores.AcquireMove), func(ctx context.Context, w Worker) error {
+		start := time.Now().Unix()
 		p, err := w.SealCommit1(ctx, sector, ticket, seed, pieces, cids)
+		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTCommit1, sector, start, end, err)
 		if err != nil {
 			return err
 		}
@@ -386,7 +413,10 @@ func (m *Manager) SealCommit2(ctx context.Context, sector abi.SectorID, phase1Ou
 	selector := newTaskSelector()
 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTCommit2, selector, schedNop, func(ctx context.Context, w Worker) error {
+		start := time.Now().Unix()
 		p, err := w.SealCommit2(ctx, sector, phase1Out)
+		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTCommit2, sector, start, end, err)
 		if err != nil {
 			return err
 		}
@@ -402,14 +432,14 @@ func (m *Manager) FinalizeSector(ctx context.Context, sector abi.SectorID, keepU
 	defer cancel()
 
 	if err := m.index.StorageLock(ctx, sector, stores.FTNone, stores.FTSealed|stores.FTUnsealed|stores.FTCache); err != nil {
-		return xerrors.Errorf("acquiring sector lock: %w", err)
+		return xerrors.Errorf("acquiring sector lock: %v", err)
 	}
 
 	unsealed := stores.FTUnsealed
 	{
 		unsealedStores, err := m.index.StorageFindSector(ctx, sector, stores.FTUnsealed, 0, false)
 		if err != nil {
-			return xerrors.Errorf("finding unsealed sector: %w", err)
+			return xerrors.Errorf("finding unsealed sector: %v", err)
 		}
 
 		if len(unsealedStores) == 0 { // Is some edge-cases unsealed sector may not exist already, that's fine
@@ -422,7 +452,11 @@ func (m *Manager) FinalizeSector(ctx context.Context, sector abi.SectorID, keepU
 	err := m.sched.Schedule(ctx, sector, sealtasks.TTFinalize, selector,
 		schedFetch(sector, stores.FTCache|stores.FTSealed|unsealed, stores.PathSealing, stores.AcquireMove),
 		func(ctx context.Context, w Worker) error {
-			return w.FinalizeSector(ctx, sector, keepUnsealed)
+			start := time.Now().Unix()
+			werr := w.FinalizeSector(ctx, sector, keepUnsealed)
+			end := time.Now().Unix()
+			sealingElapseStatistic(ctx, w, sealtasks.TTFinalize, sector, start, end, werr)
+			return werr
 		})
 	if err != nil {
 		return err
@@ -439,10 +473,14 @@ func (m *Manager) FinalizeSector(ctx context.Context, sector abi.SectorID, keepU
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTFetch, fetchSel,
 		schedFetch(sector, stores.FTCache|stores.FTSealed|moveUnsealed, stores.PathStorage, stores.AcquireMove),
 		func(ctx context.Context, w Worker) error {
-			return w.MoveStorage(ctx, sector, stores.FTCache|stores.FTSealed|moveUnsealed)
+			start := time.Now().Unix()
+			werr := w.MoveStorage(ctx, sector, stores.FTCache|stores.FTSealed|moveUnsealed)
+			end := time.Now().Unix()
+			sealingElapseStatistic(ctx, w, sealtasks.TTFetch, sector, start, end, werr)
+			return werr
 		})
 	if err != nil {
-		return xerrors.Errorf("moving sector to storage: %w", err)
+		return xerrors.Errorf("moving sector to storage: %v", err)
 	}
 
 	return nil
@@ -458,7 +496,7 @@ func (m *Manager) Remove(ctx context.Context, sector abi.SectorID) error {
 	defer cancel()
 
 	if err := m.index.StorageLock(ctx, sector, stores.FTNone, stores.FTSealed|stores.FTUnsealed|stores.FTCache); err != nil {
-		return xerrors.Errorf("acquiring sector lock: %w", err)
+		return xerrors.Errorf("acquiring sector lock: %v", err)
 	}
 
 	var err error
