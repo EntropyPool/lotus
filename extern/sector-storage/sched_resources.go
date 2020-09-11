@@ -36,6 +36,8 @@ func (a *activeResources) add(wr storiface.WorkerResources, r Resources) {
 
 	a.memUsedMin += r.MinMemory
 	a.memUsedMax += r.MaxMemory
+
+	a.taskUsed += 1
 }
 
 func (a *activeResources) free(wr storiface.WorkerResources, r Resources) {
@@ -50,6 +52,8 @@ func (a *activeResources) free(wr storiface.WorkerResources, r Resources) {
 
 	a.memUsedMin -= r.MinMemory
 	a.memUsedMax -= r.MaxMemory
+
+	a.taskUsed -= 1
 }
 
 func (a *activeResources) canHandleRequest(needRes Resources, wid WorkerID, caller string, res storiface.WorkerResources) bool {
@@ -85,6 +89,12 @@ func (a *activeResources) canHandleRequest(needRes Resources, wid WorkerID, call
 			log.Debugf("sched: not scheduling on worker %d for %s; GPU in use", wid, caller)
 			return false
 		}
+	}
+
+	log.Infof("sched: to scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
+	if needRes.TaskLimit > 0 && (a.taskUsed >= needRes.TaskLimit) {
+		log.Debugf("sched: not scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
+		return false
 	}
 
 	return true
