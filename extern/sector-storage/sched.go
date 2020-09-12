@@ -114,6 +114,7 @@ type activeResources struct {
 	memUsedMax uint64
 	gpuUsed    bool
 	cpuUse     uint64
+	taskUsed   uint64
 
 	cond *sync.Cond
 }
