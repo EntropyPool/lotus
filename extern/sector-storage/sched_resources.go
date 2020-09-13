@@ -91,7 +91,7 @@ func (a *activeResources) canHandleRequest(needRes Resources, wid WorkerID, call
 		}
 	}
 
-	log.Infof("sched: to scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
+	//log.Infof("sched: to scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
 	if needRes.TaskLimit > 0 && (a.taskUsed >= needRes.TaskLimit) {
 		log.Debugf("sched: not scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
 		return false
