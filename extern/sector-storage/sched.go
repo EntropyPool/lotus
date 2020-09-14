@@ -444,7 +444,6 @@ func (sh *scheduler) trySched() {
 
 			if len(windows[wnd].todo) < minWindowTodos[wnd] || 0 == minWindowTodos[wnd] {
 				// log.Debugf("SCHED ASSIGNED sqi:%d sector %d to window %d", sqi, task.sector.Number, wnd)
-				log.Debugf("tropy: much better windows found for %d, sector %d, window %d, worker %d, todos %d, min %d, task %+v",
 					sqi, task.sector.Number, wnd, wid, len(windows[wnd].todo), minWindowTodos[wnd], task.taskType)
 				selectedWindow = wnd
 				minWindowTodos[wnd] = len(windows[wnd].todo)
@@ -561,7 +560,6 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 		for {
 			// ask for more windows if we need them
-			log.Warnf("tropy: fill window request for worker %+v, requests %+v, cap [%v, %v], active windows %+v",
 				wid, len(sh.windowRequests), windowsRequested, SchedWindows, len(worker.activeWindows))
 			for ; windowsRequested < SchedWindows; windowsRequested++ {
 				select {
@@ -580,7 +578,6 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 			select {
 			case w := <-scheduledWindows:
-				log.Warnf("tropy: active windows for worker %+v, windows %+v, todos %+v", wid, len(worker.activeWindows), len(w.todo))
 				worker.wndLk.Lock()
 				worker.activeWindows = append(worker.activeWindows, w)
 				worker.wndLk.Unlock()

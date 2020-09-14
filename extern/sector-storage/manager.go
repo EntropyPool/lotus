@@ -119,7 +119,6 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 
 	go m.sched.runSched()
 
-	log.Debugf("tropy: create sector manager ~")
 	localTasks := []sealtasks.TaskType{
 		sealtasks.TTFinalize, sealtasks.TTFetch, sealtasks.TTReadUnsealed,
 	}
