@@ -78,8 +78,8 @@ func (a *activeResources) canHandleRequest(needRes Resources, wid WorkerID, call
 			return false
 		}
 	} else {
-		if a.cpuUse+uint64(needRes.Threads) > res.CPUs {
-			log.Debugf("sched: not scheduling on worker %d for %s; not enough threads, need %d, %d in use, target %d", wid, caller, needRes.Threads, a.cpuUse, res.CPUs)
+		if a.cpuUse+uint64(needRes.Threads)+uint64(needRes.Reserved) > res.CPUs {
+			log.Debugf("sched: not scheduling on worker %d for %s; not enough threads, need %d, %d in use, %d in reserved, target %d", wid, caller, needRes.Threads, a.cpuUse, needRes.Reserved, res.CPUs)
 			return false
 		}
 	}
