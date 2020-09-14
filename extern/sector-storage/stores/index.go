@@ -308,7 +308,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft Sector
 			}
 
 			if spaceReq > uint64(st.fsi.Available) {
-				log.Debugf("not selecting on %s, out of space (available: %d, need: %d)", st.info.ID, st.fsi.Available, spaceReq)
+				log.Infof("not selecting on %s, out of space (available: %d, need: %d)", st.info.ID, st.fsi.Available, spaceReq)
 				continue
 			}
 
