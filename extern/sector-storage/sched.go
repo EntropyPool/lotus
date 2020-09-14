@@ -376,7 +376,6 @@ func (sh *scheduler) trySched() {
 				ok, err := task.sel.Ok(rpcCtx, task.taskType, sh.spt, worker)
 				cancel()
 				if err != nil {
-					log.Errorf("trySched(1) req.sel.Ok error: %+v", err)
 					continue
 				}
 
