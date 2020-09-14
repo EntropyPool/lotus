@@ -443,8 +443,7 @@ func (sh *scheduler) trySched() {
 			}
 
 			if len(windows[wnd].todo) < minWindowTodos[wnd] || 0 == minWindowTodos[wnd] {
-				// log.Debugf("SCHED ASSIGNED sqi:%d sector %d to window %d", sqi, task.sector.Number, wnd)
-					sqi, task.sector.Number, wnd, wid, len(windows[wnd].todo), minWindowTodos[wnd], task.taskType)
+				log.Debugf("SCHED ASSIGNED sqi:%d sector %d to window %d", sqi, task.sector.Number, wnd)
 				selectedWindow = wnd
 				minWindowTodos[wnd] = len(windows[wnd].todo)
 				if 0 == minWindowTodos[wnd] {
@@ -560,7 +559,6 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 		for {
 			// ask for more windows if we need them
-				wid, len(sh.windowRequests), windowsRequested, SchedWindows, len(worker.activeWindows))
 			for ; windowsRequested < SchedWindows; windowsRequested++ {
 				select {
 				case sh.windowRequests <- &schedWindowRequest{
