@@ -186,7 +186,7 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 	})
 
 	for _, info := range si {
-		log.Infow("@@@@@@ acquire from remote", "URLs", info.URLs)
+		log.Infow("acquire from remote", "URLs", info.URLs)
 	}
 	var merr error
 	for _, info := range si {
@@ -212,7 +212,7 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 			}
 
 			if err := move(tempDest, dest); err != nil {
-				return "", xerrors.Errorf("@@@@@@ fetch move error (storage %s) %s -> %s: %w", info.ID, tempDest, dest, err)
+				return "", xerrors.Errorf("fetch move error (storage %s) %s -> %s: %w", info.ID, tempDest, dest, err)
 			}
 
 			if merr != nil {
@@ -325,7 +325,6 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 		return xerrors.Errorf("removing dest: %w", err)
 	}
 
-
 	flists := resp.Header.Get("Files-List")
 	log.Infow("FetchEx get remote Files-List", "files", flists)
 	targets := strings.Split(flists, ";")
@@ -366,7 +365,7 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 					log.Infow("fetch file", "url", remoteFile.url, "outname", remoteFile.out)
 				}
 			}
-		} (ctx)
+		}(ctx)
 	}
 
 	for _, target := range targets {

@@ -382,6 +382,14 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 	return out, err
 }
 
+func (m *Manager) MovingCache(ctx context.Context, sector abi.SectorID) error {
+	if err := m.storage.MoveCache(ctx, sector, stores.FTCache, true); err != nil {
+		return xerrors.Errorf("manager moving sector %d cache to hdd error: %v", sector, err)
+	}
+	log.Infof("manager moving sector %d cache to hdd over.", sector)
+	return nil
+}
+
 func (m *Manager) SealCommit1(ctx context.Context, sector abi.SectorID, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (out storage.Commit1Out, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
