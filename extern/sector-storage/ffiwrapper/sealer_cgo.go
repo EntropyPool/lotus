@@ -14,9 +14,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-    "sort"
+	"sort"
 	"strings"
-    "sync"
+	"sync"
 	"syscall"
 
 	"github.com/ipfs/go-cid"
@@ -478,7 +478,6 @@ func (sb *Sealer) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 	return p1o, nil
 }
 
-
 func move(from, to string) error {
 	from, err := homedir.Expand(from)
 	if err != nil {
@@ -543,8 +542,6 @@ func get_cache_hdd() string {
 	return cache
 }
 
-
-
 func copy(from, to string) error {
 
 	var errOut bytes.Buffer
@@ -586,7 +583,7 @@ func move_cache_ex(che_path string) {
 	spl := strings.Split(che_path, string(os.PathSeparator))
 	sect_name = spl[len(spl)-1]
 
-	if sect_dir, err := ioutil.ReadDir(che_path); err == nil  {
+	if sect_dir, err := ioutil.ReadDir(che_path); err == nil {
 		sect_dir_sort := sort_by_size(sect_dir)
 		for _, fi := range sect_dir_sort {
 			if fi.IsDir() {
@@ -596,7 +593,7 @@ func move_cache_ex(che_path string) {
 		}
 	}
 
-	log.Infow("all files to move","files",mv_files)
+	log.Infow("all files to move", "files", mv_files)
 
 	env := os.Getenv("LOTUS_CACHE_HDD")
 	if env == "" {
@@ -614,14 +611,14 @@ func move_cache_ex(che_path string) {
 			log.Errorw("no enough space", "path", che_path, "disk free", fs.Bfree*uint64(fs.Bsize))
 			continue
 		}
-		path :=  hdd[index] + string(os.PathSeparator) + sect_name
+		path := hdd[index] + string(os.PathSeparator) + sect_name
 		if err := os.MkdirAll(path, 0755); err != nil {
-			log.Warnf("Create hdd cache(%s) err: %s", path, err)
+			log.Warnf("create hdd cache(%s) err: %s", path, err)
 			continue
 		}
-		hd_paths = append(hd_paths,path)
+		hd_paths = append(hd_paths, path)
 	}
-	log.Infow("all hdd for cache","hdd_path",hd_paths)
+	log.Infow("all hdd for cache", "hdd_path", hd_paths)
 
 	if len(mv_files) == 0 || len(hd_paths) == 0 {
 		log.Warnw("no enough to move cache to hdd.")
@@ -652,7 +649,7 @@ func move_cache_ex(che_path string) {
 				}
 				to := to_path + string(os.PathSeparator) + filepath.Base(from)
 				if err := copy(from, to); err != nil {
-					log.Errorw("copy file to hdd err", "from", from, "to", to, "error",err)
+					log.Errorw("copy file to hdd err", "from", from, "to", to, "error", err)
 					continue
 				}
 				log.Infow("copy file to hdd over", "from", from, "to", to)
@@ -664,8 +661,6 @@ func move_cache_ex(che_path string) {
 	log.Infow("move cache to hdd over.")
 	//////////////////////////////////////////////
 }
-
-
 
 func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase1Out storage.PreCommit1Out) (storage.SectorCids, error) {
 	paths, done, err := sb.sectors.AcquireSector(ctx, sector, stores.FTSealed|stores.FTCache, 0, stores.PathSealing)
@@ -679,8 +674,7 @@ func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		return storage.SectorCids{}, xerrors.Errorf("presealing sector %d (%s): %w", sector.Number, paths.Unsealed, err)
 	}
 
-
-    go move_cache_ex(paths.Cache)
+	go move_cache_ex(paths.Cache)
 
 	return storage.SectorCids{
 		Unsealed: unsealedCID,
@@ -720,6 +714,7 @@ func (sb *Sealer) SealCommit2(ctx context.Context, sector abi.SectorID, phase1Ou
 }
 
 func (sb *Sealer) FinalizeSector(ctx context.Context, sector abi.SectorID, keepUnsealed []storage.Range) error {
+	log.Debugf("finalize sector %v keep unsealed %v", sector.Number, len(keepUnsealed))
 	if len(keepUnsealed) > 0 {
 		maxPieceSize := abi.PaddedPieceSize(sb.ssize)
 
@@ -741,12 +736,14 @@ func (sb *Sealer) FinalizeSector(ctx context.Context, sector abi.SectorID, keepU
 
 		paths, done, err := sb.sectors.AcquireSector(ctx, sector, stores.FTUnsealed, 0, stores.PathStorage)
 		if err != nil {
+			log.Errorf("fail finalize sector %v [%v]", sector.Number, err)
 			return xerrors.Errorf("acquiring sector cache path: %w", err)
 		}
 		defer done()
 
 		pf, err := openPartialFile(maxPieceSize, paths.Unsealed)
 		if xerrors.Is(err, os.ErrNotExist) {
+			log.Errorf("fail finalize sector %v [%v]", sector.Number, err)
 			return xerrors.Errorf("opening partial file: %w", err)
 		}
 
@@ -767,22 +764,31 @@ func (sb *Sealer) FinalizeSector(ctx context.Context, sector abi.SectorID, keepU
 			err = pf.Free(storiface.PaddedByteIndex(abi.UnpaddedPieceSize(offset).Padded()), abi.UnpaddedPieceSize(r.Len).Padded())
 			if err != nil {
 				_ = pf.Close()
+				log.Errorf("fail finalize sector %v [%v]", sector.Number, err)
 				return xerrors.Errorf("free partial file range: %w", err)
 			}
 		}
 
 		if err := pf.Close(); err != nil {
+			log.Errorf("fail finalize sector %v [%v]", sector.Number, err)
 			return err
 		}
 	}
 
 	paths, done, err := sb.sectors.AcquireSector(ctx, sector, stores.FTCache, 0, stores.PathStorage)
 	if err != nil {
+		log.Errorf("fail finalize sector %v [%v]", sector.Number, err)
 		return xerrors.Errorf("acquiring sector cache path: %w", err)
 	}
 	defer done()
 
-	return ffi.ClearCache(uint64(sb.ssize), paths.Cache)
+	err = ffi.ClearCache(uint64(sb.ssize), paths.Cache)
+	if nil != err {
+		log.Errorf("fail finalize sector %v [%v]", sector.Number, err)
+	} else {
+		log.Errorf("success finalize sector %v", sector.Number)
+	}
+	return err
 }
 
 func (sb *Sealer) ReleaseUnsealed(ctx context.Context, sector abi.SectorID, safeToFree []storage.Range) error {

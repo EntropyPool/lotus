@@ -325,7 +325,6 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 		return xerrors.Errorf("removing dest: %w", err)
 	}
 
-
 	flists := resp.Header.Get("Files-List")
 	log.Infow("FetchEx get remote Files-List", "files", flists)
 	targets := strings.Split(flists, ";")
@@ -366,7 +365,7 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 					log.Infow("fetch file", "url", remoteFile.url, "outname", remoteFile.out)
 				}
 			}
-		} (ctx)
+		}(ctx)
 	}
 
 	for _, target := range targets {
@@ -396,7 +395,7 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 }
 
 func (r *Remote) fetchFile(ctx context.Context, url, outname string) error {
-	log.Infof("Fetch File %s -> %s", url, outname)
+	log.Infof("FetchFile %s -> %s", url, outname)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

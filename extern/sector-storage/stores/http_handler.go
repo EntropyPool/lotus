@@ -121,7 +121,6 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 }
 
 func (handler *FetchHandler) remoteListSector(w http.ResponseWriter, r *http.Request) {
-	log.Infof("SERVE LIST %s", r.URL)
 	vars := mux.Vars(r)
 	for k, v := range vars {
 		log.Infow("SERVE LIST VARS", "Key", k, "Val", v)
@@ -183,7 +182,7 @@ func (handler *FetchHandler) remoteListSector(w http.ResponseWriter, r *http.Req
 		}
 	}
 	w.Header().Set("Files-List", files)
-	log.Infow("SERVE LIST ", "Files-List", files)
+	log.Infow("SERVE LIST ", r.URL, files)
 	w.WriteHeader(200)
 	return
 }
