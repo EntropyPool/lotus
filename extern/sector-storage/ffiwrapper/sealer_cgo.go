@@ -714,7 +714,7 @@ func (sb *Sealer) SealCommit2(ctx context.Context, sector abi.SectorID, phase1Ou
 }
 
 func (sb *Sealer) FinalizeSector(ctx context.Context, sector abi.SectorID, keepUnsealed []storage.Range) error {
-	log.Debugf("finalize sector %v keep unsealed %v", sector.Number, len(keepUnsealed))
+	log.Infof("finalize sector %v keep unsealed %v", sector.Number, len(keepUnsealed))
 	if len(keepUnsealed) > 0 {
 		maxPieceSize := abi.PaddedPieceSize(sb.ssize)
 
@@ -786,7 +786,7 @@ func (sb *Sealer) FinalizeSector(ctx context.Context, sector abi.SectorID, keepU
 	if nil != err {
 		log.Errorf("fail finalize sector %v [%v]", sector.Number, err)
 	} else {
-		log.Errorf("success finalize sector %v", sector.Number)
+		log.Infof("success finalize sector %v", sector.Number)
 	}
 	return err
 }
