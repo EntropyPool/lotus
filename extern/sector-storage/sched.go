@@ -236,6 +236,7 @@ func (sh *scheduler) runSched() {
 		select {
 		case w := <-sh.newWorkers:
 			sh.newWorker(w)
+			doSched = true
 
 		case wid := <-sh.workerClosing:
 			sh.dropWorker(wid)
@@ -258,7 +259,6 @@ func (sh *scheduler) runSched() {
 			iw = nil
 			doSched = true
 		case <-timeout.C:
-			log.Warnf("Every 3 Minute try to do schedule")
 			doSched = true
 			timeout.Reset(intv)
 		case <-sh.closing:

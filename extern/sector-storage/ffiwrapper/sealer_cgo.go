@@ -515,34 +515,8 @@ func move(from, to string) error {
 
 	return nil
 }
-func get_cache_hdd() string {
 
-	env_hdd := os.Getenv("LOTUS_CACHE_HDD")
-	if env_hdd == "" {
-		log.Warnw("There is no environment variable LOTUS_CACHE_HDD")
-		return ""
-	}
-	cache := ""
-	hdd := strings.Split(env_hdd, ";")
-	for index := 0; index < len(hdd); index++ {
-		fs := syscall.Statfs_t{}
-		err := syscall.Statfs(hdd[index], &fs)
-		if err != nil {
-			log.Errorw("Get system stats error", "path", hdd[index], "error", err)
-			continue
-		}
-		if fs.Bfree*uint64(fs.Bsize) > 1024*1024*1024*32 {
-			cache = hdd[index]
-			log.Infow("select cache in hdd", "path", cache, "disk free", fs.Bfree*uint64(fs.Bsize))
-			break
-		}
-		log.Warnw("not enough space", "path", cache, "disk free", fs.Bfree*uint64(fs.Bsize))
-	}
-
-	return cache
-}
-
-func copy(from, to string) error {
+func copyFile(from, to string) error {
 
 	var errOut bytes.Buffer
 	cmd := exec.Command("/usr/bin/env", "mv", "-f", from, to)
@@ -648,7 +622,7 @@ func move_cache_ex(che_path string) {
 					break
 				}
 				to := to_path + string(os.PathSeparator) + filepath.Base(from)
-				if err := copy(from, to); err != nil {
+				if err := copyFile(from, to); err != nil {
 					log.Errorw("copy file to hdd err", "from", from, "to", to, "error", err)
 					continue
 				}
