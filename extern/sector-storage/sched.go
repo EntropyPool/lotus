@@ -24,7 +24,7 @@ var SelectorTimeout = 5 * time.Second
 var InitWait = 3 * time.Second
 
 var (
-	SchedWindows = 10
+	SchedWindows = 4
 )
 
 func getPriority(ctx context.Context) int {
@@ -226,7 +226,7 @@ func (sh *scheduler) runSched() {
 	iw := time.After(InitWait)
 	var initialised bool
 
-	intv := 3 * time.Minute
+	intv := 6 * time.Minute
 	timeout := time.NewTimer(intv)
 	defer timeout.Stop()
 
@@ -327,15 +327,7 @@ func (sh *scheduler) trySched() {
 
 	*/
 
-	var windows []schedWindow
-	if len(sh.openWindows) < len(sh.workers) {
-		windows = make([]schedWindow, len(sh.openWindows))
-	} else {
-		if 0 == len(sh.workers) {
-			return
-		}
-		windows = make([]schedWindow, len(sh.workers))
-	}
+	windows := make([]schedWindow, len(sh.openWindows))
 	acceptableWindows := make([][]int, sh.schedQueue.Len())
 
 	log.Debugf("SCHED %d queued; %d open windows", sh.schedQueue.Len(), len(windows))
