@@ -47,12 +47,20 @@ func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt 
 	}
 
 	// Always use the one which already have the sector
-	best, err := s.index.StorageFindSector(ctx, s.sector, s.alloc, spt, false)
-	if err != nil {
-		best, err = s.index.StorageFindSector(ctx, s.sector, s.alloc, spt, s.allowFetch)
-		if err != nil {
-			return false, xerrors.Errorf("finding best storage: %w", err)
-		}
+	var best []stores.SectorStorageInfo = make([]stores.SectorStorageInfo, 0)
+
+	bestExist, err := s.index.StorageFindSector(ctx, s.sector, s.alloc, spt, false)
+	if err == nil {
+		best = append(best, bestExist...)
+	}
+
+	bestFetch, err := s.index.StorageFindSector(ctx, s.sector, s.alloc, spt, s.allowFetch)
+	if err == nil {
+		best = append(best, bestFetch...)
+	}
+
+	if 0 == len(best) {
+		return false, xerrors.Errorf("find best storage: %w", err)
 	}
 
 	for _, info := range best {
