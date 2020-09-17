@@ -451,7 +451,7 @@ func (sh *scheduler) trySched() {
 		}
 
 		if selectedWindow < 0 {
-			log.Infof("cannot find suitable window for sector %v / %v", task.sector.Number, task.taskType)
+			log.Infof("cannot find suitable window for sector %v / %v [available: %d]", task.sector.Number, task.taskType, len(acceptableWindows[task.indexHeap]))
 			// all windows full
 			continue
 		}
