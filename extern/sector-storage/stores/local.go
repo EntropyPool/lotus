@@ -564,7 +564,7 @@ func envmove(from, to string) error {
 	if err := cmd.Run(); err != nil {
 		return xerrors.Errorf("exec cp (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
 	}
-	log.Infow("copy sector data", "from:", from, "to:", to)
+	log.Debugw("copy sector data", "from:", from, "to:", to)
 
 	//make soft link
 	cmdln := exec.Command("/usr/bin/env", "ln", "-s", to, from)
@@ -572,7 +572,7 @@ func envmove(from, to string) error {
 	if err := cmdln.Run(); err != nil {
 		return xerrors.Errorf("exec ln (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
 	}
-	log.Infow("link sector data", "from:", from, "to:", to)
+	log.Debugw("link sector data", "from:", from, "to:", to)
 
 	return nil
 }
@@ -666,7 +666,7 @@ func move_cache_ex(che_path string) error {
 					log.Errorw("copy file to hdd err", "from", from, "to", to, "error", err)
 					continue
 				}
-				log.Infow("copy file to hdd over", "from", from, "to", to)
+				log.Debugw("copy file to hdd over", "from", from, "to", to)
 			}
 		}(hd_paths[i], jobs, wait)
 	}
