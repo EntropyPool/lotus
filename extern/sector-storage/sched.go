@@ -331,6 +331,9 @@ func (sh *scheduler) trySched() {
 	if len(sh.openWindows) < len(sh.workers) {
 		windows = make([]schedWindow, len(sh.openWindows))
 	} else {
+		if 0 == len(sh.workers) {
+			return
+		}
 		windows = make([]schedWindow, len(sh.workers))
 	}
 	acceptableWindows := make([][]int, sh.schedQueue.Len())
