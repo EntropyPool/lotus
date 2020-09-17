@@ -488,6 +488,7 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 	wg.Add(numSectors)
 
 	for i := abi.SectorNumber(1); i <= abi.SectorNumber(numSectors); i++ {
+		log.Infof("[%d] start add piece...", i)
 		go func(sector abi.SectorNumber, sectorSize abi.SectorSize, minerId abi.ActorID) {
 			sid := abi.SectorID{
 				Miner:  minerId,
@@ -542,15 +543,15 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 
 					precommit1 := time.Now()
 
-					preCommit2Sema <- struct{}{}
-					pc2Start := time.Now()
-					log.Infof("[%d] Running replication(2)...", i)
-					cids, err := sb.SealPreCommit2(context.TODO(), sid, pc1o)
-					if err != nil {
-						return xerrors.Errorf("commit: %w", err)
-					}
-
 					if !skippc2 {
+						preCommit2Sema <- struct{}{}
+						pc2Start := time.Now()
+						log.Infof("[%d] Running replication(2)...", i)
+						cids, err := sb.SealPreCommit2(context.TODO(), sid, pc1o)
+						if err != nil {
+							return xerrors.Errorf("commit: %w", err)
+						}
+
 						precommit2 := time.Now()
 						<-preCommit2Sema
 
@@ -760,6 +761,10 @@ var proveCmd = &cli.Command{
 }
 
 func bps(data abi.SectorSize, d time.Duration) string {
+	if d == 0 {
+		d = 1 * time.Second
+	}
+
 	bdata := new(big.Int).SetUint64(uint64(data))
 	bdata = bdata.Mul(bdata, big.NewInt(time.Second.Nanoseconds()))
 	bps := bdata.Div(bdata, big.NewInt(d.Nanoseconds()))
