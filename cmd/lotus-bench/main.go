@@ -505,7 +505,7 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 				log.Errorf("[%d] fail to add piece", sector)
 			}
 
-			pieces[i - 1] = pi
+			pieces[sector - 1] = pi
 
 			sealTimings[sector-1].AddPiece = time.Since(start)
 
