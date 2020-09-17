@@ -473,7 +473,7 @@ type ParCfg struct {
 }
 
 func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par ParCfg, mid abi.ActorID, sectorSize abi.SectorSize, ticketPreimage []byte, saveC2inp string, skipc2, skipunseal, skippc2 bool) ([]SealingResult, []saproof.SectorInfo, error) {
-	var pieces []abi.PieceInfo
+	var pieces []abi.PieceInfo = make([]abi.PieceInfo, numSectors)
 	sealTimings := make([]SealingResult, numSectors)
 	sealedSectors := make([]saproof.SectorInfo, numSectors)
 
@@ -505,7 +505,7 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 				log.Errorf("[%d] fail to add piece", sector)
 			}
 
-			pieces = append(pieces, pi)
+			pieces[i - 1] = pi
 
 			sealTimings[sector-1].AddPiece = time.Since(start)
 
