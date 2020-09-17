@@ -666,7 +666,6 @@ func move_cache_ex(che_path string) error {
 					log.Errorw("copy file to hdd err", "from", from, "to", to, "error", err)
 					continue
 				}
-				log.Debugw("copy file to hdd over", "from", from, "to", to)
 			}
 		}(hd_paths[i], jobs, wait)
 	}
