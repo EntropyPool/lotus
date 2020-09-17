@@ -359,6 +359,8 @@ func (sh *scheduler) trySched() {
 			needRes := ResourceTable[task.taskType][sh.spt]
 
 			task.indexHeap = sqi
+			log.Infof("find window for sector %v / %v", task.sector.Number, task.taskType)
+
 			for wnd, windowRequest := range sh.openWindows {
 				worker, ok := sh.workers[windowRequest.worker]
 				if !ok {
@@ -419,7 +421,6 @@ func (sh *scheduler) trySched() {
 	}
 
 	wg.Wait()
-	log.Debugf("SCHED Acceptable win: %+v/queue: %v", acceptableWindows, sh.schedQueue.Len())
 
 	// Step 2
 	scheduled := 0
@@ -435,15 +436,12 @@ func (sh *scheduler) trySched() {
 			wid := sh.openWindows[wnd].worker
 			wr := sh.workers[wid].info.Resources
 
-			log.Debugf("SCHED try assign sqi:%d sector %d to window %d", sqi, task.sector.Number, wnd)
-
 			// TODO: allow bigger windows
 			if !windows[wnd].allocated.canHandleRequest(needRes, wid, "schedAssign", wr) {
 				continue
 			}
 
 			if len(windows[wnd].todo) < minWindowTodos[wnd] || 0 == minWindowTodos[wnd] {
-				log.Debugf("SCHED ASSIGNED sqi:%d sector %d to window %d", sqi, task.sector.Number, wnd)
 				selectedWindow = wnd
 				minWindowTodos[wnd] = len(windows[wnd].todo)
 				if 0 == minWindowTodos[wnd] {
@@ -453,12 +451,14 @@ func (sh *scheduler) trySched() {
 		}
 
 		if selectedWindow < 0 {
+			log.Infof("cannot find suitable window for sector %v / %v", task.sector.Number, task.taskType)
 			// all windows full
 			continue
 		}
 
-		log.Debugf("SCHED ASSIGNED sqi:%d sector %d task %s to window %d", sqi, task.sector.Number, task.taskType, selectedWindow)
-		wr := sh.workers[sh.openWindows[selectedWindow].worker].info.Resources
+		worker := sh.workers[sh.openWindows[selectedWindow].worker]
+		wr := worker.info.Resources
+		log.Debugf("SCHED ASSIGNED sqi:%d sector %d task %s to window %d [%v]", sqi, task.sector.Number, task.taskType, selectedWindow, worker.info.Address)
 		windows[selectedWindow].allocated.add(wr, needRes)
 		windows[selectedWindow].todo = append(windows[selectedWindow].todo, task)
 		minWindowTodos[selectedWindow]++

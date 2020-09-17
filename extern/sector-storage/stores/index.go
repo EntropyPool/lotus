@@ -308,7 +308,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft Sector
 			}
 
 			if spaceReq > uint64(st.fsi.Available) {
-				log.Infof("not selecting on %s, out of space (available: %d, need: %d)", st.info.ID, st.fsi.Available, spaceReq)
+				log.Debugf("not selecting on %s, out of space (available: %d, need: %d)", st.info.ID, st.fsi.Available, spaceReq)
 				continue
 			}
 
@@ -385,7 +385,7 @@ func (i *Index) StorageBestAlloc(ctx context.Context, allocate SectorFileType, s
 		}
 
 		if spaceReq > uint64(p.fsi.Available) {
-			log.Infof("not allocating on %s, out of space (available: %d, need: %d) [%v]", p.info.ID, p.fsi.Available, spaceReq, p.info.URLs)
+			log.Debugf("not allocating on %s, out of space (available: %d, need: %d) [%v]", p.info.ID, p.fsi.Available, spaceReq, p.info.URLs)
 			continue
 		}
 
