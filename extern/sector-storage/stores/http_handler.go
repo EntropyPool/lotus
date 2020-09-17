@@ -302,7 +302,7 @@ func (handler *FetchHandler) remoteMoveCacheSector(w http.ResponseWriter, r *htt
 	}
 
 	w.WriteHeader(200)
-	log.Infow("SERVE MOVE over")
+	log.Infof("SERVE MOVE over %s [%v]", r.URL)
 	return
 }
 
