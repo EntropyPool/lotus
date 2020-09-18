@@ -150,12 +150,18 @@ func (l *LocalWorker) SealPreCommit1(ctx context.Context, sector abi.SectorID, t
 }
 
 func (l *LocalWorker) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase1Out storage2.PreCommit1Out) (cids storage2.SectorCids, err error) {
+
 	sb, err := l.sb()
 	if err != nil {
 		return storage2.SectorCids{}, err
 	}
 
 	return sb.SealPreCommit2(ctx, sector, phase1Out)
+}
+
+func (l *LocalWorker) MovingCache(ctx context.Context, sector abi.SectorID) error {
+	log.Warnw("local worker moving.")
+	return nil
 }
 
 func (l *LocalWorker) SealCommit1(ctx context.Context, sector abi.SectorID, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage2.SectorCids) (output storage2.Commit1Out, err error) {

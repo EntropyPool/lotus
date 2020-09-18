@@ -1,16 +1,21 @@
 package stores
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"github.com/mitchellh/go-homedir"
 	"io/ioutil"
 	"math/bits"
 	"math/rand"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/xerrors"
@@ -462,6 +467,215 @@ func (st *Local) Remove(ctx context.Context, sid abi.SectorID, typ SectorFileTyp
 	return nil
 }
 
+func (st *Local) MoveCache(ctx context.Context, sid abi.SectorID, typ SectorFileType, force bool) error {
+
+	si, err := st.index.StorageFindSector(ctx, sid, typ, 0, false)
+	if err != nil {
+		return xerrors.Errorf("finding existing sector %d(t:%d) failed: %w", sid, typ, err)
+	}
+
+	if len(si) == 0 && !force {
+		return xerrors.Errorf("can't delete sector %v(%d), not found", sid, typ)
+	}
+
+	for _, info := range si {
+		if err := st.moveCacheSector(ctx, sid, typ, info.ID); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (st *Local) moveCacheSector(ctx context.Context, sid abi.SectorID, typ SectorFileType, storage ID) error {
+	p, ok := st.paths[storage]
+	if !ok {
+		return nil
+	}
+
+	if p.local == "" { // TODO: can that even be the case?
+		return nil
+	}
+
+	if err := st.index.StorageDropSector(ctx, storage, sid, typ); err != nil {
+		return xerrors.Errorf("dropping sector from index: %w", err)
+	}
+
+	spath := p.sectorPath(sid, typ)
+	log.Infof("go moving cache sector (%v) from %s", sid, spath)
+	if err := move_cache_ex(spath); err != nil {
+		return xerrors.Errorf("move cache sector (%v) %s to hdd error: %w", sid, spath, err)
+	}
+
+	return nil
+}
+
+func (r *Remote) MoveCache(ctx context.Context, sid abi.SectorID, typ SectorFileType, force bool) error {
+	si, err := r.index.StorageFindSector(ctx, sid, typ, 0, false)
+	if err != nil {
+		return xerrors.Errorf("finding existing sector %d(t:%d) failed: %w", sid, typ, err)
+	}
+
+	err_url := ""
+	for _, info := range si {
+		for _, url := range info.URLs {
+			if err := r.moveCacheRemote(ctx, url); err != nil {
+				log.Errorf("move cache %s: %+v", url, err)
+				err_url += err_url + url
+				continue
+			}
+		}
+	}
+	if err_url != "" {
+		return xerrors.Errorf("move cache error: %s", err_url)
+	}
+
+	return nil
+}
+
+func (r *Remote) moveCacheRemote(ctx context.Context, url string) error {
+	log.Infof("MOVE %s", url)
+
+	req, err := http.NewRequest("MOVE", url, nil)
+	if err != nil {
+		return xerrors.Errorf("request: %w", err)
+	}
+	req.Header = r.auth
+	req = req.WithContext(ctx)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return xerrors.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close() // nolint
+
+	if resp.StatusCode != 200 {
+		return xerrors.Errorf("non-200 code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func envmove(from, to string) error {
+
+	var errOut bytes.Buffer
+	cmd := exec.Command("/usr/bin/env", "mv", "-f", from, to)
+	cmd.Stderr = &errOut
+	if err := cmd.Run(); err != nil {
+		return xerrors.Errorf("exec cp (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+	}
+	log.Debugw("copy sector data", "from:", from, "to:", to)
+
+	//make soft link
+	cmdln := exec.Command("/usr/bin/env", "ln", "-s", to, from)
+	cmdln.Stderr = &errOut
+	if err := cmdln.Run(); err != nil {
+		return xerrors.Errorf("exec ln (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+	}
+	log.Debugw("link sector data", "from:", from, "to:", to)
+
+	return nil
+}
+
+func sort_by_size(pl []os.FileInfo) []os.FileInfo {
+	sort.Slice(pl, func(i, j int) bool {
+		flag := false
+		if pl[i].Size() > pl[j].Size() {
+			flag = true
+		}
+		return flag
+	})
+	return pl
+}
+
+// che_path = local_path + sector_name
+func move_cache_ex(che_path string) error {
+	log.Infow("move cache to hdd starting", "path", che_path)
+	var mv_files []string
+	var hd_paths []string
+	var sect_name string
+	//////////////////////////////////////////////
+	spl := strings.Split(che_path, string(os.PathSeparator))
+	sect_name = spl[len(spl)-1]
+
+	if sect_dir, err := ioutil.ReadDir(che_path); err == nil {
+		sect_dir_sort := sort_by_size(sect_dir)
+		for _, fi := range sect_dir_sort {
+			if fi.IsDir() {
+				continue
+			}
+			mv_files = append(mv_files, fi.Name())
+		}
+	}
+	log.Infow("all files to move", "files", mv_files)
+
+	env := os.Getenv("LOTUS_CACHE_HDD")
+	if env == "" {
+		return xerrors.Errorf("There is no environment variable: LOTUS_CACHE_HDD")
+	}
+	hdd := strings.Split(env, ";")
+	for index := 0; index < len(hdd); index++ {
+		fs := syscall.Statfs_t{}
+		if err := syscall.Statfs(hdd[index], &fs); err != nil {
+			log.Errorw("Get system stats error", "path", hdd[index], "error", err)
+			continue
+		}
+		//1024*1024*1024*64
+		if fs.Bfree*uint64(fs.Bsize) < 1024*1024*64 {
+			log.Errorw("no enough space", "path", che_path, "disk free", fs.Bfree*uint64(fs.Bsize))
+			continue
+		}
+		path := hdd[index] + string(os.PathSeparator) + sect_name
+		if err := os.MkdirAll(path, 0755); err != nil {
+			log.Warnf("Create hdd cache(%s) err: %s", path, err)
+			continue
+		}
+		hd_paths = append(hd_paths, path)
+	}
+	log.Infow("all hdd for cache", "hdd_path", hd_paths)
+
+	if len(mv_files) == 0 || len(hd_paths) == 0 {
+		log.Warnw("no enough to move cache to hdd.")
+		return xerrors.Errorf("no enough to move cache to hdd.")
+	}
+	//////////////////////////////////////////////
+	jobs := make(chan string, len(mv_files))
+	wait := &sync.WaitGroup{}
+
+	wait.Add(1)
+	go func(fis []string, ch chan string, wt *sync.WaitGroup) {
+		defer wt.Done()
+		for i := 0; i < len(fis); i++ {
+			ch <- che_path + string(os.PathSeparator) + fis[i]
+		}
+		close(ch)
+	}(mv_files, jobs, wait)
+
+	for i := 0; i < len(hd_paths); i++ {
+		wait.Add(1)
+		go func(to_path string, ch chan string, wt *sync.WaitGroup) {
+			defer wt.Done()
+			for {
+				from, ok := <-ch
+				if !ok {
+					log.Infow("there is no more move jobs", "to-hdd", to_path)
+					break
+				}
+				to := to_path + string(os.PathSeparator) + filepath.Base(from)
+				if err := envmove(from, to); err != nil {
+					log.Errorw("copy file to hdd err", "from", from, "to", to, "error", err)
+					continue
+				}
+			}
+		}(hd_paths[i], jobs, wait)
+	}
+
+	wait.Wait()
+	log.Infow("move cache to hdd over.")
+	return nil
+	//////////////////////////////////////////////
+}
+
 func (st *Local) RemoveCopies(ctx context.Context, sid abi.SectorID, typ SectorFileType) error {
 	if bits.OnesCount(uint(typ)) != 1 {
 		return xerrors.New("delete expects one file type")
@@ -498,7 +712,6 @@ func (st *Local) RemoveCopies(ctx context.Context, sid abi.SectorID, typ SectorF
 	return nil
 }
 
-
 func pathExists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
@@ -531,7 +744,6 @@ func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ SectorF
 		log.Errorf("removing sector (%v) from %s: %+v", sid, spath, err)
 	}
 
-
 	if typ == FTCache {
 		env_hdd := os.Getenv("LOTUS_CACHE_HDD")
 		if env_hdd == "" {
@@ -546,7 +758,7 @@ func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ SectorF
 			cache_hdd = cache_hdd + string(os.PathSeparator) + spl[len(spl)-1]
 
 			if flag, err := pathExists(cache_hdd); !flag {
-				log.Infof("check hdd cache sector (%v) not in %s: %+v", sid, cache_hdd,err)
+				log.Infof("check hdd cache sector (%v) not in %s: %+v", sid, cache_hdd, err)
 				continue
 			}
 
