@@ -395,7 +395,7 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 }
 
 func (r *Remote) fetchFile(ctx context.Context, url, outname string) error {
-	log.Infof("FetchFile %s -> %s", url, outname)
+	log.Infof("Fetch File %s -> %s", url, outname)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
