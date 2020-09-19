@@ -487,7 +487,7 @@ func (st *Local) MoveCache(ctx context.Context, sid abi.SectorID, typ SectorFile
 	return nil
 }
 
-func (st *Local) moveCacheSector(ctx context.Context, sid abi.SectorID, typ SectorFileType, storage ID) error {
+func (st *Local) moveCacheSector(ctx context.Context, sid abi.SectorID, fileType SectorFileType, storage ID) error {
 	p, ok := st.paths[storage]
 	if !ok {
 		return nil
@@ -497,14 +497,18 @@ func (st *Local) moveCacheSector(ctx context.Context, sid abi.SectorID, typ Sect
 		return nil
 	}
 
-	if err := st.index.StorageDropSector(ctx, storage, sid, typ); err != nil {
+	if err := st.index.StorageDropSector(ctx, storage, sid, fileType); err != nil {
 		return xerrors.Errorf("dropping sector from index: %w", err)
 	}
 
-	spath := p.sectorPath(sid, typ)
+	spath := p.sectorPath(sid, fileType)
 	log.Infof("go moving cache sector (%v) from %s", sid, spath)
 	if err := move_cache_ex(spath); err != nil {
 		return xerrors.Errorf("move cache sector (%v) %s to hdd error: %w", sid, spath, err)
+	}
+
+	if err := st.index.StorageDeclareSector(ctx, storage, sid, fileType, true); err != nil {
+		return xerrors.Errorf("declare sector %d(t:%d) -> %s: %w", sid, fileType, storage, err)
 	}
 
 	return nil
