@@ -34,8 +34,6 @@ import (
 	"github.com/filecoin-project/lotus/extern/sector-storage/zerocomm"
 )
 
-var _ Storage = &Sealer{}
-
 func New(sectors SectorProvider, cfg *Config) (*Sealer, error) {
 	sectorSize, err := sizeFromConfig(*cfg)
 	if err != nil {
@@ -654,6 +652,11 @@ func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		Unsealed: unsealedCID,
 		Sealed:   sealedCID,
 	}, nil
+}
+
+func (sb *Sealer) MovingCache(ctx context.Context, sector abi.SectorID) error {
+	log.Warnw("sealer moving.")
+	return nil
 }
 
 func (sb *Sealer) SealCommit1(ctx context.Context, sector abi.SectorID, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (storage.Commit1Out, error) {
