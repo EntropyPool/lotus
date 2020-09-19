@@ -352,10 +352,9 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 		go func(ctx context.Context) {
 			for {
 				select {
-				case remoteFile := <-taskCh:
-					if remoteFile.url == "file:///finish" {
+				case remoteFile, ok := <-taskCh:
+					if !ok {
 						wg.Done()
-						log.Infow("fetch done", url, " -> ", outname)
 						return
 					}
 					if err := r.fetchFile(ctx, remoteFile.url, remoteFile.out); err != nil {
@@ -381,12 +380,8 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 		taskCh <- remoteFileDesc{url: targetUrl, out: outName}
 	}
 
-	for i := 0; i < parallel; i++ {
-		taskCh <- remoteFileDesc{url: "file:///finish", out: ""}
-	}
-
-	wg.Wait()
 	close(taskCh)
+	wg.Wait()
 
 	log.Infow("fetch sector all over.", "url", url, "outname", outname)
 
