@@ -622,7 +622,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 					todo := firstWindow.todo[tidx]
 
-					log.Debugf("assign worker sector %d -> %v", todo.sector.Number, worker.info.Address)
+					log.Debugf("assign worker sector %d / %v -> %v", todo.sector.Number, todo.taskType, worker.info.Address)
 					err := sh.assignWorker(taskDone, wid, worker, todo)
 
 					if err != nil {
