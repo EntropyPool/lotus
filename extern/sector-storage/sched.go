@@ -710,8 +710,9 @@ func (sh *scheduler) assignWorker(taskDone chan struct{}, wid WorkerID, w *worke
 	w.lk.Unlock()
 
 	go func() {
-		log.Infof("prepare sector %v / %v -> %v", req.sector.Number, req.taskType, w.info.Address)
+		log.Infof("preparing sector %v / %v -> %v", req.sector.Number, req.taskType, w.info.Address)
 		err := req.prepare(req.ctx, w.wt.worker(w.w))
+		log.Infof("prepared sector %v / %v -> %v", req.sector.Number, req.taskType, w.info.Address)
 		sh.workersLk.Lock()
 
 		if err != nil {
