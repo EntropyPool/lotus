@@ -359,7 +359,6 @@ func (sh *scheduler) trySched() {
 			needRes := ResourceTable[task.taskType][sh.spt]
 
 			task.indexHeap = sqi
-			log.Debugf("find window for sector %v / %v", task.sector.Number, task.taskType)
 
 			for wnd, windowRequest := range sh.openWindows {
 				worker, ok := sh.workers[windowRequest.worker]
@@ -392,6 +391,7 @@ func (sh *scheduler) trySched() {
 			}
 
 			if len(acceptableWindows[sqi]) == 0 {
+				log.Debugf("cannot find any window for sector %v / %v", task.sector.Number, task.taskType)
 				return
 			}
 
@@ -420,6 +420,7 @@ func (sh *scheduler) trySched() {
 				}
 				return r
 			})
+			log.Debugf("found windows[%v] for sector %v / %v", len(acceptableWindows[sqi]), task.sector.Number, task.taskType)
 		}(i)
 	}
 
