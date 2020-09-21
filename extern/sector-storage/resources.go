@@ -134,7 +134,7 @@ var ResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]Resources
 			MaxMemory: 64 << 30,
 			MinMemory: 64 << 30,
 
-			Threads:   -1,
+			Threads:   2,
 			Reserved:  0,
 			TaskLimit: 0,
 			CanGPU:    true,
@@ -145,7 +145,7 @@ var ResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]Resources
 			MaxMemory: 32 << 30,
 			MinMemory: 32 << 30,
 
-			Threads:   -1,
+			Threads:   2,
 			Reserved:  0,
 			TaskLimit: 0,
 			CanGPU:    true,
