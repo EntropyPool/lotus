@@ -613,6 +613,9 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 						if worker.preparing.canHandleRequest(needRes, wid, "startPreparing", worker.info.Resources) {
 							tidx = t
 							break
+						} else {
+							firstWindow.todo = append(firstWindow.todo[:t], firstWindow.todo[t+1:]...)
+							go func(todo *workerRequest) { sh.schedule <- todo }(todo)
 						}
 					}
 					worker.lk.Unlock()
