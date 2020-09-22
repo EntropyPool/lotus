@@ -191,6 +191,7 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 
 	p := fsmPlanners[state.State]
 	if p == nil {
+		state.State = Removing
 		return nil, 0, xerrors.Errorf("planner for state %s not found", state.State)
 	}
 
