@@ -175,7 +175,7 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 		return xerrors.Errorf("getting worker info: %v", err)
 	}
 
-	log.Debugf("add worker: %+v", info)
+	log.Infof("add worker: %+v", info)
 	m.sched.newWorkers <- &workerHandle{
 		w: w,
 		wt: &workTracker{
@@ -295,7 +295,7 @@ func sealingElapseStatistic(ctx context.Context, worker Worker, taskType sealtas
 		log.Errorf("fail to run sector %v %v, elapsed %v s [%v, %v]: %v [%s]", sector.Number, taskType, end-start, start, end, err, address)
 		return
 	}
-	log.Debugf("success to run sector %v %v, elapsed %v s [%v, %v]: [%s]", sector.Number, taskType, end-start, start, end, address)
+	log.Infof("success to run sector %v %v, elapsed %v s [%v, %v]: [%s]", sector.Number, taskType, end-start, start, end, address)
 }
 
 func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPieces []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, r io.Reader) (abi.PieceInfo, error) {
