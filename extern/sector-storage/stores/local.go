@@ -326,6 +326,53 @@ func (st *Local) Reserve(ctx context.Context, sid abi.SectorID, spt abi.Register
 	return done, nil
 }
 
+func (st *Local) checkPathIntegrity(ctx context.Context, path string, sectorSize abi.SectorSize) bool {
+	fileInfo, err := os.Stat(path)
+	if nil != err {
+		log.Errorf("%s: stat [%v]", path, err)
+		return false
+	}
+	if strings.Contains(path, "/sealed/") {
+		if int64(sectorSize) != fileInfo.Size() {
+			log.Errorf("%s: %v != %v", path, sectorSize, fileInfo.Size())
+			return false
+		}
+	} else if strings.Contains(path, "/unsealed/") {
+		// DONT know how to check unseal size
+	} else if strings.Contains(path, "/cache/") {
+		if !fileInfo.IsDir() {
+			log.Errorf("%s: is not directory", path)
+			os.RemoveAll(path)
+			return false
+		}
+		files, err := ioutil.ReadDir(path)
+		if nil != err {
+			log.Errorf("%s: readdir [%v]", path, err)
+			return false
+		}
+		for _, file := range files {
+			fileInfo, err := os.Stat(file.Name())
+			if nil != err {
+				log.Errorf("%s in %s: stat %v", file.Name(), path, err)
+				return false
+			}
+			if strings.Contains(file.Name(), "data-layer") {
+				if int64(sectorSize) != fileInfo.Size() {
+					log.Errorf("%s in %s: %v != %v", file.Name(), path, sectorSize, fileInfo.Size())
+					return false
+				}
+			} else if strings.Contains(file.Name(), "data-tree-d") {
+				var treeSize int64 = int64(sectorSize) * 2 - 32
+				if treeSize != fileInfo.Size() {
+					log.Errorf("%s in %s: %v != %v", file.Name(), path, treeSize, fileInfo.Size())
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
 func (st *Local) AcquireSector(ctx context.Context, sid abi.SectorID, spt abi.RegisteredSealProof, existing SectorFileType, allocate SectorFileType, pathType PathType, op AcquireMode) (SectorPaths, SectorPaths, error) {
 	if existing|allocate != existing^allocate {
 		return SectorPaths{}, SectorPaths{}, xerrors.New("can't both find and allocate a sector")
@@ -336,6 +383,11 @@ func (st *Local) AcquireSector(ctx context.Context, sid abi.SectorID, spt abi.Re
 
 	var out SectorPaths
 	var storageIDs SectorPaths
+
+	ssize, err := spt.SectorSize()
+	if err != nil {
+		return SectorPaths{}, SectorPaths{}, xerrors.Errorf("getting sector size: %w", err)
+	}
 
 	for _, fileType := range PathTypes {
 		if fileType&existing == 0 {
@@ -359,6 +411,10 @@ func (st *Local) AcquireSector(ctx context.Context, sid abi.SectorID, spt abi.Re
 			}
 
 			spath := p.sectorPath(sid, fileType)
+			if !st.checkPathIntegrity(ctx, spath, ssize) {
+				continue
+			}
+
 			SetPathByType(&out, fileType, spath)
 			SetPathByType(&storageIDs, fileType, string(info.ID))
 
