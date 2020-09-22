@@ -503,7 +503,7 @@ func (st *Local) moveCacheSector(ctx context.Context, sid abi.SectorID, fileType
 
 	spath := p.sectorPath(sid, fileType)
 	log.Infof("go moving cache sector (%v) from %s", sid, spath)
-	if err := move_cache_ex(spath); err != nil {
+	if err := moveCacheEx(spath); err != nil {
 		log.Errorf("move cache sector (%v) %s to hdd error: %w", sid, spath, err)
 	}
 
@@ -560,7 +560,26 @@ func (r *Remote) moveCacheRemote(ctx context.Context, url string) error {
 	return nil
 }
 
-func envmove(from, to string) error {
+func isLink(filename string) bool {
+	fileInfo, err := os.Lstat(filename)
+	if err != nil {
+		return false
+	}
+
+	if (os.ModeSymlink & fileInfo.Mode()) > 0 {
+		return true
+	}
+
+	return false
+}
+
+func envMove(from, to string) error {
+	log.Debugw("start to check the file is linked", "from:", from, "to:", to)
+	if isLink(from) {
+		log.Debugw("already linked", "from:", from, "to:", to)
+		return nil
+	}
+	log.Debugw("check the file is not linked,and move to hdd", "from:", from, "to:", to)
 
 	var errOut bytes.Buffer
 	cmd := exec.Command("/usr/bin/env", "mv", "-f", from, to)
@@ -568,7 +587,7 @@ func envmove(from, to string) error {
 	if err := cmd.Run(); err != nil {
 		return xerrors.Errorf("exec cp (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
 	}
-	log.Debugw("copy sector data", "from:", from, "to:", to)
+	log.Debugw("move sector data", "from:", from, "to:", to)
 
 	//make soft link
 	cmdln := exec.Command("/usr/bin/env", "ln", "-s", to, from)
@@ -581,7 +600,7 @@ func envmove(from, to string) error {
 	return nil
 }
 
-func sort_by_size(pl []os.FileInfo) []os.FileInfo {
+func sortBySize(pl []os.FileInfo) []os.FileInfo {
 	sort.Slice(pl, func(i, j int) bool {
 		flag := false
 		if pl[i].Size() > pl[j].Size() {
@@ -593,7 +612,7 @@ func sort_by_size(pl []os.FileInfo) []os.FileInfo {
 }
 
 // che_path = local_path + sector_name
-func move_cache_ex(che_path string) error {
+func moveCacheEx(che_path string) error {
 	log.Infow("move cache to hdd starting", "path", che_path)
 	var mv_files []string
 	var hd_paths []string
@@ -603,7 +622,7 @@ func move_cache_ex(che_path string) error {
 	sect_name = spl[len(spl)-1]
 
 	if sect_dir, err := ioutil.ReadDir(che_path); err == nil {
-		sect_dir_sort := sort_by_size(sect_dir)
+		sect_dir_sort := sortBySize(sect_dir)
 		for _, fi := range sect_dir_sort {
 			if fi.IsDir() {
 				continue
@@ -624,7 +643,7 @@ func move_cache_ex(che_path string) error {
 			log.Errorw("Get system stats error", "path", hdd[index], "error", err)
 			continue
 		}
-		//1024*1024*1024*64
+
 		if fs.Bfree*uint64(fs.Bsize) < 1024*1024*64 {
 			log.Errorw("no enough space", "path", che_path, "disk free", fs.Bfree*uint64(fs.Bsize))
 			continue
@@ -666,7 +685,7 @@ func move_cache_ex(che_path string) error {
 					break
 				}
 				to := to_path + string(os.PathSeparator) + filepath.Base(from)
-				if err := envmove(from, to); err != nil {
+				if err := envMove(from, to); err != nil {
 					log.Errorw("copy file to hdd err", "from", from, "to", to, "error", err)
 					continue
 				}

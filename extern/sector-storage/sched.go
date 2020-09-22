@@ -802,11 +802,9 @@ func (sh *scheduler) newWorker(w *workerHandle) {
 	w.closingMgr = make(chan struct{})
 
 	sh.workersLk.Lock()
-
 	id := sh.nextWorker
 	sh.workers[id] = w
 	sh.nextWorker++
-
 	sh.workersLk.Unlock()
 
 	allGPUs := 0

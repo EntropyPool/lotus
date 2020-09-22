@@ -6,21 +6,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"github.com/mitchellh/go-homedir"
-	"io"
-	"io/ioutil"
-	"math/bits"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"sort"
-	"strings"
-	"sync"
-	"syscall"
-
 	"github.com/ipfs/go-cid"
 	"golang.org/x/xerrors"
+	"io"
+	"math/bits"
+	"os"
+	"runtime"
 
 	ffi "github.com/filecoin-project/filecoin-ffi"
 	rlepluslazy "github.com/filecoin-project/go-bitfield/rle"
@@ -476,164 +467,6 @@ func (sb *Sealer) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 	return p1o, nil
 }
 
-func move(from, to string) error {
-	from, err := homedir.Expand(from)
-	if err != nil {
-		return xerrors.Errorf("move: expanding from: %w", err)
-	}
-
-	to, err = homedir.Expand(to)
-	if err != nil {
-		return xerrors.Errorf("move: expanding to: %w", err)
-	}
-
-	if filepath.Base(from) != filepath.Base(to) {
-		return xerrors.Errorf("move: base names must match ('%s' != '%s')", filepath.Base(from), filepath.Base(to))
-	}
-
-	toDir := filepath.Dir(to)
-
-	// `mv` has decades of experience in moving files quickly; don't pretend we
-	//  can do better
-	var errOut bytes.Buffer
-	cmd := exec.Command("/usr/bin/env", "mv", "-t", toDir, from)
-	cmd.Stderr = &errOut
-	if err := cmd.Run(); err != nil {
-		return xerrors.Errorf("exec mv (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
-	}
-	log.Infow("move sector data", "from:", from, "to:", to)
-
-	//make soft link
-	cmdln := exec.Command("/usr/bin/env", "ln", "-s", to, from)
-	cmdln.Stderr = &errOut
-	if err := cmdln.Run(); err != nil {
-		return xerrors.Errorf("exec mv (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
-	}
-	log.Infow("link sector data", "from:", from, "to:", to)
-
-	return nil
-}
-
-func copyFile(from, to string) error {
-
-	var errOut bytes.Buffer
-	cmd := exec.Command("/usr/bin/env", "mv", "-f", from, to)
-	cmd.Stderr = &errOut
-	if err := cmd.Run(); err != nil {
-		return xerrors.Errorf("exec cp (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
-	}
-	log.Infow("copy sector data", "from:", from, "to:", to)
-
-	//make soft link
-	cmdln := exec.Command("/usr/bin/env", "ln", "-s", to, from)
-	cmdln.Stderr = &errOut
-	if err := cmdln.Run(); err != nil {
-		return xerrors.Errorf("exec ln (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
-	}
-	log.Infow("link sector data", "from:", from, "to:", to)
-
-	return nil
-}
-
-func sort_by_size(pl []os.FileInfo) []os.FileInfo {
-	sort.Slice(pl, func(i, j int) bool {
-		flag := false
-		if pl[i].Size() > pl[j].Size() {
-			flag = true
-		}
-		return flag
-	})
-	return pl
-}
-
-func move_cache_ex(che_path string) {
-	log.Infow("move cache to hdd starting...")
-	var mv_files []string
-	var hd_paths []string
-	var sect_name string
-	//////////////////////////////////////////////
-	spl := strings.Split(che_path, string(os.PathSeparator))
-	sect_name = spl[len(spl)-1]
-
-	if sect_dir, err := ioutil.ReadDir(che_path); err == nil {
-		sect_dir_sort := sort_by_size(sect_dir)
-		for _, fi := range sect_dir_sort {
-			if fi.IsDir() {
-				continue
-			}
-			mv_files = append(mv_files, fi.Name())
-		}
-	}
-
-	log.Infow("all files to move", "files", mv_files)
-
-	env := os.Getenv("LOTUS_CACHE_HDD")
-	if env == "" {
-		log.Warnw("There is no environment variable LOTUS_CACHE_HDD")
-		return
-	}
-	hdd := strings.Split(env, ";")
-	for index := 0; index < len(hdd); index++ {
-		fs := syscall.Statfs_t{}
-		if err := syscall.Statfs(hdd[index], &fs); err != nil {
-			log.Errorw("Get system stats error", "path", hdd[index], "error", err)
-			continue
-		}
-		if fs.Bfree*uint64(fs.Bsize) < 1024*1024*1024*64 {
-			log.Errorw("no enough space", "path", che_path, "disk free", fs.Bfree*uint64(fs.Bsize))
-			continue
-		}
-		path := hdd[index] + string(os.PathSeparator) + sect_name
-		if err := os.MkdirAll(path, 0755); err != nil {
-			log.Warnf("create hdd cache(%s) err: %s", path, err)
-			continue
-		}
-		hd_paths = append(hd_paths, path)
-	}
-	log.Infow("all hdd for cache", "hdd_path", hd_paths)
-
-	if len(mv_files) == 0 || len(hd_paths) == 0 {
-		log.Warnw("no enough to move cache to hdd.")
-		return
-	}
-	//////////////////////////////////////////////
-	jobs := make(chan string, len(mv_files))
-	wait := &sync.WaitGroup{}
-
-	wait.Add(1)
-	go func(fis []string, ch chan string, wt *sync.WaitGroup) {
-		defer wt.Done()
-		for i := 0; i < len(fis); i++ {
-			ch <- che_path + string(os.PathSeparator) + fis[i]
-		}
-		close(ch)
-	}(mv_files, jobs, wait)
-
-	for i := 0; i < len(hd_paths); i++ {
-		wait.Add(1)
-		go func(to_path string, ch chan string, wt *sync.WaitGroup) {
-			defer wt.Done()
-			for {
-				from, ok := <-ch
-				if !ok {
-					log.Infow("there is no more move jobs", "to-hdd", to_path)
-					break
-				}
-				to := to_path + string(os.PathSeparator) + filepath.Base(from)
-				if err := copyFile(from, to); err != nil {
-					log.Errorw("copy file to hdd err", "from", from, "to", to, "error", err)
-					continue
-				}
-				log.Infow("copy file to hdd over", "from", from, "to", to)
-			}
-		}(hd_paths[i], jobs, wait)
-	}
-
-	wait.Wait()
-	log.Infow("move cache to hdd over.")
-	//////////////////////////////////////////////
-}
-
 func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase1Out storage.PreCommit1Out) (storage.SectorCids, error) {
 	paths, done, err := sb.sectors.AcquireSector(ctx, sector, stores.FTSealed|stores.FTCache, 0, stores.PathSealing)
 	if err != nil {
@@ -645,8 +478,6 @@ func (sb *Sealer) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 	if err != nil {
 		return storage.SectorCids{}, xerrors.Errorf("presealing sector %d (%s): %w", sector.Number, paths.Unsealed, err)
 	}
-
-	go move_cache_ex(paths.Cache)
 
 	return storage.SectorCids{
 		Unsealed: unsealedCID,
