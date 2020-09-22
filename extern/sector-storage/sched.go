@@ -62,7 +62,9 @@ type scheduler struct {
 	watchClosing  chan WorkerID
 	workerClosing chan WorkerID
 
-	schedule       chan *workerRequest
+	schedule   chan *workerRequest
+	reschedule chan *workerRequest
+
 	windowRequests chan *schedWindowRequest
 
 	// owned by the sh.runSched goroutine
@@ -156,7 +158,9 @@ func newScheduler(spt abi.RegisteredSealProof) *scheduler {
 		watchClosing:  make(chan WorkerID),
 		workerClosing: make(chan WorkerID),
 
-		schedule:       make(chan *workerRequest, 10),
+		schedule:   make(chan *workerRequest, 10),
+		reschedule: make(chan *workerRequest, 1000),
+
 		windowRequests: make(chan *schedWindowRequest, 20),
 
 		schedQueue: &requestQueue{},
@@ -264,6 +268,12 @@ func (sh *scheduler) runSched() {
 			iw = nil
 			doSched = true
 		case <-timeout.C:
+			for {
+				select {
+				case req := <-sh.reschedule:
+					sh.schedQueue.Push(req)
+				}
+			}
 			doSched = true
 			timeout.Reset(intv)
 		case <-sh.closing:
@@ -543,7 +553,7 @@ func (sh *scheduler) trySched() {
 			case done <- &window:
 			default:
 				for _, todo := range window.todo {
-					go func(todo *workerRequest) { sh.schedule <- todo }(todo)
+					go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
 				}
 				log.Error("expected sh.openWindows[wnd].done to be buffered")
 			}
@@ -657,7 +667,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 							break
 						} else {
 							firstWindow.todo = append(firstWindow.todo[:t], firstWindow.todo[t+1:]...)
-							go func(todo *workerRequest) { sh.schedule <- todo }(todo)
+							go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
 						}
 					}
 					worker.lk.Unlock()
@@ -926,7 +936,7 @@ func (sh *scheduler) workerCleanup(wid WorkerID, w *workerHandle) {
 
 		for _, window := range w.activeWindows {
 			for _, todo := range window.todo {
-				go func(todo *workerRequest) { sh.schedule <- todo }(todo)
+				go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
 			}
 		}
 
