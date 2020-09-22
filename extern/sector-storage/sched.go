@@ -79,7 +79,8 @@ type scheduler struct {
 type workerHandle struct {
 	w Worker
 
-	info storiface.WorkerInfo
+	info      storiface.WorkerInfo
+	taskRatio float32
 
 	preparing *activeResources
 	active    *activeResources
@@ -359,6 +360,7 @@ func (sh *scheduler) trySched() {
 			needRes := ResourceTable[task.taskType][sh.spt]
 
 			task.indexHeap = sqi
+			log.Debugf("find window for sector %v / %v", task.sector.Number, task.taskType)
 
 			for wnd, windowRequest := range sh.openWindows {
 				worker, ok := sh.workers[windowRequest.worker]
@@ -430,6 +432,15 @@ func (sh *scheduler) trySched() {
 	scheduled := 0
 	minWindowTodos := make([]int, len(windows))
 
+	allPC2Task := 0
+	for sqi := 0; sqi < sh.schedQueue.Len(); sqi++ {
+		task := (*sh.schedQueue)[sqi]
+		if sealtasks.TTPreCommit2 == task.taskType {
+			allPC2Task += 1
+		}
+	}
+	log.Infof("all %d PC2 task on this schedule.", allPC2Task)
+
 	for sqi := 0; sqi < sh.schedQueue.Len(); sqi++ {
 		task := (*sh.schedQueue)[sqi]
 		needRes := ResourceTable[task.taskType][sh.spt]
@@ -443,6 +454,14 @@ func (sh *scheduler) trySched() {
 			// TODO: allow bigger windows
 			if !windows[wnd].allocated.canHandleRequest(needRes, wid, "schedAssign", wr) {
 				continue
+			}
+
+			if sealtasks.TTPreCommit2 == task.taskType {
+				log.Infof("all pc2 task %d , ratio %f , todo %d ", allPC2Task, sh.workers[wid].taskRatio, len(windows[wnd].todo))
+				if (float32(allPC2Task) * sh.workers[wid].taskRatio) < float32(len(windows[wnd].todo)) {
+					log.Warnf("up to task limit: all pc2 task %d * ratio %f < todo %d ", allPC2Task, sh.workers[wid].taskRatio, len(windows[wnd].todo))
+					continue
+				}
 			}
 
 			if len(windows[wnd].todo) < minWindowTodos[wnd] || 0 == minWindowTodos[wnd] {
@@ -789,6 +808,43 @@ func (sh *scheduler) newWorker(w *workerHandle) {
 	sh.nextWorker++
 
 	sh.workersLk.Unlock()
+
+	allGPUs := 0
+	for wid, _ := range sh.workers {
+		info := sh.workers[wid].info
+		find := false
+		for _, tpy := range info.SupportTasks {
+			if tpy == sealtasks.TTPreCommit2 {
+				find = true
+				break
+			}
+		}
+		if find {
+			if len(info.Resources.GPUs) > 0 {
+				allGPUs += len(info.Resources.GPUs)
+			} else {
+				allGPUs += 1
+			}
+		}
+	}
+
+	if allGPUs > 0 {
+		for wid, _ := range sh.workers {
+			info := sh.workers[wid].info
+			for _, tpy := range info.SupportTasks {
+				if tpy == sealtasks.TTPreCommit2 {
+					gpus := len(sh.workers[id].info.Resources.GPUs)
+					if gpus <= 0 {
+						gpus = 1
+					}
+					sh.workers[id].lk.Lock()
+					sh.workers[id].taskRatio = float32(gpus) / float32(allGPUs)
+					sh.workers[id].lk.Unlock()
+					log.Warnf("set worker id %d task ratio is %f(%d/%d).", id, sh.workers[id].taskRatio, gpus, allGPUs)
+				}
+			}
+		}
+	}
 
 	sh.runWorker(id)
 
