@@ -74,6 +74,8 @@ type scheduler struct {
 	closing  chan struct{}
 	closed   chan struct{}
 	testSync chan struct{} // used for testing
+
+	sectorWorkerGroup map[abi.SectorNumber]string
 }
 
 type workerHandle struct {
@@ -163,6 +165,8 @@ func newScheduler(spt abi.RegisteredSealProof) *scheduler {
 
 		closing: make(chan struct{}),
 		closed:  make(chan struct{}),
+
+		sectorWorkerGroup: make(map[abi.SectorNumber]string),
 	}
 }
 
@@ -439,7 +443,6 @@ func (sh *scheduler) trySched() {
 			allPC2Task += 1
 		}
 	}
-	log.Infof("all %d PC2 task on this schedule.", allPC2Task)
 
 	for sqi := 0; sqi < sh.schedQueue.Len(); sqi++ {
 		task := (*sh.schedQueue)[sqi]
@@ -447,28 +450,47 @@ func (sh *scheduler) trySched() {
 
 		selectedWindow := -1
 
-		for _, wnd := range acceptableWindows[task.indexHeap] {
-			wid := sh.openWindows[wnd].worker
-			wr := sh.workers[wid].info.Resources
+		if sealtasks.TTPreCommit2 == task.taskType {
+			for _, wnd := range acceptableWindows[task.indexHeap] {
+				wid := sh.openWindows[wnd].worker
+				wr := sh.workers[wid].info.Resources
 
-			// TODO: allow bigger windows
-			if !windows[wnd].allocated.canHandleRequest(needRes, wid, "schedAssign", wr) {
-				continue
-			}
-
-			if sealtasks.TTPreCommit2 == task.taskType {
-				log.Infof("all pc2 task %d , ratio %f , todo %d ", allPC2Task, sh.workers[wid].taskRatio, len(windows[wnd].todo))
-				if (float32(allPC2Task) * sh.workers[wid].taskRatio) < float32(len(windows[wnd].todo)) {
-					log.Warnf("up to task limit: all pc2 task %d * ratio %f < todo %d ", allPC2Task, sh.workers[wid].taskRatio, len(windows[wnd].todo))
+				// TODO: allow bigger windows
+				if !windows[wnd].allocated.canHandleRequest(needRes, wid, "schedAssign", wr) {
 					continue
 				}
+				if group, ok := sh.sectorWorkerGroup[task.sector.Number]; ok {
+					if group == sh.workers[wid].info.GroupName {
+						selectedWindow = wnd
+						break
+					}
+				}
 			}
+		}
 
-			if len(windows[wnd].todo) < minWindowTodos[wnd] || 0 == minWindowTodos[wnd] {
-				selectedWindow = wnd
-				minWindowTodos[wnd] = len(windows[wnd].todo)
-				if 0 == minWindowTodos[wnd] {
-					break
+		if selectedWindow < 0 {
+			for _, wnd := range acceptableWindows[task.indexHeap] {
+				wid := sh.openWindows[wnd].worker
+				wr := sh.workers[wid].info.Resources
+
+				// TODO: allow bigger windows
+				if !windows[wnd].allocated.canHandleRequest(needRes, wid, "schedAssign", wr) {
+					continue
+				}
+
+				if sealtasks.TTPreCommit2 == task.taskType {
+					if (float32(allPC2Task) * sh.workers[wid].taskRatio) < float32(len(windows[wnd].todo)) {
+						log.Debugf("PC2 tasks[%d] already reach up limit[%f] of worker [%v]", len(windows[wnd].todo), float32(allPC2Task)*sh.workers[wid].taskRatio, sh.workers[wid].info.Address)
+						continue
+					}
+				}
+
+				if len(windows[wnd].todo) < minWindowTodos[wnd] || 0 == minWindowTodos[wnd] {
+					selectedWindow = wnd
+					minWindowTodos[wnd] = len(windows[wnd].todo)
+					if 0 == minWindowTodos[wnd] {
+						break
+					}
 				}
 			}
 		}
@@ -646,7 +668,19 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 					todo := firstWindow.todo[tidx]
 
-					log.Debugf("assign worker sector %d / %v -> %v", todo.sector.Number, todo.taskType, worker.info.Address)
+					if _, ok := sh.sectorWorkerGroup[todo.sector.Number]; !ok {
+						if sealtasks.TTPreCommit1 == todo.taskType {
+							sh.sectorWorkerGroup[todo.sector.Number] = worker.info.GroupName
+						}
+					}
+
+					log.Infof("assign worker sector %d / %v -> %v", todo.sector.Number, todo.taskType, worker.info.Address)
+					if _, ok := sh.sectorWorkerGroup[todo.sector.Number]; !ok {
+						log.Infof("  sector %v group %s, worker group %s", todo.sector.Number, sh.sectorWorkerGroup[todo.sector.Number], worker.info.GroupName)
+					} else {
+						log.Warnf("  sector %v not assigned any group, check if it's already do PC1", todo.sector.Number)
+					}
+
 					err := sh.assignWorker(taskDone, wid, worker, todo)
 
 					if err != nil {
