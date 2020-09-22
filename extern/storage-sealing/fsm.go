@@ -325,6 +325,7 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 		log.Errorf("sector %d failed unrecoverably", state.SectorNumber)
 	default:
 		log.Errorf("unexpected sector update state: %s", state.State)
+		state.State = Removing
 	}
 
 	return nil, processed, nil

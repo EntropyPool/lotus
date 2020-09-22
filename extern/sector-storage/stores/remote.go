@@ -357,9 +357,10 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 						wg.Done()
 						return
 					}
-					if err := r.fetchFile(ctx, remoteFile.url, remoteFile.out); err != nil {
+					if err = r.fetchFile(ctx, remoteFile.url, remoteFile.out); err != nil {
 						log.Errorw("fetch file err", "url", remoteFile.url, "outname", remoteFile.out, "error", err)
-						continue
+						wg.Done()
+						return
 					}
 					log.Infow("fetch file", "url", remoteFile.url, "outname", remoteFile.out)
 				}
@@ -371,7 +372,7 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 		targetUrl := url
 		outName := outname
 		if 0 != len(target) {
-			if err := os.MkdirAll(outname, 0755); err != nil { // nolint
+			if err = os.MkdirAll(outname, 0755); err != nil { // nolint
 				return xerrors.Errorf("mkdir: %w", err)
 			}
 			targetUrl += string(os.PathSeparator) + target
@@ -383,10 +384,9 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 	close(taskCh)
 	wg.Wait()
 
-	log.Infow("fetch sector all over.", "url", url, "outname", outname)
+	log.Infow("fetch sector all over", "url", url, "outname", outname, "[", err, "]")
 
-	//TODO check fetch results
-	return nil
+	return err
 }
 
 func (r *Remote) fetchFile(ctx context.Context, url, outname string) error {
