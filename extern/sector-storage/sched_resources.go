@@ -61,39 +61,39 @@ func (a *activeResources) canHandleRequest(needRes Resources, wid WorkerID, call
 	// TODO: dedupe needRes.BaseMinMemory per task type (don't add if that task is already running)
 	minNeedMem := res.MemReserved + a.memUsedMin + needRes.MinMemory + needRes.BaseMinMemory
 	if minNeedMem > res.MemPhysical {
-		log.Infof("sched: not scheduling on worker %d for %s; not enough physical memory - need: %dM, have %dM", wid, caller, minNeedMem/mib, res.MemPhysical/mib)
+		log.Debugf("sched: not scheduling on worker %d for %s; not enough physical memory - need: %dM, have %dM", wid, caller, minNeedMem/mib, res.MemPhysical/mib)
 		return false
 	}
 
 	maxNeedMem := res.MemReserved + a.memUsedMax + needRes.MaxMemory + needRes.BaseMinMemory
 
 	if maxNeedMem > res.MemSwap+res.MemPhysical {
-		log.Infof("sched: not scheduling on worker %d for %s; not enough virtual memory - need: %dM, have %dM", wid, caller, maxNeedMem/mib, (res.MemSwap+res.MemPhysical)/mib)
+		log.Debugf("sched: not scheduling on worker %d for %s; not enough virtual memory - need: %dM, have %dM", wid, caller, maxNeedMem/mib, (res.MemSwap+res.MemPhysical)/mib)
 		return false
 	}
 
 	if needRes.MultiThread() {
 		if a.cpuUse > 0 {
-			log.Infof("sched: not scheduling on worker %d for %s; multicore process needs %d threads, %d in use, target %d", wid, caller, res.CPUs, a.cpuUse, res.CPUs)
+			log.Debugf("sched: not scheduling on worker %d for %s; multicore process needs %d threads, %d in use, target %d", wid, caller, res.CPUs, a.cpuUse, res.CPUs)
 			return false
 		}
 	} else {
 		if a.cpuUse+uint64(needRes.Threads)+uint64(needRes.Reserved) > res.CPUs {
-			log.Infof("sched: not scheduling on worker %d for %s; not enough threads, need %d, %d in use, %d in reserved, target %d", wid, caller, needRes.Threads, a.cpuUse, needRes.Reserved, res.CPUs)
+			log.Debugf("sched: not scheduling on worker %d for %s; not enough threads, need %d, %d in use, %d in reserved, target %d", wid, caller, needRes.Threads, a.cpuUse, needRes.Reserved, res.CPUs)
 			return false
 		}
 	}
 
 	if len(res.GPUs) > 0 && needRes.CanGPU {
 		if a.gpuUsed {
-			log.Infof("sched: not scheduling on worker %d for %s; GPU in use", wid, caller)
+			log.Debugf("sched: not scheduling on worker %d for %s; GPU in use", wid, caller)
 			return false
 		}
 	}
 
-	//log.Infof("sched: to scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
+	//log.Debugf("sched: to scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
 	if needRes.TaskLimit > 0 && (a.taskUsed >= needRes.TaskLimit) {
-		log.Infof("sched: not scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
+		log.Debugf("sched: not scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
 		return false
 	}
 
