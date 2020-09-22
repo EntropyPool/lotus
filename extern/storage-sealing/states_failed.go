@@ -144,6 +144,11 @@ func (m *Sealing) handlePreCommitFailed(ctx statemachine.Context, sector SectorI
 	return ctx.Send(SectorRetryPreCommit{})
 }
 
+func (m *Sealing) handleUnknownState(ctx statemachine.Context, sector SectorInfo) error {
+	log.Errorf("handleUnknownState: unknow state %v sector %v", sector.State, sector.SectorNumber)
+	return ctx.Send(SectorRemove{})
+}
+
 func (m *Sealing) handleComputeProofFailed(ctx statemachine.Context, sector SectorInfo) error {
 	// TODO: Check sector files
 
