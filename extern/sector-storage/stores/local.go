@@ -520,18 +520,12 @@ func (r *Remote) MoveCache(ctx context.Context, sid abi.SectorID, typ SectorFile
 		return xerrors.Errorf("finding existing sector %d(t:%d) failed: %w", sid, typ, err)
 	}
 
-	err_url := ""
 	for _, info := range si {
 		for _, url := range info.URLs {
 			if err := r.moveCacheRemote(ctx, url); err != nil {
-				log.Errorf("move cache %s: %+v", url, err)
-				err_url += err_url + url
-				continue
+				return xerrors.Errorf("fail move cache %s: %+v", url, err)
 			}
 		}
-	}
-	if err_url != "" {
-		return xerrors.Errorf("move cache error: %s", err_url)
 	}
 
 	return nil
