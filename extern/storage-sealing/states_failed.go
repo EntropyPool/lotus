@@ -68,8 +68,8 @@ func (m *Sealing) handleSealPrecommit2Failed(ctx statemachine.Context, sector Se
 	}
 
 	log.Warnf("pre commit2 fails(%v) sector (%v)", sector.PreCommit2Fails, sector.SectorNumber)
-	if sector.PreCommit2Fails > 5 {
-		// return ctx.Send(SectorRetrySealPreCommit1{})
+	if sector.PreCommit2Fails > 360 {
+		return ctx.Send(SectorRemove{})
 	}
 
 	return ctx.Send(SectorRetrySealPreCommit2{})
