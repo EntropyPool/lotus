@@ -376,7 +376,7 @@ func (st *Local) checkPathIntegrity(ctx context.Context, path string, spt abi.Re
 					return false
 				}
 			} else if strings.Contains(fileName, "data-tree-d") {
-				var treeSize int64 = int64(sectorSize) * 2 - 32
+				var treeSize int64 = int64(sectorSize)*2 - 32
 				if treeSize != fileInfo.Size() {
 					log.Errorf("%s in %s: %v != %v", fileName, path, treeSize, fileInfo.Size())
 					return false
@@ -397,7 +397,6 @@ func (st *Local) AcquireSector(ctx context.Context, sid abi.SectorID, spt abi.Re
 
 	var out SectorPaths
 	var storageIDs SectorPaths
-
 
 	sptCheck := spt
 	if int(spt) == -1 {
@@ -646,6 +645,52 @@ func envMove(from, to string) error {
 	}
 	log.Debugw("check the file is not linked,and move to hdd", "from:", from, "to:", to)
 
+	fp := from + ".fp"
+	if !isExists(fp) {
+		//create fp file
+		f, err := os.Create(fp)
+		defer f.Close()
+		if err != nil {
+			log.Errorf("creat fp file error %w", err)
+		} else {
+			f.Write([]byte(to))
+		}
+	} else {
+		//read fp
+		f, err := os.OpenFile(fp, os.O_RDONLY, 0600)
+		defer f.Close()
+		if err != nil {
+			log.Errorf("open fp file error %w", err)
+		} else {
+			c, _ := ioutil.ReadAll(f)
+			oldto := string(c)
+			log.Infow("read fp file:", "content", oldto)
+			if isExists(from) {
+				os.Remove(oldto)
+				log.Infow("Remove old to file", "oldto", oldto)
+			} else {
+				if isExists(oldto) {
+					var errOut bytes.Buffer
+					cmdln := exec.Command("/usr/bin/env", "ln", "-s", oldto, from)
+					cmdln.Stderr = &errOut
+					if err := cmdln.Run(); err != nil {
+						return xerrors.Errorf("exec re-ln (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+					}
+					log.Debugw("re-link sector data", "from:", from, "oldto:", oldto)
+
+					if err := os.Remove(fp); err != nil {
+						log.Debugw("remove fp file failed", "fp:", fp)
+					}
+
+					return nil
+				}
+
+				return xerrors.Errorf("exec re-ln failed")
+			}
+
+		}
+	}
+
 	var errOut bytes.Buffer
 	cmd := exec.Command("/usr/bin/env", "mv", "-f", from, to)
 	cmd.Stderr = &errOut
@@ -661,6 +706,10 @@ func envMove(from, to string) error {
 		return xerrors.Errorf("exec ln (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
 	}
 	log.Debugw("link sector data", "from:", from, "to:", to)
+
+	if err := os.Remove(fp); err != nil {
+		log.Debugw("remove fp file failed", "fp:", fp)
+	}
 
 	return nil
 }
@@ -809,6 +858,29 @@ func pathExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+func isExists(path string) bool {
+	_, err := os.Stat(path)
+	if err != nil {
+		if os.IsExist(err) {
+			return true
+		}
+		return false
+	}
+	return true
+}
+
+func isDir(path string) bool {
+	s, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return s.IsDir()
+}
+
+func isFile(path string) bool {
+	return !isDir(path)
 }
 
 func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ SectorFileType, storage ID) error {
