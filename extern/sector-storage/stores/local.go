@@ -362,6 +362,9 @@ func (st *Local) checkPathIntegrity(ctx context.Context, path string, spt abi.Re
 			return false
 		}
 		for _, file := range files {
+			if !file.Mode().IsRegular() {
+				continue
+			}
 			fileName := path + "/" + file.Name()
 			fileInfo, err := os.Stat(fileName)
 			if nil != err {
