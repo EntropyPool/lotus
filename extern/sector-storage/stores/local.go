@@ -351,20 +351,21 @@ func (st *Local) checkPathIntegrity(ctx context.Context, path string, sectorSize
 			return false
 		}
 		for _, file := range files {
-			fileInfo, err := os.Stat(file.Name())
+			fileName := path + "/" + file.Name()
+			fileInfo, err := os.Stat(fileName)
 			if nil != err {
-				log.Errorf("%s in %s: stat %v", file.Name(), path, err)
+				log.Errorf("%s in %s: stat %v", fileName, path, err)
 				return false
 			}
-			if strings.Contains(file.Name(), "data-layer") {
+			if strings.Contains(fileName, "data-layer") {
 				if int64(sectorSize) != fileInfo.Size() {
-					log.Errorf("%s in %s: %v != %v", file.Name(), path, sectorSize, fileInfo.Size())
+					log.Errorf("%s in %s: %v != %v", fileName, path, sectorSize, fileInfo.Size())
 					return false
 				}
-			} else if strings.Contains(file.Name(), "data-tree-d") {
+			} else if strings.Contains(fileName, "data-tree-d") {
 				var treeSize int64 = int64(sectorSize) * 2 - 32
 				if treeSize != fileInfo.Size() {
-					log.Errorf("%s in %s: %v != %v", file.Name(), path, treeSize, fileInfo.Size())
+					log.Errorf("%s in %s: %v != %v", fileName, path, treeSize, fileInfo.Size())
 					return false
 				}
 			}
