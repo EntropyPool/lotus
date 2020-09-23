@@ -326,7 +326,18 @@ func (st *Local) Reserve(ctx context.Context, sid abi.SectorID, spt abi.Register
 	return done, nil
 }
 
-func (st *Local) checkPathIntegrity(ctx context.Context, path string, sectorSize abi.SectorSize) bool {
+func (st *Local) checkPathIntegrity(ctx context.Context, path string, spt abi.RegisteredSealProof) bool {
+	if int(spt) == -1 {
+		log.Infof("%s: hack spt from http_handler, just ignore", path)
+		return true
+	}
+
+	sectorSize, err := spt.SectorSize()
+	if err != nil {
+		return false
+	}
+
+	log.Infof("check path %s with sector %v", path, sectorSize)
 	fileInfo, err := os.Stat(path)
 	if nil != err {
 		log.Errorf("%s: stat [%v]", path, err)
@@ -384,9 +395,10 @@ func (st *Local) AcquireSector(ctx context.Context, sid abi.SectorID, spt abi.Re
 	var out SectorPaths
 	var storageIDs SectorPaths
 
-	ssize, err := spt.SectorSize()
-	if err != nil {
-		return SectorPaths{}, SectorPaths{}, xerrors.Errorf("getting sector size: %w", err)
+
+	sptCheck := spt
+	if int(spt) == -1 {
+		spt = 0
 	}
 
 	for _, fileType := range PathTypes {
@@ -411,7 +423,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid abi.SectorID, spt abi.Re
 			}
 
 			spath := p.sectorPath(sid, fileType)
-			if !st.checkPathIntegrity(ctx, spath, ssize) {
+			if !st.checkPathIntegrity(ctx, spath, sptCheck) {
 				continue
 			}
 
