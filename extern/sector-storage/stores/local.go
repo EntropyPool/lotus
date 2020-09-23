@@ -337,7 +337,6 @@ func (st *Local) checkPathIntegrity(ctx context.Context, path string, spt abi.Re
 		return false
 	}
 
-	log.Infof("check path %s with sector %v", path, sectorSize)
 	fileInfo, err := os.Stat(path)
 	if nil != err {
 		log.Errorf("%s: stat [%v]", path, err)
