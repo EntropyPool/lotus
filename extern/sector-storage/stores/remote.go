@@ -216,7 +216,7 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 			}
 
 			if merr != nil {
-				log.Warnw("acquireFromRemote encountered errors when fetching sector from remote", "errors", merr)
+				return "", xerrors.Errorf("acquireFromRemote encountered errors when fetching sector from remote", "errors", merr)
 			}
 			log.Infof("fetch move over (storage %s) %s -> %s", info.ID, tempDest, dest)
 			return url, nil

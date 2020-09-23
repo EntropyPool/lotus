@@ -268,10 +268,13 @@ func (sh *scheduler) runSched() {
 			iw = nil
 			doSched = true
 		case <-timeout.C:
+		timerSched:
 			for {
 				select {
 				case req := <-sh.reschedule:
 					sh.schedQueue.Push(req)
+				default:
+					break timerSched
 				}
 			}
 			doSched = true

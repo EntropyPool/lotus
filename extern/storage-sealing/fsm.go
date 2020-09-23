@@ -191,8 +191,10 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 
 	p := fsmPlanners[state.State]
 	if p == nil {
+		log.Errorf("planner for state %s not found", state.State)
 		state.State = Removing
-		return nil, 0, xerrors.Errorf("planner for state %s not found", state.State)
+		m.stats.updateSector(m.minerSector(state.SectorNumber), state.State)
+		return m.handleUnknownState, 1, nil
 	}
 
 	processed, err := p(events, state)

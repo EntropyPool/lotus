@@ -77,7 +77,7 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 	// The caller has a lock on this sector already, no need to get one here
 
 	// passing 0 spt because we don't allocate anything
-	paths, _, err := handler.Local.AcquireSector(r.Context(), id, 0, ft, FTNone, PathStorage, AcquireMove)
+	paths, _, err := handler.Local.AcquireSector(r.Context(), id, -1, ft, FTNone, PathStorage, AcquireMove)
 	if err != nil {
 		log.Error("%+v", err)
 		w.WriteHeader(500)
@@ -142,7 +142,7 @@ func (handler *FetchHandler) remoteListSector(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	paths, _, err := handler.Local.AcquireSector(r.Context(), id, 0, ft, FTNone, PathStorage, AcquireMove)
+	paths, _, err := handler.Local.AcquireSector(r.Context(), id, -1, ft, FTNone, PathStorage, AcquireMove)
 	if err != nil {
 		log.Error("%+v", err)
 		w.WriteHeader(500)
@@ -211,7 +211,7 @@ func (handler *FetchHandler) remoteGetFile(w http.ResponseWriter, r *http.Reques
 	// The caller has a lock on this sector already, no need to get one here
 
 	// passing 0 spt because we don't allocate anything
-	paths, _, err := handler.Local.AcquireSector(r.Context(), id, 0, ft, FTNone, PathStorage, AcquireMove)
+	paths, _, err := handler.Local.AcquireSector(r.Context(), id, -1, ft, FTNone, PathStorage, AcquireMove)
 	if err != nil {
 		log.Error("%+v", err)
 		w.WriteHeader(500)
