@@ -743,7 +743,7 @@ func moveCacheEx(che_path string) error {
 	if sect_dir, err := ioutil.ReadDir(che_path); err == nil {
 		sect_dir_sort := sortBySize(sect_dir)
 		for _, fi := range sect_dir_sort {
-			if fi.IsDir() {
+			if fi.IsDir() || strings.HasSuffix(fi.Name(), ".fp") {
 				continue
 			}
 			mv_files = append(mv_files, fi.Name())
