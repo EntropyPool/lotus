@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/gorilla/mux"
 	logging "github.com/ipfs/go-log/v2"
@@ -175,6 +176,11 @@ func (handler *FetchHandler) remoteListSector(w http.ResponseWriter, r *http.Req
 				if fi.IsDir() {
 					continue
 				}
+
+				if !strings.HasSuffix(fi.Name(), ".fp") {
+					continue
+				}
+
 				if files == "" {
 					files = fi.Name()
 				} else {
