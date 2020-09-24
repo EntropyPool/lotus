@@ -643,7 +643,7 @@ func envMove(from, to string) error {
 		log.Debugw("already linked", "from:", from, "to:", to)
 		return nil
 	}
-	log.Debugw("check the file is not linked,and move to hdd", "from:", from, "to:", to)
+	log.Debugw("check the file is not linked,and then move to hdd", "from:", from, "to:", to)
 
 	fp := from + ".fp"
 	if !isExists(fp) {
@@ -654,6 +654,7 @@ func envMove(from, to string) error {
 			log.Errorf("creat fp file error %w", err)
 		} else {
 			f.Write([]byte(to))
+			log.Infow("write fp file", "content", to)
 		}
 	} else {
 		//read fp
@@ -666,8 +667,11 @@ func envMove(from, to string) error {
 			oldto := string(c)
 			log.Infow("read fp file:", "content", oldto)
 			if isExists(from) {
-				os.Remove(oldto)
-				log.Infow("Remove old to file", "oldto", oldto)
+				if err := os.Remove(oldto); err != nil {
+					log.Errorw("remove old target file failed", "oldto:", oldto)
+				} else {
+					log.Infow("remove old target file", "oldto", oldto)
+				}
 			} else {
 				if isExists(oldto) {
 					var errOut bytes.Buffer
@@ -679,15 +683,12 @@ func envMove(from, to string) error {
 					log.Debugw("re-link sector data", "from:", from, "oldto:", oldto)
 
 					if err := os.Remove(fp); err != nil {
-						log.Debugw("remove fp file failed", "fp:", fp)
+						log.Errorw("remove fp file failed", "fp:", fp)
 					}
-
 					return nil
 				}
-
 				return xerrors.Errorf("exec re-ln failed")
 			}
-
 		}
 	}
 
