@@ -327,8 +327,8 @@ func (st *Local) Reserve(ctx context.Context, sid abi.SectorID, spt abi.Register
 }
 
 func (st *Local) checkPathIntegrity(ctx context.Context, path string, spt abi.RegisteredSealProof) bool {
-	if int(spt) == -1 {
-		log.Infof("%s: hack spt from http_handler, just ignore", path)
+	if int(spt) == -1 || int(spt) == 0 {
+		log.Infof("%s: hack spt from stupid case, just ignore", path)
 		return true
 	}
 
