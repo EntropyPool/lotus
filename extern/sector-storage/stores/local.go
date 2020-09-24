@@ -365,7 +365,7 @@ func (st *Local) checkPathIntegrity(ctx context.Context, path string, spt abi.Re
 				continue
 			}
 			fileName := path + "/" + file.Name()
-			if !strings.HasSuffix(fileName, ".fp") {
+			if strings.HasSuffix(fileName, ".fp") {
 				continue
 			}
 

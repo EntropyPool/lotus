@@ -177,7 +177,7 @@ func (handler *FetchHandler) remoteListSector(w http.ResponseWriter, r *http.Req
 					continue
 				}
 
-				if !strings.HasSuffix(fi.Name(), ".fp") {
+				if strings.HasSuffix(fi.Name(), ".fp") {
 					continue
 				}
 
