@@ -1,10 +1,10 @@
 [submodule "extern/filecoin-ffi"]
 	path = extern/filecoin-ffi
 	url = https://github.com/EntropyPool/filecoin-ffi.git
-	branch = entropypool-40569104
+	branch = entropypool-6b975a73
 [submodule "extern/serialization-vectors"]
 	path = extern/serialization-vectors
 	url = https://github.com/filecoin-project/serialization-vectors
 [submodule "extern/test-vectors"]
 	path = extern/test-vectors
-	url = https://github.com/filecoin-project/test-vectors.git
+	url = https://github.com/EntropyPool/test-vectors.git
