@@ -206,8 +206,7 @@ func (st *Local) OpenPath(ctx context.Context, p string) error {
 
 			sid, err := ParseSectorID(ent.Name())
 			if err != nil {
-				log.Warnf("parse sector id %s: %w", ent.Name(), err)
-				continue
+				return xerrors.Errorf("parse sector id %s: %w", ent.Name(), err)
 			}
 
 			if err := st.index.StorageDeclareSector(ctx, meta.ID, sid, t, meta.CanStore); err != nil {
@@ -329,7 +328,7 @@ func (st *Local) Reserve(ctx context.Context, sid abi.SectorID, spt abi.Register
 
 func (st *Local) checkPathIntegrity(ctx context.Context, path string, spt abi.RegisteredSealProof) bool {
 	if int(spt) == -1 || int(spt) == 0 {
-		log.Infof("%s: hack spt from http_handler, just ignore", path)
+		log.Infof("%s: hack spt from stupid case, just ignore", path)
 		return true
 	}
 
@@ -366,6 +365,10 @@ func (st *Local) checkPathIntegrity(ctx context.Context, path string, spt abi.Re
 				continue
 			}
 			fileName := path + "/" + file.Name()
+			if strings.HasSuffix(fileName, ".fp") {
+				continue
+			}
+
 			fileInfo, err := os.Stat(fileName)
 			if nil != err {
 				log.Errorf("%s in %s: stat %v", fileName, path, err)
@@ -377,7 +380,7 @@ func (st *Local) checkPathIntegrity(ctx context.Context, path string, spt abi.Re
 					return false
 				}
 			} else if strings.Contains(fileName, "data-tree-d") {
-				var treeSize int64 = int64(sectorSize) * 2 - 32
+				var treeSize int64 = int64(sectorSize)*2 - 32
 				if treeSize != fileInfo.Size() {
 					log.Errorf("%s in %s: %v != %v", fileName, path, treeSize, fileInfo.Size())
 					return false
@@ -398,7 +401,6 @@ func (st *Local) AcquireSector(ctx context.Context, sid abi.SectorID, spt abi.Re
 
 	var out SectorPaths
 	var storageIDs SectorPaths
-
 
 	sptCheck := spt
 	if int(spt) == -1 {
@@ -645,7 +647,58 @@ func envMove(from, to string) error {
 		log.Debugw("already linked", "from:", from, "to:", to)
 		return nil
 	}
-	log.Debugw("check the file is not linked,and move to hdd", "from:", from, "to:", to)
+	log.Debugw("check the file is not linked,and then move to hdd", "from:", from, "to:", to)
+
+	fp := from + ".fp"
+	if !isExists(fp) {
+		//create fp file
+		f, err := os.Create(fp)
+		defer f.Close()
+		if err != nil {
+			log.Errorf("creat fp file error %w", err)
+		} else {
+			f.Write([]byte(to))
+			log.Infow("write fp file", "content", to)
+		}
+	} else {
+		//read fp
+		f, err := os.OpenFile(fp, os.O_RDWR, 0600)
+		defer f.Close()
+		if err != nil {
+			log.Errorf("open fp file error %w", err)
+		} else {
+			c, _ := ioutil.ReadAll(f)
+			oldto := string(c)
+			log.Infow("read fp file:", "content", oldto)
+			if isExists(from) {
+				f.Truncate(0)
+				f.WriteAt([]byte(to), 0)
+				log.Infow("write new target file", "to", to)
+
+				if err := os.Remove(oldto); err != nil {
+					log.Errorw("remove old target file failed", "oldto:", oldto)
+				} else {
+					log.Infow("remove old target file", "oldto", oldto)
+				}
+			} else {
+				if isExists(oldto) {
+					var errOut bytes.Buffer
+					cmdln := exec.Command("/usr/bin/env", "ln", "-s", oldto, from)
+					cmdln.Stderr = &errOut
+					if err := cmdln.Run(); err != nil {
+						return xerrors.Errorf("exec re-ln (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+					}
+					log.Debugw("re-link sector data", "from:", from, "oldto:", oldto)
+
+					if err := os.Remove(fp); err != nil {
+						log.Errorw("remove fp file failed", "fp:", fp)
+					}
+					return nil
+				}
+				return xerrors.Errorf("exec re-ln failed")
+			}
+		}
+	}
 
 	var errOut bytes.Buffer
 	cmd := exec.Command("/usr/bin/env", "mv", "-f", from, to)
@@ -662,6 +715,10 @@ func envMove(from, to string) error {
 		return xerrors.Errorf("exec ln (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
 	}
 	log.Debugw("link sector data", "from:", from, "to:", to)
+
+	if err := os.Remove(fp); err != nil {
+		log.Debugw("remove fp file failed", "fp:", fp)
+	}
 
 	return nil
 }
@@ -693,7 +750,20 @@ func moveCacheEx(che_path string) error {
 			if fi.IsDir() {
 				continue
 			}
-			mv_files = append(mv_files, fi.Name())
+
+			fileAdded := false
+			fileName := strings.ReplaceAll(fi.Name(), ".fp", "")
+
+			for _, file := range mv_files {
+				if file == fileName {
+					fileAdded = true
+					break
+				}
+			}
+
+			if !fileAdded {
+				mv_files = append(mv_files, fileName)
+			}
 		}
 	}
 	log.Infow("all files to move", "files", mv_files)
@@ -810,6 +880,29 @@ func pathExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+func isExists(path string) bool {
+	_, err := os.Stat(path)
+	if err != nil {
+		if os.IsExist(err) {
+			return true
+		}
+		return false
+	}
+	return true
+}
+
+func isDir(path string) bool {
+	s, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return s.IsDir()
+}
+
+func isFile(path string) bool {
+	return !isDir(path)
 }
 
 func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ SectorFileType, storage ID) error {

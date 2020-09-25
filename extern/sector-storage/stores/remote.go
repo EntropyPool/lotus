@@ -371,6 +371,9 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 	for _, target := range targets {
 		targetUrl := url
 		outName := outname
+		if strings.HasSuffix(target, ".fp") {
+			continue
+		}
 		if 0 != len(target) {
 			if err = os.MkdirAll(outname, 0755); err != nil { // nolint
 				return xerrors.Errorf("mkdir: %w", err)
