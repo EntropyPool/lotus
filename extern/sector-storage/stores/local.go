@@ -662,7 +662,7 @@ func envMove(from, to string) error {
 		}
 	} else {
 		//read fp
-		f, err := os.OpenFile(fp, os.O_RDONLY, 0600)
+		f, err := os.OpenFile(fp, os.O_RDWR, 0600)
 		defer f.Close()
 		if err != nil {
 			log.Errorf("open fp file error %w", err)
@@ -671,6 +671,10 @@ func envMove(from, to string) error {
 			oldto := string(c)
 			log.Infow("read fp file:", "content", oldto)
 			if isExists(from) {
+				f.Truncate(0)
+				f.WriteAt([]byte(to), 0)
+				log.Infow("write new target file", "to", to)
+
 				if err := os.Remove(oldto); err != nil {
 					log.Errorw("remove old target file failed", "oldto:", oldto)
 				} else {
