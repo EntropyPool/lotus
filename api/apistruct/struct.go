@@ -1282,7 +1282,13 @@ func (w *WorkerStruct) SealPreCommit1(ctx context.Context, sector abi.SectorID, 
 }
 
 func (w *WorkerStruct) SealPreCommit2(ctx context.Context, sector abi.SectorID, p1o storage.PreCommit1Out) (storage.SectorCids, error) {
+
 	return w.Internal.SealPreCommit2(ctx, sector, p1o)
+}
+
+func (w *WorkerStruct) MovingCache(ctx context.Context, sector abi.SectorID) error {
+
+	return nil //w.Internal.Moving(ctx, sector)
 }
 
 func (w *WorkerStruct) SealCommit1(ctx context.Context, sector abi.SectorID, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (storage.Commit1Out, error) {

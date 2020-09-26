@@ -36,6 +36,8 @@ func (a *activeResources) add(wr storiface.WorkerResources, r Resources) {
 
 	a.memUsedMin += r.MinMemory
 	a.memUsedMax += r.MaxMemory
+
+	a.taskUsed += 1
 }
 
 func (a *activeResources) free(wr storiface.WorkerResources, r Resources) {
@@ -50,6 +52,8 @@ func (a *activeResources) free(wr storiface.WorkerResources, r Resources) {
 
 	a.memUsedMin -= r.MinMemory
 	a.memUsedMax -= r.MaxMemory
+
+	a.taskUsed -= 1
 }
 
 func (a *activeResources) canHandleRequest(needRes Resources, wid WorkerID, caller string, res storiface.WorkerResources) bool {
@@ -74,8 +78,8 @@ func (a *activeResources) canHandleRequest(needRes Resources, wid WorkerID, call
 			return false
 		}
 	} else {
-		if a.cpuUse+uint64(needRes.Threads) > res.CPUs {
-			log.Debugf("sched: not scheduling on worker %d for %s; not enough threads, need %d, %d in use, target %d", wid, caller, needRes.Threads, a.cpuUse, res.CPUs)
+		if a.cpuUse+uint64(needRes.Threads)+uint64(needRes.Reserved) > res.CPUs {
+			log.Debugf("sched: not scheduling on worker %d for %s; not enough threads, need %d, %d in use, %d in reserved, target %d", wid, caller, needRes.Threads, a.cpuUse, needRes.Reserved, res.CPUs)
 			return false
 		}
 	}
@@ -85,6 +89,12 @@ func (a *activeResources) canHandleRequest(needRes Resources, wid WorkerID, call
 			log.Debugf("sched: not scheduling on worker %d for %s; GPU in use", wid, caller)
 			return false
 		}
+	}
+
+	//log.Debugf("sched: to scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
+	if needRes.TaskLimit > 0 && (a.taskUsed >= needRes.TaskLimit) {
+		log.Debugf("sched: not scheduling on worker %d for %s; up to task limit, %d in use, limit %d", wid, caller, a.taskUsed, needRes.TaskLimit)
+		return false
 	}
 
 	return true
@@ -110,11 +120,11 @@ func (a *activeResources) utilization(wr storiface.WorkerResources) float64 {
 }
 
 func (wh *workerHandle) utilization() float64 {
+	wh.wndLk.Lock()
 	wh.lk.Lock()
 	u := wh.active.utilization(wh.info.Resources)
 	u += wh.preparing.utilization(wh.info.Resources)
 	wh.lk.Unlock()
-	wh.wndLk.Lock()
 	for _, window := range wh.activeWindows {
 		u += window.allocated.utilization(wh.info.Resources)
 	}

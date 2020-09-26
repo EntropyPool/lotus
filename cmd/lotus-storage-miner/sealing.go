@@ -8,6 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+	"regexp"
 
 	"golang.org/x/xerrors"
 
@@ -74,7 +75,27 @@ var sealingWorkersCmd = &cli.Command{
 				gpuUse = ""
 			}
 
-			fmt.Printf("Worker %d, host %s\n", stat.id, color.MagentaString(stat.Info.Hostname))
+			addressStr := stat.Info.Address
+			if 0 == len(addressStr) {
+				addressStr = "localhost"
+			}
+			fmt.Printf("Worker %d, host %s/%s[%s]\n", stat.id, color.MagentaString(stat.Info.Hostname),
+				color.MagentaString(addressStr), color.MagentaString(stat.Info.GroupName))
+
+			taskTypes := ""
+			for _, taskType := range stat.Info.SupportTasks {
+				taskSpecs := strings.Split(string(taskType), "/")
+				if 0 < len(taskTypes) {
+					taskTypes += " | "
+				}
+				lastSpec := taskSpecs[len(taskSpecs) - 1]
+				isNum := regexp.MustCompile(`[0-9]+`)
+				if isNum.MatchString(lastSpec) {
+					taskTypes += taskSpecs[len(taskSpecs) - 2]
+				}
+				taskTypes += taskSpecs[len(taskSpecs) - 1]
+			}
+			fmt.Printf("\tTSK: %s\n", taskTypes)
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)

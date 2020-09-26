@@ -102,6 +102,11 @@ var runCmd = &cli.Command{
 			Value: "0.0.0.0:3456",
 		},
 		&cli.StringFlag{
+			Name:  "groupname",
+			Usage: "group name of the worker (a group is workers under same switch)",
+			Value: "422f46736d73f62f9cf99e5943593e580080b5a3c5fe3657030dae2a0289e628",
+		},
+		&cli.StringFlag{
 			Name:   "address",
 			Hidden: true,
 		},
@@ -112,7 +117,7 @@ var runCmd = &cli.Command{
 		&cli.BoolFlag{
 			Name:  "addpiece",
 			Usage: "enable addpiece",
-			Value: true,
+			Value: false,
 		},
 		&cli.BoolFlag{
 			Name:  "precommit1",
@@ -215,12 +220,14 @@ var runCmd = &cli.Command{
 
 		var taskTypes []sealtasks.TaskType
 
-		taskTypes = append(taskTypes, sealtasks.TTFetch, sealtasks.TTCommit1, sealtasks.TTFinalize)
+		taskTypes = append(taskTypes, sealtasks.TTFetch, sealtasks.TTFinalize)
 
 		if cctx.Bool("addpiece") {
 			taskTypes = append(taskTypes, sealtasks.TTAddPiece)
 		}
+
 		if cctx.Bool("precommit1") {
+			taskTypes = append(taskTypes, sealtasks.TTAddPiece)
 			taskTypes = append(taskTypes, sealtasks.TTPreCommit1)
 		}
 		if cctx.Bool("unseal") {
@@ -228,6 +235,7 @@ var runCmd = &cli.Command{
 		}
 		if cctx.Bool("precommit2") {
 			taskTypes = append(taskTypes, sealtasks.TTPreCommit2)
+			taskTypes = append(taskTypes, sealtasks.TTCommit1)
 		}
 		if cctx.Bool("commit") {
 			taskTypes = append(taskTypes, sealtasks.TTCommit2)
@@ -341,11 +349,13 @@ var runCmd = &cli.Command{
 		remote := stores.NewRemote(localStore, nodeApi, sminfo.AuthHeader(), cctx.Int("parallel-fetch-limit"))
 
 		// Create / expose the worker
-
+		groupName := cctx.String("groupname")
 		workerApi := &worker{
 			LocalWorker: sectorstorage.NewLocalWorker(sectorstorage.WorkerConfig{
 				SealProof: spt,
 				TaskTypes: taskTypes,
+				Address:   address,
+				GroupName: groupName,
 			}, remote, localStore, nodeApi),
 			localStore: localStore,
 			ls:         lr,
