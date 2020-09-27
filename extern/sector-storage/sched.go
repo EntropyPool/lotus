@@ -3,6 +3,7 @@ package sectorstorage
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"sync"
@@ -451,6 +452,7 @@ func (sh *scheduler) trySched() {
 	minWindowTodos := make([]int, len(windows))
 
 	allPC2Task := 0
+
 	for sqi := 0; sqi < sh.schedQueue.Len(); sqi++ {
 		task := (*sh.schedQueue)[sqi]
 		if sealtasks.TTPreCommit2 == task.taskType {
@@ -465,6 +467,9 @@ func (sh *scheduler) trySched() {
 		selectedWindow := -1
 
 		if sealtasks.TTPreCommit2 == task.taskType {
+			var havestWid WorkerID = math.MaxUint64
+			var havestRatio float32 = 0.0
+
 			for _, wnd := range acceptableWindows[task.indexHeap] {
 				wid := sh.openWindows[wnd].worker
 				wr := sh.workers[wid].info.Resources
@@ -474,15 +479,29 @@ func (sh *scheduler) trySched() {
 					continue
 				}
 
-				if (float32(allPC2Task) * sh.workers[wid].taskRatio) < float32(len(windows[wnd].todo)) {
-					log.Debugf("PC2 tasks[%d] already reach up limit[%f] of worker [%v]", len(windows[wnd].todo), float32(allPC2Task)*sh.workers[wid].taskRatio, sh.workers[wid].info.Address)
+				if havestRatio < sh.workers[wid].taskRatio {
+					havestWid = wid
+					havestRatio = sh.workers[wid].taskRatio
+				}
+			}
+
+			for _, wnd := range acceptableWindows[task.indexHeap] {
+				wid := sh.openWindows[wnd].worker
+				wr := sh.workers[wid].info.Resources
+
+				// TODO: allow bigger windows
+				if !windows[wnd].allocated.canHandleRequest(needRes, wid, "schedAssign", wr) {
 					continue
 				}
 
 				sh.sectorWorkerGroupMutex.Lock()
 				if group, ok := sh.sectorWorkerGroup[task.sector.Number]; ok {
 					if group == sh.workers[wid].info.GroupName {
-						selectedWindow = wnd
+						if float32(allPC2Task)*sh.workers[wid].taskRatio < float32(len(windows[wnd].todo)) && math.MaxUint64 != uint64(havestWid) {
+							selectedWindow = int(havestWid)
+						} else {
+							selectedWindow = wnd
+						}
 						sh.sectorWorkerGroupMutex.Unlock()
 						break
 					}
