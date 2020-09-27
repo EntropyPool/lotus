@@ -77,7 +77,8 @@ type scheduler struct {
 	closed   chan struct{}
 	testSync chan struct{} // used for testing
 
-	sectorWorkerGroup map[abi.SectorNumber]string
+	sectorWorkerGroup      map[abi.SectorNumber]string
+	sectorWorkerGroupMutex sync.Mutex
 }
 
 type workerHandle struct {
@@ -472,12 +473,16 @@ func (sh *scheduler) trySched() {
 				if !windows[wnd].allocated.canHandleRequest(needRes, wid, "schedAssign", wr) {
 					continue
 				}
+
+				sh.sectorWorkerGroupMutex.Lock()
 				if group, ok := sh.sectorWorkerGroup[task.sector.Number]; ok {
 					if group == sh.workers[wid].info.GroupName {
 						selectedWindow = wnd
+						sh.sectorWorkerGroupMutex.Unlock()
 						break
 					}
 				}
+				sh.sectorWorkerGroupMutex.Unlock()
 			}
 		}
 
@@ -681,18 +686,20 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 					todo := firstWindow.todo[tidx]
 
+					log.Infof("assign worker sector %d / %v -> %v", todo.sector.Number, todo.taskType, worker.info.Address)
+					sh.sectorWorkerGroupMutex.Lock()
 					if _, ok := sh.sectorWorkerGroup[todo.sector.Number]; !ok {
 						if sealtasks.TTPreCommit1 == todo.taskType {
 							sh.sectorWorkerGroup[todo.sector.Number] = worker.info.GroupName
 						}
 					}
 
-					log.Infof("assign worker sector %d / %v -> %v", todo.sector.Number, todo.taskType, worker.info.Address)
 					if _, ok := sh.sectorWorkerGroup[todo.sector.Number]; !ok {
 						log.Infof("  sector %v group %s, worker group %s", todo.sector.Number, sh.sectorWorkerGroup[todo.sector.Number], worker.info.GroupName)
 					} else {
 						log.Warnf("  sector %v not assigned any group, check if it's already do PC1", todo.sector.Number)
 					}
+					sh.sectorWorkerGroupMutex.Unlock()
 
 					err := sh.assignWorker(taskDone, wid, worker, todo)
 
