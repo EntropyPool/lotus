@@ -474,6 +474,11 @@ func (sh *scheduler) trySched() {
 					continue
 				}
 
+				if (float32(allPC2Task) * sh.workers[wid].taskRatio) < float32(len(windows[wnd].todo)) {
+					log.Debugf("PC2 tasks[%d] already reach up limit[%f] of worker [%v]", len(windows[wnd].todo), float32(allPC2Task)*sh.workers[wid].taskRatio, sh.workers[wid].info.Address)
+					continue
+				}
+
 				sh.sectorWorkerGroupMutex.Lock()
 				if group, ok := sh.sectorWorkerGroup[task.sector.Number]; ok {
 					if group == sh.workers[wid].info.GroupName {
