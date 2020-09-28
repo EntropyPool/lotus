@@ -576,7 +576,7 @@ func (st *Local) moveCacheSector(ctx context.Context, sid abi.SectorID, fileType
 	}
 
 	spath := p.sectorPath(sid, fileType)
-	log.Infof("go moving cache sector (%v) from %s", sid, spath)
+	log.Debugf("go moving cache sector (%v) from %s", sid, spath)
 	if err := moveCacheEx(spath); err != nil {
 		log.Errorf("move cache sector (%v) %s to hdd error: %w", sid, spath, err)
 	}
@@ -658,7 +658,7 @@ func envMove(from, to string) error {
 			log.Errorf("creat fp file error %w", err)
 		} else {
 			f.Write([]byte(to))
-			log.Infow("write fp file", "content", to)
+			log.Debugw("write fp file", "content", to)
 		}
 	} else {
 		//read fp
@@ -673,12 +673,12 @@ func envMove(from, to string) error {
 			if isExists(from) {
 				f.Truncate(0)
 				f.WriteAt([]byte(to), 0)
-				log.Infow("write new target file", "to", to)
+				log.Debugw("write new target file", "to", to)
 
 				if err := os.Remove(oldto); err != nil {
 					log.Errorw("remove old target file failed", "oldto:", oldto)
 				} else {
-					log.Infow("remove old target file", "oldto", oldto)
+					log.Debugw("remove old target file", "oldto", oldto)
 				}
 			} else {
 				if isExists(oldto) {
@@ -736,7 +736,7 @@ func sortBySize(pl []os.FileInfo) []os.FileInfo {
 
 // che_path = local_path + sector_name
 func moveCacheEx(che_path string) error {
-	log.Infow("move cache to hdd starting", "path", che_path)
+	log.Debugw("move cache to hdd starting", "path", che_path)
 	var mv_files []string
 	var hd_paths []string
 	var sect_name string
@@ -766,7 +766,7 @@ func moveCacheEx(che_path string) error {
 			}
 		}
 	}
-	log.Infow("all files to move", "files", mv_files)
+	log.Debugw("all files to move", "files", mv_files)
 
 	env := os.Getenv("LOTUS_CACHE_HDD")
 	if env == "" {
@@ -791,7 +791,7 @@ func moveCacheEx(che_path string) error {
 		}
 		hd_paths = append(hd_paths, path)
 	}
-	log.Infow("all hdd for cache", "hdd_path", hd_paths)
+	log.Debugw("all hdd for cache", "hdd_path", hd_paths)
 
 	if len(mv_files) == 0 || len(hd_paths) == 0 {
 		log.Warnw("no enough to move cache to hdd.")
@@ -817,7 +817,7 @@ func moveCacheEx(che_path string) error {
 			for {
 				from, ok := <-ch
 				if !ok {
-					log.Infow("there is no more move jobs", "to-hdd", to_path)
+					log.Debugw("there is no more move jobs", "to-hdd", to_path)
 					break
 				}
 				to := to_path + string(os.PathSeparator) + filepath.Base(from)
@@ -830,7 +830,7 @@ func moveCacheEx(che_path string) error {
 	}
 
 	wait.Wait()
-	log.Infow("move cache to hdd over.")
+	log.Debugw("move cache to hdd over.")
 	return nil
 	//////////////////////////////////////////////
 }
@@ -920,7 +920,7 @@ func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ SectorF
 	}
 
 	spath := p.sectorPath(sid, typ)
-	log.Infof("remove %s", spath)
+	log.Debugf("remove %s", spath)
 
 	if err := os.RemoveAll(spath); err != nil {
 		log.Errorf("removing sector (%v) from %s: %+v", sid, spath, err)
@@ -940,7 +940,7 @@ func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ SectorF
 			cache_hdd = cache_hdd + string(os.PathSeparator) + spl[len(spl)-1]
 
 			if flag, err := pathExists(cache_hdd); !flag {
-				log.Infof("check hdd cache sector (%v) not in %s: %+v", sid, cache_hdd, err)
+				log.Warnf("check hdd cache sector (%v) not in %s: %+v", sid, cache_hdd, err)
 				continue
 			}
 
@@ -948,7 +948,7 @@ func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ SectorF
 				log.Errorf("removing hdd cache sector (%v) from %s: %+v", sid, cache_hdd, err)
 				continue
 			}
-			log.Infof("remove hdd cache %s", cache_hdd)
+			log.Debugf("remove hdd cache %s", cache_hdd)
 		}
 	}
 

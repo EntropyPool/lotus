@@ -191,7 +191,7 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 	var merr error
 	for _, info := range si {
 		// TODO: see what we have local, prefer that
-		log.Infow("acquire from remote", "URLs", info.URLs)
+		log.Debugw("acquire from remote", "URLs", info.URLs)
 		for _, url := range info.URLs {
 			tempDest, err := tempFetchDest(dest, true)
 			if err != nil {
@@ -227,10 +227,10 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 }
 
 func (r *Remote) fetch(ctx context.Context, url, outname string) error {
-	log.Infof("Fetch %s -> %s", url, outname)
+	log.Debugf("Fetch %s -> %s", url, outname)
 
 	if len(r.limit) >= cap(r.limit) {
-		log.Infof("Throttling fetch, %d already running", len(r.limit))
+		log.Debugf("Throttling fetch, %d already running", len(r.limit))
 	}
 
 	// TODO: Smarter throttling
@@ -291,10 +291,10 @@ func (r *Remote) fetch(ctx context.Context, url, outname string) error {
 }
 
 func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
-	log.Infof("FetchEx %s -> %s", url, outname)
+	log.Debugf("FetchEx %s -> %s", url, outname)
 
 	if len(r.limit) >= cap(r.limit) {
-		log.Infof("Throttling fetch, %d already running", len(r.limit))
+		log.Debugf("Throttling fetch, %d already running", len(r.limit))
 	}
 
 	select {
@@ -326,7 +326,7 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 	}
 
 	flists := resp.Header.Get("Files-List")
-	log.Infow("FetchEx get remote Files-List", "files", flists)
+	log.Debugw("FetchEx get remote Files-List", "files", flists)
 	targets := strings.Split(flists, ";")
 	if len(targets) == 0 {
 		return xerrors.Errorf("There is no file to fetch")
@@ -362,7 +362,7 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 						wg.Done()
 						return
 					}
-					log.Infow("fetch file", "url", remoteFile.url, "outname", remoteFile.out)
+					log.Debugw("fetch file", "url", remoteFile.url, "outname", remoteFile.out)
 				}
 			}
 		}(ctx)
@@ -387,13 +387,13 @@ func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
 	close(taskCh)
 	wg.Wait()
 
-	log.Infow("fetch sector all over", "url", url, "outname", outname, "[", err, "]")
+	log.Debugw("fetch sector all over", "url", url, "outname", outname, "[", err, "]")
 
 	return err
 }
 
 func (r *Remote) fetchFile(ctx context.Context, url, outname string) error {
-	log.Infof("Fetch File %s -> %s", url, outname)
+	log.Debugf("Fetch File %s -> %s", url, outname)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
