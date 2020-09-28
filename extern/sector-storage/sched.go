@@ -835,7 +835,6 @@ func (sh *scheduler) assignWorker(taskDone chan struct{}, wid WorkerID, w *worke
 			case <-sh.closing:
 				log.Warnf("scheduler closed while sending response (prepare error: %+v)", err)
 			}
-			go func(todo *workerRequest) { sh.reschedule <- todo }(req)
 			return
 		}
 
