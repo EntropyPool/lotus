@@ -189,9 +189,6 @@ func (l *LocalWorker) FinalizeSector(ctx context.Context, sector abi.SectorID, k
 	}
 
 	if err := sb.FinalizeSector(ctx, sector, keepUnsealed); err != nil {
-		if rerr := l.storage.Remove(ctx, sector, stores.FTCache, true); nil != rerr {
-			log.Errorf("finalizing sector: cannot remove error sector %v [%v]", sector.Number, rerr)
-		}
 		return xerrors.Errorf("finalizing sector: %w", err)
 	}
 
