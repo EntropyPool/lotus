@@ -592,7 +592,7 @@ func (sb *Sealer) FinalizeSector(ctx context.Context, sector abi.SectorID, keepU
 
 	err = ffi.ClearCache(uint64(sb.ssize), paths.Cache)
 	if nil != err {
-		log.Errorf("fail finalize sector %v(%v) [%v]", sector.Number, paths.Cache, err)
+		return &ErrCacheInconsistent{xerrors.Errorf("fail finalize sector %v(%v) [%v]", sector.Number, paths.Cache, err)}
 	} else {
 		log.Infof("success finalize sector %v(%v)", sector.Number, paths.Cache)
 	}

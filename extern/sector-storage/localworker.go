@@ -190,6 +190,12 @@ func (l *LocalWorker) FinalizeSector(ctx context.Context, sector abi.SectorID, k
 
 	log.Infof("finalize sector: %v", sector.Number)
 	if err := sb.FinalizeSector(ctx, sector, keepUnsealed); err != nil {
+		switch err.(type) {
+		case *ffiwrapper.ErrCacheInconsistent:
+			if rerr := l.storage.Remove(ctx, sector, stores.FTCache, true); rerr != nil {
+				log.Errorf("removing cache data: %w", rerr)
+			}
+		}
 		return xerrors.Errorf("finalizing sector: %w", err)
 	}
 
