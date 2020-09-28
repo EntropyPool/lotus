@@ -91,7 +91,8 @@ type workerHandle struct {
 	preparing *activeResources
 	active    *activeResources
 
-	lk sync.Mutex
+	prepareLk sync.Mutex
+	lk        sync.Mutex
 
 	wndLk         sync.Mutex
 	activeWindows []*schedWindow
@@ -811,9 +812,12 @@ func (sh *scheduler) assignWorker(taskDone chan struct{}, wid WorkerID, w *worke
 	w.lk.Unlock()
 
 	go func() {
+		w.prepareLk.Lock()
 		log.Infof("preparing sector %v / %v -> %v", req.sector.Number, req.taskType, w.info.Address)
 		err := req.prepare(req.ctx, w.wt.worker(w.w))
 		log.Infof("prepared sector %v / %v -> %v [%v]", req.sector.Number, req.taskType, w.info.Address, err)
+		w.prepareLk.Unlock()
+
 		sh.workersLk.Lock()
 
 		if err != nil {
