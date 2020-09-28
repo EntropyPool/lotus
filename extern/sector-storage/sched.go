@@ -689,25 +689,27 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 
 				worker.lk.Lock()
 				todos := make([]*workerRequest, 0)
-				for t, todo := range firstWindow.todo {
+				for _, todo := range firstWindow.todo {
 					if sealtasks.TTFinalize == todo.taskType {
 						todos = append(todos, todo)
-						firstWindow.todo = append(firstWindow.todo[:t], firstWindow.todo[t+1:]...)
 					}
 				}
-				for t, todo := range firstWindow.todo {
+				for _, todo := range firstWindow.todo {
 					if sealtasks.TTCommit1 == todo.taskType {
 						todos = append(todos, todo)
-						firstWindow.todo = append(firstWindow.todo[:t], firstWindow.todo[t+1:]...)
 					}
 				}
-				for t, todo := range firstWindow.todo {
+				for _, todo := range firstWindow.todo {
 					if sealtasks.TTPreCommit2 == todo.taskType {
 						todos = append(todos, todo)
-						firstWindow.todo = append(firstWindow.todo[:t], firstWindow.todo[t+1:]...)
 					}
 				}
-				firstWindow.todo = append(todos, firstWindow.todo...)
+				for _, todo := range firstWindow.todo {
+					if sealtasks.TTPreCommit2 != todo.taskType && sealtasks.TTCommit1 != todo.taskType && sealtasks.TTFinalize != todo.taskType {
+						todos = append(todos, todo)
+					}
+				}
+				firstWindow.todo = todos
 				worker.lk.Unlock()
 
 				// process tasks within a window, preferring tasks at lower indexes
@@ -721,9 +723,6 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 							sealtasks.TTPreCommit2 == todo.taskType {
 							tidx = t
 							break
-						} else {
-							firstWindow.todo = append(firstWindow.todo[:t], firstWindow.todo[t+1:]...)
-							go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
 						}
 					}
 					worker.lk.Unlock()
@@ -760,6 +759,19 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 					copy(firstWindow.todo[tidx:], firstWindow.todo[tidx+1:])
 					firstWindow.todo[len(firstWindow.todo)-1] = nil
 					firstWindow.todo = firstWindow.todo[:len(firstWindow.todo)-1]
+
+					worker.lk.Lock()
+					todos := make([]*workerRequest, 0)
+					for _, todo := range firstWindow.todo {
+						needRes := ResourceTable[todo.taskType][sh.spt]
+						if !worker.preparing.canHandleRequest(needRes, wid, "startPreparing", worker.info.Resources) {
+							go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
+						} else {
+							todos = append(todos, firstWindow.todo...)
+						}
+					}
+					firstWindow.todo = todos
+					worker.lk.Unlock()
 				}
 
 				copy(worker.activeWindows, worker.activeWindows[1:])
