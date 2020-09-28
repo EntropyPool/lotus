@@ -687,6 +687,29 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 			for len(worker.activeWindows) > 0 {
 				firstWindow := worker.activeWindows[0]
 
+				worker.lk.Lock()
+				todos := make([]*workerRequest, 0)
+				for t, todo := range firstWindow.todo {
+					if sealtasks.TTFinalize == todo.taskType {
+						todos = append(todos, todo)
+						firstWindow.todo = append(firstWindow.todo[:t], firstWindow.todo[t+1:]...)
+					}
+				}
+				for t, todo := range firstWindow.todo {
+					if sealtasks.TTCommit1 == todo.taskType {
+						todos = append(todos, todo)
+						firstWindow.todo = append(firstWindow.todo[:t], firstWindow.todo[t+1:]...)
+					}
+				}
+				for t, todo := range firstWindow.todo {
+					if sealtasks.TTPreCommit2 == todo.taskType {
+						todos = append(todos, todo)
+						firstWindow.todo = append(firstWindow.todo[:t], firstWindow.todo[t+1:]...)
+					}
+				}
+				firstWindow.todo = append(todos, firstWindow.todo...)
+				worker.lk.Unlock()
+
 				// process tasks within a window, preferring tasks at lower indexes
 				for len(firstWindow.todo) > 0 {
 					tidx := -1
