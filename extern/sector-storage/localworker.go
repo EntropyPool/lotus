@@ -192,12 +192,16 @@ func (l *LocalWorker) FinalizeSector(ctx context.Context, sector abi.SectorID, k
 	if err := sb.FinalizeSector(ctx, sector, keepUnsealed); err != nil {
 		switch err.(type) {
 		case *ffiwrapper.ErrCacheInconsistent:
-			log.Warnf("finalize sector: %v [%v], try to remove error cache", sector.Number, err)
-			if rerr := l.storage.Remove(ctx, sector, stores.FTCache, true); rerr != nil {
-				log.Errorf("removing cache data: %w", rerr)
+			log.Warnf("finalize sector: %v [%v], what can we do", sector.Number, err)
+			ferr := l.Fetch(ctx, sector, stores.FTCache, stores.PathSealing, stores.AcquireMove)
+			if nil != ferr {
+				log.Warnf("finalize sector: %v [%v], cannot fetch sector", sector.Number, ferr)
+				return xerrors.Errorf("finalizing sector: %w", err)
+			}
+			if err = sb.FinalizeSector(ctx, sector, keepUnsealed); err != nil {
+				return xerrors.Errorf("finalizing sector: %w [rebuild]", err)
 			}
 		}
-		return xerrors.Errorf("finalizing sector: %w", err)
 	}
 
 	if len(keepUnsealed) == 0 {
