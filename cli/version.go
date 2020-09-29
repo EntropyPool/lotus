@@ -6,7 +6,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const version = "entropy-v0.8.0.5"
+const version = "entropy-v0.8.0.7"
 
 var VersionCmd = &cli.Command{
 	Name:  "version",
@@ -29,7 +29,7 @@ var VersionCmd = &cli.Command{
 
 		fmt.Print("Local: ")
 		cli.VersionPrinter(cctx)
-		fmt.Print("Custom: ", version)
+		fmt.Print("Custom: ", version, "\n")
 		return nil
 	},
 }
