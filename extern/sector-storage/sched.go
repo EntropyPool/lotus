@@ -272,14 +272,6 @@ func (sh *scheduler) runSched() {
 			doSched = true
 		case <-timeout.C:
 		timerSched:
-			for {
-				select {
-				case req := <-sh.reschedule:
-					sh.schedQueue.Push(req)
-				default:
-					break timerSched
-				}
-			}
 			doSched = true
 			timeout.Reset(intv)
 		case <-sh.closing:
@@ -298,6 +290,8 @@ func (sh *scheduler) runSched() {
 					if sh.testSync != nil {
 						sh.testSync <- struct{}{}
 					}
+				case req := <-sh.reschedule:
+					sh.schedQueue.Push(req)
 				case req := <-sh.windowRequests:
 					sh.openWindows = append(sh.openWindows, req)
 				default:
@@ -766,7 +760,6 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 					sh.sectorWorkerGroupMutex.Unlock()
 
 					err := sh.assignWorker(taskDone, wid, worker, todo)
-
 					if err != nil {
 						log.Error("assignWorker error: %+v", err)
 						go todo.respond(xerrors.Errorf("assignWorker error: %w", err))
