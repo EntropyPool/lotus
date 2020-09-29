@@ -732,7 +732,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 								log.Infof("sector %v cannot be processed [%v / %v], reschedule", todo.sector.Number, todo.taskType, worker.info.Address)
 								go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
 							} else {
-								todos = append(todos, firstWindow.todo...)
+								todos = append(todos, todo)
 							}
 						}
 						firstWindow.todo = nil
