@@ -728,6 +728,19 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 					worker.lk.Unlock()
 
 					if tidx == -1 {
+					    worker.lk.Lock()
+					    todos := make([]*workerRequest, 0)
+					    for _, todo := range firstWindow.todo {
+						    needRes := ResourceTable[todo.taskType][sh.spt]
+						    if !worker.preparing.canHandleRequest(needRes, wid, "startPreparing", worker.info.Resources) {
+								log.Infof("sector %v cannot be processed [%v], reschedule", todo.sector.Number, worker.info.Address)
+							    go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
+						    } else {
+							    todos = append(todos, firstWindow.todo...)
+						    }
+					    }
+						firstWindow.todo = todos
+						worker.lk.Unlock()
 						break assignLoop
 					}
 
@@ -760,18 +773,6 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 					firstWindow.todo[len(firstWindow.todo)-1] = nil
 					firstWindow.todo = firstWindow.todo[:len(firstWindow.todo)-1]
 
-					worker.lk.Lock()
-					todos := make([]*workerRequest, 0)
-					for _, todo := range firstWindow.todo {
-						needRes := ResourceTable[todo.taskType][sh.spt]
-						if !worker.preparing.canHandleRequest(needRes, wid, "startPreparing", worker.info.Resources) {
-							go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
-						} else {
-							todos = append(todos, firstWindow.todo...)
-						}
-					}
-					firstWindow.todo = todos
-					worker.lk.Unlock()
 				}
 
 				copy(worker.activeWindows, worker.activeWindows[1:])
