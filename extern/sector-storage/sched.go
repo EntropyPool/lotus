@@ -715,7 +715,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 					for t, todo := range firstWindow.todo {
 						needRes := ResourceTable[todo.taskType][sh.spt]
 						if worker.preparing.canHandleRequest(needRes, wid, "startPreparing", worker.info.Resources) ||
-							sealtasks.TTPreCommit2 == todo.taskType {
+							sealtasks.TTPreCommit2 == todo.taskType && sealtasks.TTCommit1 == todo.taskType && sealtasks.TTFinalize == todo.taskType {
 							tidx = t
 							break
 						}
