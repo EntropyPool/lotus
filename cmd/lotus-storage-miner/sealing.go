@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
-	"regexp"
 
 	"golang.org/x/xerrors"
 
@@ -88,12 +88,12 @@ var sealingWorkersCmd = &cli.Command{
 				if 0 < len(taskTypes) {
 					taskTypes += " | "
 				}
-				lastSpec := taskSpecs[len(taskSpecs) - 1]
+				lastSpec := taskSpecs[len(taskSpecs)-1]
 				isNum := regexp.MustCompile(`[0-9]+`)
 				if isNum.MatchString(lastSpec) {
-					taskTypes += taskSpecs[len(taskSpecs) - 2]
+					taskTypes += taskSpecs[len(taskSpecs)-2]
 				}
-				taskTypes += taskSpecs[len(taskSpecs) - 1]
+				taskTypes += taskSpecs[len(taskSpecs)-1]
 			}
 			fmt.Printf("\tTSK: %s\n", taskTypes)
 
@@ -190,7 +190,7 @@ var sealingJobsCmd = &cli.Command{
 		}
 
 		for wid, st := range wst {
-			workerHostnames[wid] = st.Info.Hostname
+			workerHostnames[wid] = st.Info.Address
 		}
 
 		tw := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
