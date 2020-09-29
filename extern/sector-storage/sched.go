@@ -732,8 +732,9 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 					    todos := make([]*workerRequest, 0)
 					    for _, todo := range firstWindow.todo {
 						    needRes := ResourceTable[todo.taskType][sh.spt]
-						    if !worker.preparing.canHandleRequest(needRes, wid, "startPreparing", worker.info.Resources) {
-								log.Infof("sector %v cannot be processed [%v], reschedule", todo.sector.Number, worker.info.Address)
+						    if !worker.preparing.canHandleRequest(needRes, wid, "startPreparing", worker.info.Resources) &&
+								sealtasks.TTCommit1 != todo.taskType && sealtasks.TTFinalize != todo.taskType {
+								log.Infof("sector %v cannot be processed [%v / %v], reschedule", todo.sector.Number, todo.taskType, worker.info.Address)
 							    go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
 						    } else {
 							    todos = append(todos, firstWindow.todo...)
