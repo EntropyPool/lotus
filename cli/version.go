@@ -6,7 +6,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const version = "entropy-v0.8.0.7"
+const version = "entropy-v0.8.0.9"
 
 var VersionCmd = &cli.Command{
 	Name:  "version",
