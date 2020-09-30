@@ -346,8 +346,8 @@ func (sh *scheduler) trySched() {
 
 	log.Debugf("SCHED %d queued; %d open windows", sh.schedQueue.Len(), len(windows))
 
-	sh.workersLk.RLock()
-	defer sh.workersLk.RUnlock()
+	sh.workersLk.Lock()
+	defer sh.workersLk.Unlock()
 	if len(sh.openWindows) == 0 {
 		// nothing to schedule on
 		return
@@ -608,9 +608,9 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 	defer ready.Wait()
 
 	go func() {
-		sh.workersLk.RLock()
+		sh.workersLk.Lock()
 		worker, found := sh.workers[wid]
-		sh.workersLk.RUnlock()
+		sh.workersLk.Unlock()
 
 		ready.Done()
 
@@ -670,7 +670,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 				return
 			}
 
-			sh.workersLk.RLock()
+			sh.workersLk.Lock()
 			worker.wndLk.Lock()
 
 			windowsRequested -= sh.workerCompactWindows(worker, wid)
@@ -779,7 +779,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 			}
 
 			worker.wndLk.Unlock()
-			sh.workersLk.RUnlock()
+			sh.workersLk.Unlock()
 		}
 	}()
 }
