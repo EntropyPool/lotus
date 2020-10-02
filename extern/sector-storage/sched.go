@@ -919,7 +919,6 @@ func (sh *scheduler) newWorker(w *workerHandle) {
 	id := sh.nextWorker
 	sh.workers[id] = w
 	sh.nextWorker++
-	sh.workersLk.Unlock()
 
 	allGPUs := 0
 	for wid, _ := range sh.workers {
@@ -957,6 +956,7 @@ func (sh *scheduler) newWorker(w *workerHandle) {
 			}
 		}
 	}
+	sh.workersLk.Unlock()
 
 	sh.runWorker(id)
 
@@ -1010,7 +1010,7 @@ func (sh *scheduler) workerCleanup(wid WorkerID, w *workerHandle) {
 			}
 		}
 
-		log.Debugf("dropWorker %d", wid)
+		log.Infof("dropWorker %d", wid)
 
 		go func() {
 			if err := w.w.Close(); err != nil {
