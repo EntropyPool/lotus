@@ -578,7 +578,7 @@ func (st *Local) moveCacheSector(ctx context.Context, sid abi.SectorID, fileType
 	spath := p.sectorPath(sid, fileType)
 	log.Debugf("go moving cache sector (%v) from %s", sid, spath)
 	if err := moveCacheEx(spath); err != nil {
-		log.Errorf("move cache sector (%v) %s to hdd error: %w", sid, spath, err)
+		log.Warnf("move cache sector (%v) %s to hdd error: %s", sid, spath, err)
 	}
 
 	if err := st.index.StorageDeclareSector(ctx, storage, sid, fileType, true); err != nil {
