@@ -187,6 +187,10 @@ func (st *Local) OpenPath(ctx context.Context, p string) error {
 	}
 
 	for _, t := range PathTypes {
+		fetchingDir := filepath.Join(p, t.String(), FetchTempSubdir)
+		os.RemoveAll(fetchingDir)
+		os.MkdirAll(fetchingDir, 0755)
+
 		ents, err := ioutil.ReadDir(filepath.Join(p, t.String()))
 		if err != nil {
 			if os.IsNotExist(err) {

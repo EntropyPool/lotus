@@ -271,15 +271,6 @@ func (sh *scheduler) runSched() {
 			iw = nil
 			doSched = true
 		case <-timeout.C:
-		timerSched:
-			for {
-				select {
-				case req := <-sh.reschedule:
-					sh.schedQueue.Push(req)
-				default:
-					break timerSched
-				}
-			}
 			doSched = true
 			timeout.Reset(intv)
 		case <-sh.closing:
@@ -298,6 +289,8 @@ func (sh *scheduler) runSched() {
 					if sh.testSync != nil {
 						sh.testSync <- struct{}{}
 					}
+				case req := <-sh.reschedule:
+					sh.schedQueue.Push(req)
 				case req := <-sh.windowRequests:
 					sh.openWindows = append(sh.openWindows, req)
 				default:
@@ -353,8 +346,8 @@ func (sh *scheduler) trySched() {
 
 	log.Debugf("SCHED %d queued; %d open windows", sh.schedQueue.Len(), len(windows))
 
-	sh.workersLk.RLock()
-	defer sh.workersLk.RUnlock()
+	sh.workersLk.Lock()
+	defer sh.workersLk.Unlock()
 	if len(sh.openWindows) == 0 {
 		// nothing to schedule on
 		return
@@ -615,9 +608,9 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 	defer ready.Wait()
 
 	go func() {
-		sh.workersLk.RLock()
+		sh.workersLk.Lock()
 		worker, found := sh.workers[wid]
-		sh.workersLk.RUnlock()
+		sh.workersLk.Unlock()
 
 		ready.Done()
 
@@ -677,7 +670,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 				return
 			}
 
-			sh.workersLk.RLock()
+			sh.workersLk.Lock()
 			worker.wndLk.Lock()
 
 			windowsRequested -= sh.workerCompactWindows(worker, wid)
@@ -709,6 +702,8 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 						todos = append(todos, todo)
 					}
 				}
+
+				firstWindow.todo = nil
 				firstWindow.todo = todos
 				worker.lk.Unlock()
 
@@ -720,7 +715,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 					for t, todo := range firstWindow.todo {
 						needRes := ResourceTable[todo.taskType][sh.spt]
 						if worker.preparing.canHandleRequest(needRes, wid, "startPreparing", worker.info.Resources) ||
-							sealtasks.TTPreCommit2 == todo.taskType {
+							sealtasks.TTPreCommit2 == todo.taskType || sealtasks.TTCommit1 == todo.taskType || sealtasks.TTFinalize == todo.taskType {
 							tidx = t
 							break
 						}
@@ -728,18 +723,19 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 					worker.lk.Unlock()
 
 					if tidx == -1 {
-					    worker.lk.Lock()
-					    todos := make([]*workerRequest, 0)
-					    for _, todo := range firstWindow.todo {
-						    needRes := ResourceTable[todo.taskType][sh.spt]
-						    if !worker.preparing.canHandleRequest(needRes, wid, "startPreparing", worker.info.Resources) &&
-								sealtasks.TTCommit1 != todo.taskType && sealtasks.TTFinalize != todo.taskType {
+						worker.lk.Lock()
+						todos := make([]*workerRequest, 0)
+						for _, todo := range firstWindow.todo {
+							needRes := ResourceTable[todo.taskType][sh.spt]
+							if !worker.preparing.canHandleRequest(needRes, wid, "startPreparing", worker.info.Resources) &&
+								sealtasks.TTCommit1 != todo.taskType && sealtasks.TTFinalize != todo.taskType && sealtasks.TTPreCommit2 != todo.taskType {
 								log.Infof("sector %v cannot be processed [%v / %v], reschedule", todo.sector.Number, todo.taskType, worker.info.Address)
-							    go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
-						    } else {
-							    todos = append(todos, firstWindow.todo...)
-						    }
-					    }
+								go func(todo *workerRequest) { sh.reschedule <- todo }(todo)
+							} else {
+								todos = append(todos, todo)
+							}
+						}
+						firstWindow.todo = nil
 						firstWindow.todo = todos
 						worker.lk.Unlock()
 						break assignLoop
@@ -763,7 +759,6 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 					sh.sectorWorkerGroupMutex.Unlock()
 
 					err := sh.assignWorker(taskDone, wid, worker, todo)
-
 					if err != nil {
 						log.Error("assignWorker error: %+v", err)
 						go todo.respond(xerrors.Errorf("assignWorker error: %w", err))
@@ -784,7 +779,7 @@ func (sh *scheduler) runWorker(wid WorkerID) {
 			}
 
 			worker.wndLk.Unlock()
-			sh.workersLk.RUnlock()
+			sh.workersLk.Unlock()
 		}
 	}()
 }
@@ -924,7 +919,6 @@ func (sh *scheduler) newWorker(w *workerHandle) {
 	id := sh.nextWorker
 	sh.workers[id] = w
 	sh.nextWorker++
-	sh.workersLk.Unlock()
 
 	allGPUs := 0
 	for wid, _ := range sh.workers {
@@ -962,6 +956,7 @@ func (sh *scheduler) newWorker(w *workerHandle) {
 			}
 		}
 	}
+	sh.workersLk.Unlock()
 
 	sh.runWorker(id)
 
@@ -1015,7 +1010,7 @@ func (sh *scheduler) workerCleanup(wid WorkerID, w *workerHandle) {
 			}
 		}
 
-		log.Debugf("dropWorker %d", wid)
+		log.Infof("dropWorker %d", wid)
 
 		go func() {
 			if err := w.w.Close(); err != nil {
