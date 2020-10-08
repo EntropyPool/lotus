@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -74,7 +75,27 @@ var sealingWorkersCmd = &cli.Command{
 				gpuUse = ""
 			}
 
-			fmt.Printf("Worker %d, host %s\n", stat.id, color.MagentaString(stat.Info.Hostname))
+			addressStr := stat.Info.Address
+			if 0 == len(addressStr) {
+				addressStr = "localhost"
+			}
+			fmt.Printf("Worker %d, host %s/%s[%s]\n", stat.id, color.MagentaString(stat.Info.Hostname),
+				color.MagentaString(addressStr), color.MagentaString(stat.Info.GroupName))
+
+			taskTypes := ""
+			for _, taskType := range stat.Info.SupportTasks {
+				taskSpecs := strings.Split(string(taskType), "/")
+				if 0 < len(taskTypes) {
+					taskTypes += " | "
+				}
+				lastSpec := taskSpecs[len(taskSpecs)-1]
+				isNum := regexp.MustCompile(`[0-9]+`)
+				if isNum.MatchString(lastSpec) {
+					taskTypes += taskSpecs[len(taskSpecs)-2]
+				}
+				taskTypes += taskSpecs[len(taskSpecs)-1]
+			}
+			fmt.Printf("\tTSK: %s\n", taskTypes)
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)
@@ -169,7 +190,7 @@ var sealingJobsCmd = &cli.Command{
 		}
 
 		for wid, st := range wst {
-			workerHostnames[wid] = st.Info.Hostname
+			workerHostnames[wid] = st.Info.Address
 		}
 
 		tw := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)

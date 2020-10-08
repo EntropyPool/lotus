@@ -39,3 +39,4 @@ bin/ipget
 bin/tmp/*
 .idea
 scratchpad
+*.tar.gz
