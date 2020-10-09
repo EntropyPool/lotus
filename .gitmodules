@@ -5,9 +5,6 @@
 [submodule "extern/serialization-vectors"]
 	path = extern/serialization-vectors
 	url = https://github.com/filecoin-project/serialization-vectors
-[submodule "extern/test-vectors"]
-	path = extern/test-vectors
-	url = https://github.com/EntropyPool/test-vectors.git
 [submodule "extern/fil-blst"]
 	path = extern/fil-blst
 	url = https://github.com/filecoin-project/fil-blst.git
