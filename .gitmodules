@@ -11,3 +11,6 @@
 [submodule "extern/oni"]
 	path = extern/oni
 	url = https://github.com/filecoin-project/oni.git
+[submodule "extern/test-vectors"]
+	path = extern/test-vectors
+	url = https://github.com/filecoin-project/test-vectors.git
