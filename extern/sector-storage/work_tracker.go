@@ -84,6 +84,11 @@ func (t *trackedWorker) SealPreCommit2(ctx context.Context, sector abi.SectorID,
 	return t.Worker.SealPreCommit2(ctx, sector, pc1o)
 }
 
+func (t *trackedWorker) MovingCache(ctx context.Context, sector abi.SectorID) error {
+	log.Warnw("tracked worker moving.")
+	return nil
+}
+
 func (t *trackedWorker) SealCommit1(ctx context.Context, sector abi.SectorID, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (storage.Commit1Out, error) {
 	defer t.tracker.track(sector, sealtasks.TTCommit1)()
 
