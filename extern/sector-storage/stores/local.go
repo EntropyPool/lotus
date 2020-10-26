@@ -331,16 +331,13 @@ func (st *Local) Reserve(ctx context.Context, sid abi.SectorID, ssize abi.Sector
 	return done, nil
 }
 
-func (st *Local) checkPathIntegrity(ctx context.Context, path string, spt abi.RegisteredSealProof) bool {
-	if int(spt) == -1 || int(spt) == 0 {
+func (st *Local) checkPathIntegrity(ctx context.Context, path string, ssize abi.SectorSize) bool {
+	if int(ssize) == -1 || int(ssize) == 0 {
 		log.Infof("%s: hack spt from stupid case, just ignore", path)
 		return true
 	}
 
-	sectorSize, err := spt.SectorSize()
-	if err != nil {
-		return false
-	}
+	sectorSize := ssize
 
 	fileInfo, err := os.Stat(path)
 	if nil != err {
@@ -407,11 +404,6 @@ func (st *Local) AcquireSector(ctx context.Context, sid abi.SectorID, ssize abi.
 	var out SectorPaths
 	var storageIDs SectorPaths
 
-	sptCheck := spt
-	if int(spt) == -1 {
-		spt = 0
-	}
-
 	for _, fileType := range PathTypes {
 		if fileType&existing == 0 {
 			continue
@@ -434,7 +426,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid abi.SectorID, ssize abi.
 			}
 
 			spath := p.sectorPath(sid, fileType)
-			if !st.checkPathIntegrity(ctx, spath, sptCheck) {
+			if !st.checkPathIntegrity(ctx, spath, ssize) {
 				continue
 			}
 

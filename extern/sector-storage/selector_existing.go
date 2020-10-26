@@ -49,6 +49,10 @@ func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt 
 	// Always use the one which already have the sector
 	var best []stores.SectorStorageInfo = make([]stores.SectorStorageInfo, 0)
 
+	ssize, err := spt.SectorSize()
+	if err != nil {
+		return false, xerrors.Errorf("getting sector size: %w", err)
+	}
 	bestExist, err := s.index.StorageFindSector(ctx, s.sector, s.alloc, ssize, false)
 	if err == nil {
 		best = append(best, bestExist...)
