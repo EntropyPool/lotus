@@ -183,6 +183,7 @@ func (mgr *SectorMgr) SealPreCommit1(ctx context.Context, sid abi.SectorID, tick
 }
 
 func (mgr *SectorMgr) SealPreCommit2(ctx context.Context, sid abi.SectorID, phase1Out storage.PreCommit1Out) (cids storage.SectorCids, err error) {
+
 	db := []byte(string(phase1Out))
 	db[0] ^= 'd'
 
@@ -199,6 +200,11 @@ func (mgr *SectorMgr) SealPreCommit2(ctx context.Context, sid abi.SectorID, phas
 		Unsealed: d,
 		Sealed:   commR,
 	}, nil
+}
+
+func (mgr *SectorMgr) MovingCache(ctx context.Context, sector abi.SectorID) error {
+	log.Warnw("sector manager moving.")
+	return nil
 }
 
 func (mgr *SectorMgr) SealCommit1(ctx context.Context, sid abi.SectorID, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (output storage.Commit1Out, err error) {
