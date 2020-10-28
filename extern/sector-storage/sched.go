@@ -554,6 +554,18 @@ func (sh *scheduler) trySched() {
 	if scheduled == 0 {
 		return
 	}
+	////////////////////////////////////////
+	// Rearrange the todos list of worker
+	n := len(windows)
+	for i := 0; i < n; i++ {
+		for j := i + 1; j < n; j++ {
+			if sh.openWindows[i].worker == sh.openWindows[j].worker && len(windows[j].todo) > 0 {
+				windows[i].todo = append(windows[i].todo, windows[j].todo...)
+				windows[j].todo = windows[j].todo[0:0]
+			}
+		}
+	}
+	////////////////////////////////////////
 
 	scheduledWindows := map[int]struct{}{}
 	keepAliveWindows := map[int]struct{}{}
