@@ -5,6 +5,7 @@ import (
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
+	"sync"
 )
 
 type eWorkerRequest struct {
@@ -12,26 +13,42 @@ type eWorkerRequest struct {
 	taskType sealtasks.TaskType
 	prepare  WorkerAction
 	work     WorkerAction
+	ret      chan workerResponse
 	ctx      context.Context
 }
 
 type eWorkerReqList struct {
-	tasks []*eWorkerRequest
+	taskType sealtasks.TaskType
+	tasks    []*eWorkerRequest
 }
 
 type eWorkerHandle struct {
 	wid        WorkerID
 	w          Worker
 	info       storiface.WorkerInfo
-	typedTasks map[sealtasks.TaskType]eWorkerReqList
+	typedTasks map[sealtasks.TaskType]*eWorkerReqList
 }
 
 const eschedTag = "esched"
 
+type eRequestFinisher struct {
+	resp workerResponse
+	req  *eWorkerRequest
+}
+
 type eWorkerBucket struct {
-	id        int
-	newWorker chan *eWorkerHandle
-	workers   []*eWorkerHandle
+	id             int
+	newWorker      chan *eWorkerHandle
+	workers        []*eWorkerHandle
+	reqQueue       *eRequestQueue
+	schedulerWaker chan struct{}
+	reqFinisher    chan *eRequestFinisher
+	notifier       chan struct{}
+}
+
+type eRequestQueue struct {
+	reqs  map[sealtasks.TaskType][]*eWorkerRequest
+	mutex sync.Mutex
 }
 
 type edispatcher struct {
@@ -41,22 +58,54 @@ type edispatcher struct {
 	dropWorker chan WorkerID
 	newRequest chan *eWorkerRequest
 	buckets    []*eWorkerBucket
+	reqQueue   *eRequestQueue
 }
 
 const eschedWorkerBuckets = 10
 
+func (bucket *eWorkerBucket) peekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, reqs []*eWorkerRequest) {
+	log.Debugf("<%s> peek as many request to worker")
+	worker.dumpWorkerInfo()
+}
+
+func (bucket *eWorkerBucket) tryPeekRequest() {
+	log.Debugf("<%s> try peek schedule request from %d workers of bucket [%d]", eschedTag, len(bucket.workers), bucket.id)
+	for _, worker := range bucket.workers {
+		for taskType, _ := range worker.typedTasks {
+			bucket.reqQueue.mutex.Lock()
+			if _, ok := bucket.reqQueue.reqs[taskType]; ok {
+				if 0 < len(bucket.reqQueue.reqs[taskType]) {
+					bucket.peekAsManyRequests(worker, taskType, bucket.reqQueue.reqs[taskType])
+				}
+			}
+			bucket.reqQueue.mutex.Unlock()
+		}
+	}
+}
+
+func (bucket *eWorkerBucket) scheduleBucketTask() {
+	log.Debugf("<%s> try schedule bucket task", eschedTag)
+}
+
 func (bucket *eWorkerBucket) scheduler() {
-	log.Infof("run scheduler for bucket %d", bucket.id)
+	log.Infof("<%s> run scheduler for bucket %d", eschedTag, bucket.id)
 
 	for {
 		select {
 		case w := <-bucket.newWorker:
 			bucket.workers = append(bucket.workers, w)
-			log.Infof("<%s> new worker [%v] %s is added to bucket %d", eschedTag, w.wid, w.info.Address, bucket.id)
+			log.Infof("<%s> new worker [%v] %s is added to bucket %d [%d]",
+				eschedTag, w.wid, w.info.Address, bucket.id, len(bucket.workers))
+		case <-bucket.notifier:
+			bucket.tryPeekRequest()
+		case <-bucket.schedulerWaker:
+			bucket.scheduleBucketTask()
+		case finisher := <-bucket.reqFinisher:
+			finisher.req.ret <- finisher.resp
 		}
 	}
 
-	log.Infof("end scheduler for bucket %d", bucket.id)
+	log.Infof("<%s> finish scheduler for bucket %d", eschedTag, bucket.id)
 }
 
 func (bucket *eWorkerBucket) addNewWorker(w *eWorkerHandle) {
@@ -66,9 +115,7 @@ func (bucket *eWorkerBucket) addNewWorker(w *eWorkerHandle) {
 			return
 		}
 	}
-	log.Infof("<%s> try to add worker [%d] %s to bucket %d", eschedTag, w.wid, w.info.Address, bucket.id)
 	bucket.newWorker <- w
-	log.Infof("<%s> success to add worker [%d] %s to bucket %d", eschedTag, w.wid, w.info.Address, bucket.id)
 }
 
 func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
@@ -79,13 +126,20 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 		dropWorker: make(chan WorkerID, 10),
 		newRequest: make(chan *eWorkerRequest, 1000),
 		buckets:    make([]*eWorkerBucket, eschedWorkerBuckets),
+		reqQueue: &eRequestQueue{
+			reqs: make(map[sealtasks.TaskType][]*eWorkerRequest),
+		},
 	}
 
 	for i := range dispatcher.buckets {
 		dispatcher.buckets[i] = &eWorkerBucket{
-			id:        i,
-			newWorker: make(chan *eWorkerHandle),
-			workers:   make([]*eWorkerHandle, 0),
+			id:             i,
+			newWorker:      make(chan *eWorkerHandle),
+			workers:        make([]*eWorkerHandle, 0),
+			reqQueue:       dispatcher.reqQueue,
+			schedulerWaker: make(chan struct{}),
+			reqFinisher:    make(chan *eRequestFinisher),
+			notifier:       make(chan struct{}),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -94,20 +148,28 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 }
 
 func (sh *edispatcher) Schedule(ctx context.Context, sector abi.SectorID, taskType sealtasks.TaskType, prepare WorkerAction, work WorkerAction) error {
+	ret := make(chan workerResponse)
+
 	select {
 	case sh.newRequest <- &eWorkerRequest{
 		sector:   sector,
 		taskType: taskType,
 		prepare:  prepare,
 		work:     work,
+		ret:      ret,
 		ctx:      ctx,
 	}:
+	}
+
+	select {
+	case resp := <-ret:
+		return resp.err
 	}
 
 	return nil
 }
 
-func (sh *edispatcher) dumpWorkerInfo(w *eWorkerHandle) {
+func (w *eWorkerHandle) dumpWorkerInfo() {
 	log.Infof("Worker information -----------")
 	log.Infof("  Address: ------------------- %v", w.info.Address)
 	log.Infof("  Group: --------------------- %v", w.info.GroupName)
@@ -116,6 +178,14 @@ func (sh *edispatcher) dumpWorkerInfo(w *eWorkerHandle) {
 		log.Infof("    + %v", taskType)
 	}
 	log.Infof("  Hostname: ------------------ %v", w.info.Hostname)
+	log.Infof("  Mem Physical: -------------- %v", w.info.Resources.MemPhysical)
+	log.Infof("  Mem Swap: ------------------ %v", w.info.Resources.MemSwap)
+	log.Infof("  Mem Reserved: -------------- %v", w.info.Resources.MemReserved)
+	log.Infof("  CPUs: ---------------------- %v", w.info.Resources.CPUs)
+	log.Infof("  GPUs------------------------")
+	for _, gpu := range w.info.Resources.GPUs {
+		log.Infof("    + %s", gpu)
+	}
 }
 
 func (w *eWorkerHandle) patchLocalhost() {
@@ -130,28 +200,56 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	w.patchLocalhost()
 
 	log.Infof("<%s> add new worker to bucket", eschedTag)
-	sh.dumpWorkerInfo(w)
+	w.dumpWorkerInfo()
 
 	w.wid = sh.nextWorker
+	w.typedTasks = make(map[sealtasks.TaskType]*eWorkerReqList)
+	for _, taskType := range w.info.SupportTasks {
+		w.typedTasks[taskType] = &eWorkerReqList{
+			taskType: taskType,
+			tasks:    make([]*eWorkerRequest, 0),
+		}
+	}
+
 	workerBucketIndex := sh.nextWorker % eschedWorkerBuckets
 	bucket := sh.buckets[workerBucketIndex]
 
 	bucket.addNewWorker(w)
 }
 
-func (sh *edispatcher) addNewWorkerRequestToBucketList(req *eWorkerRequest) {
-	log.Info("esched", "new request", req)
+func (req *eWorkerRequest) dumpWorkerRequest() {
+	log.Debugf("Task Information -------")
+	log.Debugf("  Sector ID: --------------- %v", req.sector)
+	log.Debugf("  Task Type: --------------- %v", req.taskType)
+}
+
+func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
+	log.Infof("<%s> add new request to bucket worker", eschedTag)
+	req.dumpWorkerRequest()
+
+	sh.reqQueue.mutex.Lock()
+	if _, ok := sh.reqQueue.reqs[req.taskType]; !ok {
+		sh.reqQueue.reqs[req.taskType] = make([]*eWorkerRequest, 0)
+	}
+	sh.reqQueue.reqs[req.taskType] = append(sh.reqQueue.reqs[req.taskType], req)
+	sh.reqQueue.mutex.Unlock()
+
+	go func() {
+		for _, bucket := range sh.buckets {
+			bucket.notifier <- struct{}{}
+		}
+	}()
 }
 
 func (sh *edispatcher) dropWorkerFromBucket(wid WorkerID) {
-	log.Info("esched", "drop worker", wid)
+	log.Infof("<%s> drop worker from bucket %v", eschedTag, wid)
 }
 
 func (sh *edispatcher) runSched() {
 	for {
 		select {
 		case req := <-sh.newRequest:
-			sh.addNewWorkerRequestToBucketList(req)
+			sh.addNewWorkerRequestToBucketWorker(req)
 		case w := <-sh.newWorker:
 			sh.addNewWorkerToBucket(w)
 		case wid := <-sh.dropWorker:
