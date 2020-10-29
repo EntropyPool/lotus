@@ -6,6 +6,7 @@ import (
 	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	"sync"
+	"time"
 )
 
 type eResources struct {
@@ -59,17 +60,21 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 }
 
 type eWorkerRequest struct {
-	id       uint64
-	sector   abi.SectorID
-	taskType sealtasks.TaskType
-	prepare  WorkerAction
-	work     WorkerAction
-	ret      chan workerResponse
-	ctx      context.Context
-	memUsed  uint64
-	cpuUsed  int
-	gpuUsed  int
-	diskUsed uint64
+	id           uint64
+	sector       abi.SectorID
+	taskType     sealtasks.TaskType
+	prepare      WorkerAction
+	work         WorkerAction
+	ret          chan workerResponse
+	ctx          context.Context
+	memUsed      uint64
+	cpuUsed      int
+	gpuUsed      int
+	diskUsed     uint64
+	inqueueTime  int64
+	startTime    int64
+	preparedTime int64
+	endTime      int64
 }
 
 type eWorkerReqList struct {
@@ -194,6 +199,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		// TODO: if P1 and P2 is the different worker, we need to process it
 		req.diskUsed = res.DiskSpace
 
+		req.inqueueTime = time.Now().UnixNano()
 		worker.acquireRequestResource(req)
 
 		peekReqs += 1
@@ -228,10 +234,11 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 }
 
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
-	log.Debugf("<%s> run typed task")
+	log.Debugf("<%s> run typed task %v/%v", eschedTag, task.sector, task.taskType)
 	worker.dumpWorkerInfo()
 	task.dumpWorkerRequest()
 
+	task.startTime = time.Now().UnixNano()
 	err := task.prepare(task.ctx, worker.wt.worker(worker.w))
 	if nil != err {
 		bucket.reqFinisher <- &eRequestFinisher{
@@ -241,12 +248,16 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		}
 		return
 	}
+
+	task.preparedTime = time.Now().UnixNano()
 	err = task.work(task.ctx, worker.wt.worker(worker.w))
 	bucket.reqFinisher <- &eRequestFinisher{
 		req:  task,
 		resp: &workerResponse{err: err},
 		wid:  worker.wid,
 	}
+	task.endTime = time.Now().UnixNano()
+	log.Debugf("<%s> finished typed task %v/%v", eschedTag, task.sector, task.taskType)
 }
 
 func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
@@ -330,7 +341,15 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid WorkerID) {
 	index := bucket.findBucketWorkerIndexByID(wid)
 	if 0 <= index {
 		bucket.workers = append(bucket.workers[:index], bucket.workers[index+1:]...)
+		log.Infof("<%s> drop worker %v from bucket %d", eschedTag, worker.info.Address, bucket.id)
 	}
+}
+
+func (bucket *eWorkerBucket) appendNewWorker(w *eWorkerHandle) {
+	bucket.workers = append(bucket.workers, w)
+	log.Infof("<%s> new worker [%v] %s is added to bucket %d [%d]",
+		eschedTag, w.wid, w.info.Address, bucket.id, len(bucket.workers))
+	go func() { bucket.notifier <- struct{}{} }()
 }
 
 func (bucket *eWorkerBucket) scheduler() {
@@ -339,9 +358,7 @@ func (bucket *eWorkerBucket) scheduler() {
 	for {
 		select {
 		case w := <-bucket.newWorker:
-			bucket.workers = append(bucket.workers, w)
-			log.Infof("<%s> new worker [%v] %s is added to bucket %d [%d]",
-				eschedTag, w.wid, w.info.Address, bucket.id, len(bucket.workers))
+			bucket.appendNewWorker(w)
 		case <-bucket.notifier:
 			bucket.tryPeekRequest()
 		case <-bucket.schedulerWaker:
@@ -424,26 +441,26 @@ func (sh *edispatcher) Schedule(ctx context.Context, sector abi.SectorID, taskTy
 }
 
 func (w *eWorkerHandle) dumpWorkerInfo() {
-	log.Infof("Worker information -----------")
-	log.Infof("  Address: ------------------- %v", w.info.Address)
-	log.Infof("  Group: --------------------- %v", w.info.GroupName)
-	log.Infof("  Support Tasks: -------------")
+	log.Debugf("Worker information -----------")
+	log.Debugf("  Address: ------------------- %v", w.info.Address)
+	log.Debugf("  Group: --------------------- %v", w.info.GroupName)
+	log.Debugf("  Support Tasks: -------------")
 	for _, taskType := range w.info.SupportTasks {
-		log.Infof("    + %v", taskType)
+		log.Debugf("    + %v", taskType)
 	}
-	log.Infof("  Hostname: ------------------ %v", w.info.Hostname)
-	log.Infof("  Mem Physical: -------------- %v", w.info.Resources.MemPhysical)
-	log.Infof("  Mem Used: ------------------ %v", w.memUsed)
-	log.Infof("  Mem Swap: ------------------ %v", w.info.Resources.MemSwap)
-	log.Infof("  Mem Reserved: -------------- %v", w.info.Resources.MemReserved)
-	log.Infof("  CPUs: ---------------------- %v", w.info.Resources.CPUs)
-	log.Infof("  CPU Used: ------------------ %v", w.cpuUsed)
-	log.Infof("  GPUs------------------------")
+	log.Debugf("  Hostname: ------------------ %v", w.info.Hostname)
+	log.Debugf("  Mem Physical: -------------- %v", w.info.Resources.MemPhysical)
+	log.Debugf("  Mem Used: ------------------ %v", w.memUsed)
+	log.Debugf("  Mem Swap: ------------------ %v", w.info.Resources.MemSwap)
+	log.Debugf("  Mem Reserved: -------------- %v", w.info.Resources.MemReserved)
+	log.Debugf("  CPUs: ---------------------- %v", w.info.Resources.CPUs)
+	log.Debugf("  CPU Used: ------------------ %v", w.cpuUsed)
+	log.Debugf("  GPUs------------------------")
 	for _, gpu := range w.info.Resources.GPUs {
-		log.Infof("    + %s", gpu)
+		log.Debugf("    + %s", gpu)
 	}
-	log.Infof("  GPU Used: ------------------ %v", w.gpuUsed)
-	log.Infof("  Disk Used: ----------------- %v", w.diskUsed)
+	log.Debugf("  GPU Used: ------------------ %v", w.gpuUsed)
+	log.Debugf("  Disk Used: ----------------- %v", w.diskUsed)
 }
 
 func (w *eWorkerHandle) patchLocalhost() {
@@ -457,7 +474,7 @@ func (w *eWorkerHandle) patchLocalhost() {
 func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	w.patchLocalhost()
 
-	log.Infof("<%s> add new worker to bucket", eschedTag)
+	log.Infof("<%s> add new worker %s to bucket", eschedTag, w.info.Address)
 	w.dumpWorkerInfo()
 
 	w.wid = sh.nextWorker
@@ -482,7 +499,7 @@ func (req *eWorkerRequest) dumpWorkerRequest() {
 }
 
 func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
-	log.Infof("<%s> add new request to bucket worker", eschedTag)
+	log.Infof("<%s> add new request %v/%v to request queue", eschedTag, req.sector, req.taskType)
 	req.dumpWorkerRequest()
 
 	req.id = sh.nextRequest
