@@ -234,7 +234,7 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 }
 
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
-	log.Debugf("<%s> run typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Infof("<%s> run typed task %v/%v", eschedTag, task.sector, task.taskType)
 	worker.dumpWorkerInfo()
 	task.dumpWorkerRequest()
 
@@ -249,6 +249,7 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		return
 	}
 
+	log.Infof("<%s> prepared typed task %v/%v", eschedTag, task.sector, task.taskType)
 	task.preparedTime = time.Now().UnixNano()
 	err = task.work(task.ctx, worker.wt.worker(worker.w))
 	bucket.reqFinisher <- &eRequestFinisher{
@@ -257,14 +258,21 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		wid:  worker.wid,
 	}
 	task.endTime = time.Now().UnixNano()
-	log.Debugf("<%s> finished typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Infof("<%s> finished typed task %v/%v", eschedTag, task.sector, task.taskType)
 }
 
 func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 	for _, typedTasks := range worker.typedTasks {
-		for _, task := range typedTasks.tasks {
+		tasks := typedTasks.tasks
+		for {
+			if 0 == len(tasks) {
+				break
+			}
+			task := tasks[0]
 			go bucket.runTypedTask(worker, task)
+			tasks = tasks[1:]
 		}
+		typedTasks.tasks = tasks
 	}
 }
 
