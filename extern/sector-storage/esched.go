@@ -59,12 +59,17 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 }
 
 type eWorkerRequest struct {
+	id       uint64
 	sector   abi.SectorID
 	taskType sealtasks.TaskType
 	prepare  WorkerAction
 	work     WorkerAction
 	ret      chan workerResponse
 	ctx      context.Context
+	memUsed  uint64
+	cpuUsed  int
+	gpuUsed  int
+	diskUsed uint64
 }
 
 type eWorkerReqList struct {
@@ -103,6 +108,8 @@ type eWorkerBucket struct {
 	schedulerWaker chan struct{}
 	reqFinisher    chan *eRequestFinisher
 	notifier       chan struct{}
+	dropWorker     chan WorkerID
+	retRequest     chan *eWorkerRequest
 }
 
 type eRequestQueue struct {
@@ -111,13 +118,14 @@ type eRequestQueue struct {
 }
 
 type edispatcher struct {
-	spt        abi.RegisteredSealProof
-	nextWorker WorkerID
-	newWorker  chan *eWorkerHandle
-	dropWorker chan WorkerID
-	newRequest chan *eWorkerRequest
-	buckets    []*eWorkerBucket
-	reqQueue   *eRequestQueue
+	spt         abi.RegisteredSealProof
+	nextWorker  WorkerID
+	nextRequest uint64
+	newWorker   chan *eWorkerHandle
+	dropWorker  chan WorkerID
+	newRequest  chan *eWorkerRequest
+	buckets     []*eWorkerBucket
+	reqQueue    *eRequestQueue
 }
 
 const eschedWorkerBuckets = 10
@@ -132,6 +140,20 @@ func (res *eResources) dumpResources() {
 	log.Debugf("  GPUs: ---------------------- %v", res.GPUs)
 	log.Debugf("  Memory: -------------------- %v", res.Memory)
 	log.Debugf("  Disk Space: ---------------- %v", res.DiskSpace)
+}
+
+func (w *eWorkerHandle) acquireRequestResource(req *eWorkerRequest) {
+	w.cpuUsed += req.cpuUsed
+	w.gpuUsed += req.gpuUsed
+	w.memUsed += req.memUsed
+	w.diskUsed += req.diskUsed
+}
+
+func (w *eWorkerHandle) releaseRequestResource(req *eWorkerRequest) {
+	w.cpuUsed -= req.cpuUsed
+	w.gpuUsed -= req.gpuUsed
+	w.memUsed -= req.memUsed
+	w.diskUsed -= req.diskUsed
 }
 
 func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, reqQueue *eRequestQueue) int {
@@ -163,17 +185,19 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 		// TODO: disk space need to be added
 
-		worker.typedTasks[taskType].tasks = append(worker.typedTasks[taskType].tasks, reqs[0])
-		reqs = reqs[1:]
+		req := reqs[0]
+		worker.typedTasks[taskType].tasks = append(worker.typedTasks[taskType].tasks, req)
 
-		worker.cpuUsed += res.CPUs
-		worker.gpuUsed += res.GPUs
-		worker.memUsed += res.Memory
-
+		req.cpuUsed = res.CPUs
+		req.gpuUsed = res.GPUs
+		req.memUsed = res.Memory
 		// TODO: if P1 and P2 is the different worker, we need to process it
-		worker.diskUsed += res.DiskSpace
+		req.diskUsed = res.DiskSpace
+
+		worker.acquireRequestResource(req)
 
 		peekReqs += 1
+		reqs = reqs[1:]
 	}
 
 	reqQueue.reqs[taskType] = reqs
@@ -240,6 +264,75 @@ func (bucket *eWorkerBucket) scheduleBucketTask() {
 	}
 }
 
+func (bucket *eWorkerBucket) removeTaskFromBucketWorker(w *eWorkerHandle, req *eWorkerRequest) {
+	taskIndex := -1
+	var typedTasks *eWorkerReqList
+
+	for _, tts := range w.typedTasks {
+		for id, task := range tts.tasks {
+			if task.id == req.id {
+				taskIndex = id
+				typedTasks = tts
+				goto l_remove_task
+			}
+		}
+	}
+
+	if taskIndex < 0 {
+		return
+	}
+
+	w.releaseRequestResource(req)
+
+l_remove_task:
+	typedTasks.tasks = append(typedTasks.tasks[:taskIndex], typedTasks.tasks[taskIndex+1:]...)
+}
+
+func (bucket *eWorkerBucket) findBucketWorkerByID(wid WorkerID) *eWorkerHandle {
+	for _, worker := range bucket.workers {
+		if wid == worker.wid {
+			return worker
+		}
+	}
+	return nil
+}
+
+func (bucket *eWorkerBucket) findBucketWorkerIndexByID(wid WorkerID) int {
+	for index, worker := range bucket.workers {
+		if wid == worker.wid {
+			return index
+		}
+	}
+	return -1
+}
+
+func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
+	w := bucket.findBucketWorkerByID(finisher.wid)
+	if nil != w {
+		bucket.removeTaskFromBucketWorker(w, finisher.req)
+	}
+
+	go func() { finisher.req.ret <- *finisher.resp }()
+	go func() { bucket.notifier <- struct{}{} }()
+	go func() { bucket.schedulerWaker <- struct{}{} }()
+}
+
+func (bucket *eWorkerBucket) removeWorkerFromBucket(wid WorkerID) {
+	worker := bucket.findBucketWorkerByID(wid)
+	if nil != worker {
+		for _, typedTasks := range worker.typedTasks {
+			for _, task := range typedTasks.tasks {
+				go func() { bucket.retRequest <- task }()
+			}
+		}
+	}
+
+	index := bucket.findBucketWorkerIndexByID(wid)
+	if 0 <= index {
+		bucket.workers = append(bucket.workers[:index], bucket.workers[index+1:]...)
+	}
+}
+
 func (bucket *eWorkerBucket) scheduler() {
 	log.Infof("<%s> run scheduler for bucket %d", eschedTag, bucket.id)
 
@@ -254,9 +347,9 @@ func (bucket *eWorkerBucket) scheduler() {
 		case <-bucket.schedulerWaker:
 			bucket.scheduleBucketTask()
 		case finisher := <-bucket.reqFinisher:
-			go func() { finisher.req.ret <- *finisher.resp }()
-			go func() { bucket.notifier <- struct{}{} }()
-			go func() { bucket.schedulerWaker <- struct{}{} }()
+			bucket.taskFinished(finisher)
+		case wid := <-bucket.dropWorker:
+			bucket.removeWorkerFromBucket(wid)
 		}
 	}
 
@@ -296,6 +389,8 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 			schedulerWaker: make(chan struct{}, 20),
 			reqFinisher:    make(chan *eRequestFinisher),
 			notifier:       make(chan struct{}),
+			dropWorker:     make(chan WorkerID, 10),
+			retRequest:     dispatcher.newRequest,
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -390,6 +485,9 @@ func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
 	log.Infof("<%s> add new request to bucket worker", eschedTag)
 	req.dumpWorkerRequest()
 
+	req.id = sh.nextRequest
+	sh.nextRequest += 1
+
 	sh.reqQueue.mutex.Lock()
 	if _, ok := sh.reqQueue.reqs[req.taskType]; !ok {
 		sh.reqQueue.reqs[req.taskType] = make([]*eWorkerRequest, 0)
@@ -405,7 +503,12 @@ func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
 }
 
 func (sh *edispatcher) dropWorkerFromBucket(wid WorkerID) {
-	log.Infof("<%s> drop worker from bucket %v", eschedTag, wid)
+	log.Infof("<%s> drop worker %v from all bucket", eschedTag, wid)
+	go func() {
+		for _, bucket := range sh.buckets {
+			bucket.dropWorker <- wid
+		}
+	}()
 }
 
 func (sh *edispatcher) runSched() {
