@@ -8,6 +8,56 @@ import (
 	"sync"
 )
 
+type eResources struct {
+	Memory    uint64
+	CPUs      int
+	GPUs      int
+	DiskSpace uint64
+}
+
+const eKiB = 1024
+const eMiB = 1024 * eKiB
+const eGiB = 1024 * eMiB
+
+var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResources{
+	sealtasks.TTAddPiece: {
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 64 * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 32 * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 64 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 2 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eKiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 8 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 8 * eMiB * 11 / 10},
+	},
+	sealtasks.TTPreCommit1: {
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 128 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: (64*14 + 1) * eGiB},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 64 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: (32*14 + 1) * eGiB},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: (512*14 + 512) * eMiB},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * 1024, CPUs: 1, GPUs: 0, DiskSpace: (2*14 + 2) * eKiB},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: (8*14 + 8) * eMiB},
+	},
+	sealtasks.TTPreCommit2: {
+		/* Specially, for P2 at the different worker as P1, it should add disk space of P1 */
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 32 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 16 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 1024 * 1024 * 1024, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
+	},
+	sealtasks.TTCommit1: {
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 4 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 2 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 512 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 2 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 8 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
+	},
+	sealtasks.TTCommit2: {
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 580 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 290 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 8 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 32 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 32 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
+	},
+}
+
 type eWorkerRequest struct {
 	sector   abi.SectorID
 	taskType sealtasks.TaskType
@@ -23,20 +73,29 @@ type eWorkerReqList struct {
 }
 
 type eWorkerHandle struct {
+	priv       interface{}
 	wid        WorkerID
 	w          Worker
+	wt         *workTracker
 	info       storiface.WorkerInfo
+	memUsed    uint64
+	cpuUsed    int
+	gpuUsed    int
+	diskUsed   uint64
+	diskTotal  uint64 // TODO: set disk total from store
 	typedTasks map[sealtasks.TaskType]*eWorkerReqList
 }
 
 const eschedTag = "esched"
 
 type eRequestFinisher struct {
-	resp workerResponse
+	resp *workerResponse
 	req  *eWorkerRequest
+	wid  WorkerID
 }
 
 type eWorkerBucket struct {
+	spt            abi.RegisteredSealProof
 	id             int
 	newWorker      chan *eWorkerHandle
 	workers        []*eWorkerHandle
@@ -63,28 +122,122 @@ type edispatcher struct {
 
 const eschedWorkerBuckets = 10
 
-func (bucket *eWorkerBucket) peekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, reqs []*eWorkerRequest) {
-	log.Debugf("<%s> peek as many request to worker")
+func findTaskResource(spt abi.RegisteredSealProof, taskType sealtasks.TaskType) *eResources {
+	return eResourceTable[taskType][spt]
+}
+
+func (res *eResources) dumpResources() {
+	log.Debugf("Resource Information -------")
+	log.Debugf("  CPUs: ---------------------- %v", res.CPUs)
+	log.Debugf("  GPUs: ---------------------- %v", res.GPUs)
+	log.Debugf("  Memory: -------------------- %v", res.Memory)
+	log.Debugf("  Disk Space: ---------------- %v", res.DiskSpace)
+}
+
+func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, reqQueue *eRequestQueue) int {
+	log.Debugf("<%s> peek as many request to worker", eschedTag)
 	worker.dumpWorkerInfo()
+	log.Debugf("<%s> %v need following resource", eschedTag, taskType)
+	res := findTaskResource(bucket.spt, taskType)
+	res.dumpResources()
+
+	idleCpus := int(worker.info.Resources.CPUs * 8 / 100)
+	reqs := reqQueue.reqs[taskType]
+	log.Debugf("<%s> %d %v tasks waiting for run", eschedTag, len(reqs), taskType)
+
+	peekReqs := 0
+	for {
+		if 0 == len(reqs) {
+			break
+		}
+		if int(worker.info.Resources.CPUs)-idleCpus <= res.CPUs+worker.cpuUsed {
+			break
+		}
+		if 0 < res.GPUs {
+			if len(worker.info.Resources.GPUs) <= res.GPUs+worker.gpuUsed {
+				break
+			}
+		}
+		if worker.info.Resources.MemPhysical <= res.Memory+worker.memUsed {
+			break
+		}
+		// TODO: disk space need to be added
+
+		worker.typedTasks[taskType].tasks = append(worker.typedTasks[taskType].tasks, reqs[0])
+		reqs = reqs[1:]
+
+		worker.cpuUsed += res.CPUs
+		worker.gpuUsed += res.GPUs
+		worker.memUsed += res.Memory
+
+		// TODO: if P1 and P2 is the different worker, we need to process it
+		worker.diskUsed += res.DiskSpace
+
+		peekReqs += 1
+	}
+
+	reqQueue.reqs[taskType] = reqs
+
+	return peekReqs
 }
 
 func (bucket *eWorkerBucket) tryPeekRequest() {
 	log.Debugf("<%s> try peek schedule request from %d workers of bucket [%d]", eschedTag, len(bucket.workers), bucket.id)
+
+	peekReqs := 0
+
 	for _, worker := range bucket.workers {
 		for taskType, _ := range worker.typedTasks {
 			bucket.reqQueue.mutex.Lock()
 			if _, ok := bucket.reqQueue.reqs[taskType]; ok {
 				if 0 < len(bucket.reqQueue.reqs[taskType]) {
-					bucket.peekAsManyRequests(worker, taskType, bucket.reqQueue.reqs[taskType])
+					peekReqs += bucket.tryPeekAsManyRequests(worker, taskType, bucket.reqQueue)
 				}
 			}
 			bucket.reqQueue.mutex.Unlock()
 		}
 	}
+
+	if 0 < peekReqs {
+		go func() { bucket.schedulerWaker <- struct{}{} }()
+	}
+}
+
+func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
+	log.Debugf("<%s> run typed task")
+	worker.dumpWorkerInfo()
+	task.dumpWorkerRequest()
+
+	err := task.prepare(task.ctx, worker.wt.worker(worker.w))
+	if nil != err {
+		bucket.reqFinisher <- &eRequestFinisher{
+			req:  task,
+			resp: &workerResponse{err: err},
+			wid:  worker.wid,
+		}
+		return
+	}
+	err = task.work(task.ctx, worker.wt.worker(worker.w))
+	bucket.reqFinisher <- &eRequestFinisher{
+		req:  task,
+		resp: &workerResponse{err: err},
+		wid:  worker.wid,
+	}
+}
+
+func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
+	for _, typedTasks := range worker.typedTasks {
+		for _, task := range typedTasks.tasks {
+			go bucket.runTypedTask(worker, task)
+		}
+	}
 }
 
 func (bucket *eWorkerBucket) scheduleBucketTask() {
-	log.Debugf("<%s> try schedule bucket task", eschedTag)
+	log.Debugf("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
+	for _, worker := range bucket.workers {
+		bucket.scheduleTypedTasks(worker)
+	}
 }
 
 func (bucket *eWorkerBucket) scheduler() {
@@ -101,7 +254,9 @@ func (bucket *eWorkerBucket) scheduler() {
 		case <-bucket.schedulerWaker:
 			bucket.scheduleBucketTask()
 		case finisher := <-bucket.reqFinisher:
-			finisher.req.ret <- finisher.resp
+			go func() { finisher.req.ret <- *finisher.resp }()
+			go func() { bucket.notifier <- struct{}{} }()
+			go func() { bucket.schedulerWaker <- struct{}{} }()
 		}
 	}
 
@@ -133,16 +288,20 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 
 	for i := range dispatcher.buckets {
 		dispatcher.buckets[i] = &eWorkerBucket{
+			spt:            spt,
 			id:             i,
 			newWorker:      make(chan *eWorkerHandle),
 			workers:        make([]*eWorkerHandle, 0),
 			reqQueue:       dispatcher.reqQueue,
-			schedulerWaker: make(chan struct{}),
+			schedulerWaker: make(chan struct{}, 20),
 			reqFinisher:    make(chan *eRequestFinisher),
 			notifier:       make(chan struct{}),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
+
+	eResourceTable[sealtasks.TTUnseal] = eResourceTable[sealtasks.TTPreCommit1]
+	eResourceTable[sealtasks.TTReadUnsealed] = eResourceTable[sealtasks.TTFetch]
 
 	return dispatcher
 }
@@ -179,13 +338,17 @@ func (w *eWorkerHandle) dumpWorkerInfo() {
 	}
 	log.Infof("  Hostname: ------------------ %v", w.info.Hostname)
 	log.Infof("  Mem Physical: -------------- %v", w.info.Resources.MemPhysical)
+	log.Infof("  Mem Used: ------------------ %v", w.memUsed)
 	log.Infof("  Mem Swap: ------------------ %v", w.info.Resources.MemSwap)
 	log.Infof("  Mem Reserved: -------------- %v", w.info.Resources.MemReserved)
 	log.Infof("  CPUs: ---------------------- %v", w.info.Resources.CPUs)
+	log.Infof("  CPU Used: ------------------ %v", w.cpuUsed)
 	log.Infof("  GPUs------------------------")
 	for _, gpu := range w.info.Resources.GPUs {
 		log.Infof("    + %s", gpu)
 	}
+	log.Infof("  GPU Used: ------------------ %v", w.gpuUsed)
+	log.Infof("  Disk Used: ----------------- %v", w.diskUsed)
 }
 
 func (w *eWorkerHandle) patchLocalhost() {

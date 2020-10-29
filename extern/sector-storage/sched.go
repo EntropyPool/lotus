@@ -239,6 +239,8 @@ func (sh *scheduler) runESched() {
 			sh.esched.NewWorker(&eWorkerHandle{
 				w:    w.w,
 				info: w.info,
+				wt:   w.wt,
+				priv: w,
 			})
 		case wid := <-sh.workerClosing:
 			sh.esched.DropWorker(wid)
