@@ -82,12 +82,15 @@ type storageEntry struct {
 	heartbeatErr  error
 }
 
+type StorageEntry storageEntry
+
 type Index struct {
 	*indexLocks
 	lk sync.RWMutex
 
-	sectors map[Decl][]*declMeta
-	stores  map[ID]*storageEntry
+	sectors         map[Decl][]*declMeta
+	stores          map[ID]*storageEntry
+	StorageNotifier chan struct{}
 }
 
 func NewIndex() *Index {
@@ -95,9 +98,34 @@ func NewIndex() *Index {
 		indexLocks: &indexLocks{
 			locks: map[abi.SectorID]*sectorLock{},
 		},
-		sectors: map[Decl][]*declMeta{},
-		stores:  map[ID]*storageEntry{},
+		sectors:         map[Decl][]*declMeta{},
+		stores:          map[ID]*storageEntry{},
+		StorageNotifier: make(chan struct{}, 10),
 	}
+}
+
+func (ent *StorageEntry) Info() *StorageInfo {
+	return ent.info
+}
+
+func (ent *StorageEntry) LastHeartbeatTime() time.Time {
+	return ent.lastHeartbeat
+}
+
+func (ent *StorageEntry) HeartbeatError() error {
+	return ent.heartbeatErr
+}
+
+func (ent *StorageEntry) FsStat() *fsutil.FsStat {
+	return &ent.fsi
+}
+
+func (i *Index) Sectors() map[Decl][]*declMeta {
+	return i.sectors
+}
+
+func (i *Index) Stores() map[ID]*storageEntry {
+	return i.stores
 }
 
 func (i *Index) StorageList(ctx context.Context) (map[ID][]Decl, error) {
@@ -153,6 +181,8 @@ func (i *Index) StorageAttach(ctx context.Context, si StorageInfo, st fsutil.FsS
 			i.stores[si.ID].info.URLs = append(i.stores[si.ID].info.URLs, u)
 		}
 
+		i.StorageNotifier <- struct{}{}
+
 		return nil
 	}
 	i.stores[si.ID] = &storageEntry{
@@ -161,6 +191,9 @@ func (i *Index) StorageAttach(ctx context.Context, si StorageInfo, st fsutil.FsS
 
 		lastHeartbeat: time.Now(),
 	}
+
+	i.StorageNotifier <- struct{}{}
+
 	return nil
 }
 

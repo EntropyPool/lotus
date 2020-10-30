@@ -170,6 +170,12 @@ func newScheduler(spt abi.RegisteredSealProof) *scheduler {
 	}
 }
 
+func (sh *scheduler) SetStorage(storage *EStorage) {
+	if sh.useExtSched {
+		sh.esched.SetStorage(storage)
+	}
+}
+
 func (sh *scheduler) useExtScheduler() bool {
 	return sh.useExtSched
 }

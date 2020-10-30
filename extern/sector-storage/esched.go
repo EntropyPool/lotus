@@ -4,7 +4,9 @@ import (
 	"context"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
+	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
+	"reflect"
 	"sync"
 	"time"
 )
@@ -122,18 +124,95 @@ type eRequestQueue struct {
 	mutex sync.Mutex
 }
 
+type EStorage struct {
+	ctx           context.Context
+	index         stores.SectorIndex
+	indexInstance *stores.Index
+	storeIDs      map[stores.ID]struct{}
+}
+
 type edispatcher struct {
-	spt         abi.RegisteredSealProof
-	nextWorker  WorkerID
-	nextRequest uint64
-	newWorker   chan *eWorkerHandle
-	dropWorker  chan WorkerID
-	newRequest  chan *eWorkerRequest
-	buckets     []*eWorkerBucket
-	reqQueue    *eRequestQueue
+	spt             abi.RegisteredSealProof
+	nextWorker      WorkerID
+	nextRequest     uint64
+	newWorker       chan *eWorkerHandle
+	dropWorker      chan WorkerID
+	newRequest      chan *eWorkerRequest
+	buckets         []*eWorkerBucket
+	reqQueue        *eRequestQueue
+	storage         *EStorage
+	storageNotifier chan struct{}
 }
 
 const eschedWorkerBuckets = 10
+
+func (sh *edispatcher) dumpStorageInfo(store *stores.StorageEntry) {
+	log.Infof("Storage %v", store.Info().ID)
+	log.Infof("  Weight: ---------- %v", store.Info().Weight)
+	log.Infof("  Can Seal: -------- %v", store.Info().CanSeal)
+	log.Infof("  Can Store: ------- %v", store.Info().CanStore)
+	log.Infof("  URLs: ------------")
+	for _, url := range store.Info().URLs {
+		log.Infof("    + %s", url)
+	}
+	log.Infof("  Fs Stat: ---------")
+	log.Infof("    Capacity: ------ %v", store.FsStat().Capacity)
+	log.Infof("    Available: ----- %v", store.FsStat().Available)
+	log.Infof("    Reserved: ------ %v", store.FsStat().Reserved)
+}
+
+func (sh *edispatcher) checkStorageUpdate() {
+	stors := sh.storage.indexInstance.Stores()
+	count := 0
+	for id, store := range stors {
+		stor := (*stores.StorageEntry)(store)
+		timeout := stor.LastHeartbeatTime().Add(10 * time.Minute)
+		now := time.Now()
+		if timeout.Before(now) {
+			log.Errorf("<%s> delete storage %v to watcher [lost heartbeat]", eschedTag, id)
+			sh.dumpStorageInfo(stor)
+			delete(sh.storage.storeIDs, id)
+			continue
+		}
+		if err := stor.HeartbeatError(); nil != err {
+			log.Errorf("<%s> delete storage %v to watcher [%v | %v]", eschedTag, id, timeout, err)
+			sh.dumpStorageInfo(stor)
+			delete(sh.storage.storeIDs, id)
+			continue
+		}
+		if _, ok := sh.storage.storeIDs[id]; ok {
+			continue
+		}
+		sh.storage.storeIDs[id] = struct{}{}
+		log.Infof("<%s> add storage %v to watcher", eschedTag, id)
+		sh.dumpStorageInfo(stor)
+		count += 1
+	}
+
+	if 0 < count {
+		sh.storageNotifier <- struct{}{}
+	}
+}
+
+func (sh *edispatcher) storageWatcher() {
+	for {
+		select {
+		case <-sh.storage.indexInstance.StorageNotifier:
+			sh.checkStorageUpdate()
+		}
+	}
+}
+
+func (sh *edispatcher) SetStorage(storage *EStorage) {
+	sh.storage = storage
+	sh.storage.storeIDs = make(map[stores.ID]struct{})
+
+	value := reflect.ValueOf(sh.storage.index)
+	sh.storage.indexInstance = value.Interface().(*stores.Index)
+
+	sh.checkStorageUpdate()
+	go sh.storageWatcher()
+}
 
 func findTaskResource(spt abi.RegisteredSealProof, taskType sealtasks.TaskType) *eResources {
 	return eResourceTable[taskType][spt]
@@ -402,6 +481,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 		reqQueue: &eRequestQueue{
 			reqs: make(map[sealtasks.TaskType][]*eWorkerRequest),
 		},
+		storageNotifier: make(chan struct{}, 10),
 	}
 
 	for i := range dispatcher.buckets {
@@ -536,6 +616,10 @@ func (sh *edispatcher) dropWorkerFromBucket(wid WorkerID) {
 	}()
 }
 
+func (sh *edispatcher) onStorageNotify() {
+	log.Infof("------- %v --------", sh.storage.index)
+}
+
 func (sh *edispatcher) runSched() {
 	for {
 		select {
@@ -545,6 +629,8 @@ func (sh *edispatcher) runSched() {
 			sh.addNewWorkerToBucket(w)
 		case wid := <-sh.dropWorker:
 			sh.dropWorkerFromBucket(wid)
+		case <-sh.storageNotifier:
+			sh.onStorageNotify()
 		}
 	}
 }
