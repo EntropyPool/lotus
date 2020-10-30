@@ -7,6 +7,7 @@ import (
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,7 +16,7 @@ type eResources struct {
 	Memory    uint64
 	CPUs      int
 	GPUs      int
-	DiskSpace uint64
+	DiskSpace int64
 }
 
 const eKiB = 1024
@@ -72,7 +73,7 @@ type eWorkerRequest struct {
 	memUsed      uint64
 	cpuUsed      int
 	gpuUsed      int
-	diskUsed     uint64
+	diskUsed     int64
 	inqueueTime  int64
 	startTime    int64
 	preparedTime int64
@@ -93,8 +94,8 @@ type eWorkerHandle struct {
 	memUsed    uint64
 	cpuUsed    int
 	gpuUsed    int
-	diskUsed   uint64
-	diskTotal  uint64 // TODO: set disk total from store
+	diskUsed   int64
+	diskTotal  int64
 	typedTasks map[sealtasks.TaskType]*eWorkerReqList
 }
 
@@ -107,16 +108,18 @@ type eRequestFinisher struct {
 }
 
 type eWorkerBucket struct {
-	spt            abi.RegisteredSealProof
-	id             int
-	newWorker      chan *eWorkerHandle
-	workers        []*eWorkerHandle
-	reqQueue       *eRequestQueue
-	schedulerWaker chan struct{}
-	reqFinisher    chan *eRequestFinisher
-	notifier       chan struct{}
-	dropWorker     chan WorkerID
-	retRequest     chan *eWorkerRequest
+	spt             abi.RegisteredSealProof
+	id              int
+	newWorker       chan *eWorkerHandle
+	workers         []*eWorkerHandle
+	reqQueue        *eRequestQueue
+	schedulerWaker  chan struct{}
+	reqFinisher     chan *eRequestFinisher
+	notifier        chan struct{}
+	dropWorker      chan WorkerID
+	retRequest      chan *eWorkerRequest
+	storageNotifier chan eStoreAction
+	droppedWorker   chan string
 }
 
 type eRequestQueue struct {
@@ -124,11 +127,31 @@ type eRequestQueue struct {
 	mutex sync.Mutex
 }
 
+const eschedAdd = "add"
+const eschedDrop = "drop"
+
+type eStoreStat struct {
+	space int64
+	URLs  []string
+}
+
+type eWorkerAction struct {
+	address string
+	act     string
+}
+
 type EStorage struct {
-	ctx           context.Context
-	index         stores.SectorIndex
-	indexInstance *stores.Index
-	storeIDs      map[stores.ID]struct{}
+	ctx            context.Context
+	index          stores.SectorIndex
+	indexInstance  *stores.Index
+	storeIDs       map[stores.ID]eStoreStat
+	workerNotifier chan eWorkerAction
+}
+
+type eStoreAction struct {
+	id   stores.ID
+	act  string
+	stat eStoreStat
 }
 
 type edispatcher struct {
@@ -141,7 +164,8 @@ type edispatcher struct {
 	buckets         []*eWorkerBucket
 	reqQueue        *eRequestQueue
 	storage         *EStorage
-	storageNotifier chan struct{}
+	storageNotifier chan eStoreAction
+	droppedWorker   chan string
 }
 
 const eschedWorkerBuckets = 10
@@ -161,9 +185,16 @@ func (sh *edispatcher) dumpStorageInfo(store *stores.StorageEntry) {
 	log.Infof("    Reserved: ------ %v", store.FsStat().Reserved)
 }
 
+func (sh *edispatcher) storeNotify(id stores.ID, stat eStoreStat, act string) {
+	sh.storageNotifier <- eStoreAction{
+		id:   id,
+		act:  act,
+		stat: stat,
+	}
+}
+
 func (sh *edispatcher) checkStorageUpdate() {
 	stors := sh.storage.indexInstance.Stores()
-	count := 0
 	for id, store := range stors {
 		stor := (*stores.StorageEntry)(store)
 		timeout := stor.LastHeartbeatTime().Add(10 * time.Minute)
@@ -171,26 +202,54 @@ func (sh *edispatcher) checkStorageUpdate() {
 		if timeout.Before(now) {
 			log.Errorf("<%s> delete storage %v to watcher [lost heartbeat]", eschedTag, id)
 			sh.dumpStorageInfo(stor)
+			sh.storeNotify(id, sh.storage.storeIDs[id], eschedDrop)
 			delete(sh.storage.storeIDs, id)
 			continue
 		}
 		if err := stor.HeartbeatError(); nil != err {
 			log.Errorf("<%s> delete storage %v to watcher [%v | %v]", eschedTag, id, timeout, err)
 			sh.dumpStorageInfo(stor)
+			sh.storeNotify(id, sh.storage.storeIDs[id], eschedDrop)
 			delete(sh.storage.storeIDs, id)
 			continue
 		}
 		if _, ok := sh.storage.storeIDs[id]; ok {
 			continue
 		}
-		sh.storage.storeIDs[id] = struct{}{}
+		sh.storage.storeIDs[id] = eStoreStat{
+			space: stor.FsStat().Available,
+			URLs:  stor.Info().URLs,
+		}
 		log.Infof("<%s> add storage %v to watcher", eschedTag, id)
 		sh.dumpStorageInfo(stor)
-		count += 1
+		sh.storeNotify(id, sh.storage.storeIDs[id], eschedAdd)
 	}
+}
 
-	if 0 < count {
-		sh.storageNotifier <- struct{}{}
+func (sh *edispatcher) onNotifyStorageAddWorker(act eWorkerAction) {
+	for id, stat := range sh.storage.storeIDs {
+		sh.storeNotify(id, stat, eschedAdd)
+	}
+}
+
+func (sh *edispatcher) onNotifyStorageDropWorker(act eWorkerAction) {
+	for id, stat := range sh.storage.storeIDs {
+		for _, url := range stat.URLs {
+			if strings.Contains(url, act.address) {
+				log.Infof("<%s> drop store %v by address %s", eschedTag, id, act.address)
+				delete(sh.storage.storeIDs, id)
+				break
+			}
+		}
+	}
+}
+
+func (sh *edispatcher) onWorkerNotifyToStorage(act eWorkerAction) {
+	switch act.act {
+	case eschedAdd:
+		sh.onNotifyStorageAddWorker(act)
+	case eschedDrop:
+		sh.onNotifyStorageDropWorker(act)
 	}
 }
 
@@ -199,13 +258,16 @@ func (sh *edispatcher) storageWatcher() {
 		select {
 		case <-sh.storage.indexInstance.StorageNotifier:
 			sh.checkStorageUpdate()
+		case act := <-sh.storage.workerNotifier:
+			sh.onWorkerNotifyToStorage(act)
 		}
 	}
 }
 
 func (sh *edispatcher) SetStorage(storage *EStorage) {
 	sh.storage = storage
-	sh.storage.storeIDs = make(map[stores.ID]struct{})
+	sh.storage.storeIDs = make(map[stores.ID]eStoreStat)
+	sh.storage.workerNotifier = make(chan eWorkerAction)
 
 	value := reflect.ValueOf(sh.storage.index)
 	sh.storage.indexInstance = value.Interface().(*stores.Index)
@@ -416,6 +478,7 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 }
 
 func (bucket *eWorkerBucket) removeWorkerFromBucket(wid WorkerID) {
+	log.Infof("<%s> try to drop worker %v from bucket %d", eschedTag, wid, bucket.id)
 	worker := bucket.findBucketWorkerByID(wid)
 	if nil != worker {
 		for _, typedTasks := range worker.typedTasks {
@@ -428,6 +491,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid WorkerID) {
 	index := bucket.findBucketWorkerIndexByID(wid)
 	if 0 <= index {
 		bucket.workers = append(bucket.workers[:index], bucket.workers[index+1:]...)
+		bucket.droppedWorker <- worker.info.Address
 		log.Infof("<%s> drop worker %v from bucket %d", eschedTag, worker.info.Address, bucket.id)
 	}
 }
@@ -437,6 +501,39 @@ func (bucket *eWorkerBucket) appendNewWorker(w *eWorkerHandle) {
 	log.Infof("<%s> new worker [%v] %s is added to bucket %d [%d]",
 		eschedTag, w.wid, w.info.Address, bucket.id, len(bucket.workers))
 	go func() { bucket.notifier <- struct{}{} }()
+}
+
+func (bucket *eWorkerBucket) findWorkerByStoreURL(urls []string) *eWorkerHandle {
+	for _, worker := range bucket.workers {
+		for _, url := range urls {
+			if strings.Contains(url, worker.info.Address) {
+				return worker
+			}
+		}
+	}
+	return nil
+}
+
+func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
+	w.diskTotal += act.stat.space
+}
+
+func (bucket *eWorkerBucket) onDropStore(w *eWorkerHandle, act eStoreAction) {
+	w.diskTotal -= act.stat.space
+}
+
+func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
+	worker := bucket.findWorkerByStoreURL(act.stat.URLs)
+	if nil == worker {
+		return
+	}
+	log.Infof("<%s> %v store %v [bucket %d / worker %s]", eschedTag, act.act, act.id, bucket.id, worker.info.Address)
+	switch act.act {
+	case eschedAdd:
+		bucket.onAddStore(worker, act)
+	case eschedDrop:
+		bucket.onDropStore(worker, act)
+	}
 }
 
 func (bucket *eWorkerBucket) scheduler() {
@@ -454,6 +551,8 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.taskFinished(finisher)
 		case wid := <-bucket.dropWorker:
 			bucket.removeWorkerFromBucket(wid)
+		case act := <-bucket.storageNotifier:
+			bucket.onStorageNotify(act)
 		}
 	}
 
@@ -481,21 +580,24 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 		reqQueue: &eRequestQueue{
 			reqs: make(map[sealtasks.TaskType][]*eWorkerRequest),
 		},
-		storageNotifier: make(chan struct{}, 10),
+		storageNotifier: make(chan eStoreAction, 10),
+		droppedWorker:   make(chan string, 10),
 	}
 
 	for i := range dispatcher.buckets {
 		dispatcher.buckets[i] = &eWorkerBucket{
-			spt:            spt,
-			id:             i,
-			newWorker:      make(chan *eWorkerHandle),
-			workers:        make([]*eWorkerHandle, 0),
-			reqQueue:       dispatcher.reqQueue,
-			schedulerWaker: make(chan struct{}, 20),
-			reqFinisher:    make(chan *eRequestFinisher),
-			notifier:       make(chan struct{}),
-			dropWorker:     make(chan WorkerID, 10),
-			retRequest:     dispatcher.newRequest,
+			spt:             spt,
+			id:              i,
+			newWorker:       make(chan *eWorkerHandle),
+			workers:         make([]*eWorkerHandle, 0),
+			reqQueue:        dispatcher.reqQueue,
+			schedulerWaker:  make(chan struct{}, 20),
+			reqFinisher:     make(chan *eRequestFinisher),
+			notifier:        make(chan struct{}),
+			dropWorker:      make(chan WorkerID, 10),
+			retRequest:      dispatcher.newRequest,
+			storageNotifier: make(chan eStoreAction, 10),
+			droppedWorker:   dispatcher.droppedWorker,
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -565,7 +667,6 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	log.Infof("<%s> add new worker %s to bucket", eschedTag, w.info.Address)
 	w.dumpWorkerInfo()
 
-	w.wid = sh.nextWorker
 	w.typedTasks = make(map[sealtasks.TaskType]*eWorkerReqList)
 	for _, taskType := range w.info.SupportTasks {
 		w.typedTasks[taskType] = &eWorkerReqList{
@@ -574,10 +675,11 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 		}
 	}
 
-	workerBucketIndex := sh.nextWorker % eschedWorkerBuckets
+	workerBucketIndex := w.wid % eschedWorkerBuckets
 	bucket := sh.buckets[workerBucketIndex]
 
 	bucket.addNewWorker(w)
+	sh.storage.workerNotifier <- eWorkerAction{act: eschedAdd, address: w.info.Address}
 }
 
 func (req *eWorkerRequest) dumpWorkerRequest() {
@@ -616,8 +718,17 @@ func (sh *edispatcher) dropWorkerFromBucket(wid WorkerID) {
 	}()
 }
 
-func (sh *edispatcher) onStorageNotify() {
-	log.Infof("------- %v --------", sh.storage.index)
+func (sh *edispatcher) onStorageNotify(act eStoreAction) {
+	log.Infof("<%s> %v store %v", eschedTag, act.act, act.id)
+	go func() {
+		for _, bucket := range sh.buckets {
+			bucket.storageNotifier <- act
+		}
+	}()
+}
+
+func (sh *edispatcher) onWorkerDropped(address string) {
+	sh.storage.workerNotifier <- eWorkerAction{act: eschedAdd, address: address}
 }
 
 func (sh *edispatcher) runSched() {
@@ -629,8 +740,10 @@ func (sh *edispatcher) runSched() {
 			sh.addNewWorkerToBucket(w)
 		case wid := <-sh.dropWorker:
 			sh.dropWorkerFromBucket(wid)
-		case <-sh.storageNotifier:
-			sh.onStorageNotify()
+		case act := <-sh.storageNotifier:
+			sh.onStorageNotify(act)
+		case address := <-sh.droppedWorker:
+			sh.onWorkerDropped(address)
 		}
 	}
 }
@@ -644,9 +757,16 @@ func (sh *edispatcher) Close(ctx context.Context) error {
 }
 
 func (sh *edispatcher) NewWorker(w *eWorkerHandle) {
+	w.wid = sh.nextWorker
+	sh.nextWorker += 1
 	sh.newWorker <- w
 }
 
+func (w *eWorkerHandle) WID() WorkerID {
+	return w.wid
+}
+
 func (sh *edispatcher) DropWorker(wid WorkerID) {
+	log.Infof("------------------drop----- %v", wid)
 	sh.dropWorker <- wid
 }
