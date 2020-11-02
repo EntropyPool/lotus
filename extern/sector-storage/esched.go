@@ -323,15 +323,15 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		if 0 == len(reqs) {
 			break
 		}
-		if int(worker.info.Resources.CPUs)-idleCpus <= res.CPUs+worker.cpuUsed {
+		if int(worker.info.Resources.CPUs)-idleCpus < res.CPUs+worker.cpuUsed {
 			break
 		}
-		if 0 < res.GPUs {
-			if len(worker.info.Resources.GPUs) <= res.GPUs+worker.gpuUsed {
+		if 0 < res.GPUs && 0 < len(worker.info.Resources.GPUs) {
+			if len(worker.info.Resources.GPUs) < res.GPUs+worker.gpuUsed {
 				break
 			}
 		}
-		if worker.info.Resources.MemPhysical <= res.Memory+worker.memUsed {
+		if worker.info.Resources.MemPhysical < res.Memory+worker.memUsed {
 			break
 		}
 		// TODO: disk space need to be added
@@ -549,6 +549,7 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 	case eschedDrop:
 		bucket.onDropStore(worker, act)
 	}
+	go func() { bucket.notifier <- struct{}{} }()
 }
 
 func (bucket *eWorkerBucket) scheduler() {
