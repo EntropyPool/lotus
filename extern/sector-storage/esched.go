@@ -84,10 +84,11 @@ var eschedDefaultTaskPriority = 99
 
 var eTaskPriority = map[sealtasks.TaskType]int{
 	sealtasks.TTFinalize:   0,
-	sealtasks.TTCommit1:    1,
-	sealtasks.TTCommit2:    2,
-	sealtasks.TTPreCommit2: 3,
-	sealtasks.TTPreCommit1: 4,
+	sealtasks.TTFetch:      1,
+	sealtasks.TTCommit1:    2,
+	sealtasks.TTCommit2:    3,
+	sealtasks.TTPreCommit2: 4,
+	sealtasks.TTPreCommit1: 5,
 }
 
 type eWorkerReqTypedList struct {
@@ -421,7 +422,7 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		wid:  worker.wid,
 	}
 	task.endTime = time.Now().UnixNano()
-	log.Infof("<%s> finished typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Infof("<%s> finished typed task %v/%v [%v]", eschedTag, task.sector, task.taskType, err)
 }
 
 func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
@@ -652,7 +653,9 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 	}
 
 	eResourceTable[sealtasks.TTUnseal] = eResourceTable[sealtasks.TTPreCommit1]
-	eResourceTable[sealtasks.TTReadUnsealed] = eResourceTable[sealtasks.TTFetch]
+	eResourceTable[sealtasks.TTFinalize] = eResourceTable[sealtasks.TTCommit1]
+	eResourceTable[sealtasks.TTFetch] = eResourceTable[sealtasks.TTCommit1]
+	eResourceTable[sealtasks.TTReadUnsealed] = eResourceTable[sealtasks.TTCommit1]
 
 	return dispatcher
 }
