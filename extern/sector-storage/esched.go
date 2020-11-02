@@ -120,6 +120,7 @@ type eWorkerBucket struct {
 	retRequest      chan *eWorkerRequest
 	storageNotifier chan eStoreAction
 	droppedWorker   chan string
+	storeIDs        map[stores.ID]struct{}
 }
 
 type eRequestQueue struct {
@@ -519,11 +520,21 @@ func (bucket *eWorkerBucket) findWorkerByStoreURL(urls []string) *eWorkerHandle 
 }
 
 func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
+	if _, ok := bucket.storeIDs[act.id]; ok {
+		log.Infof("<%s> store %v already added", eschedTag, act.id)
+		return
+	}
+	bucket.storeIDs[act.id] = struct{}{}
 	w.diskTotal += act.stat.space
 }
 
 func (bucket *eWorkerBucket) onDropStore(w *eWorkerHandle, act eStoreAction) {
+	if _, ok := bucket.storeIDs[act.id]; !ok {
+		log.Infof("<%s> store %v already dropped", eschedTag, act.id)
+		return
+	}
 	w.diskTotal -= act.stat.space
+	delete(bucket.storeIDs, act.id)
 }
 
 func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
@@ -603,6 +614,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 			retRequest:      dispatcher.newRequest,
 			storageNotifier: make(chan eStoreAction, 10),
 			droppedWorker:   dispatcher.droppedWorker,
+			storeIDs:        make(map[stores.ID]struct{}),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
