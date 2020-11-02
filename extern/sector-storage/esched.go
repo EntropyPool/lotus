@@ -825,7 +825,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 			workers:            make([]*eWorkerHandle, 0),
 			reqQueue:           dispatcher.reqQueue,
 			schedulerWaker:     make(chan struct{}, 20),
-			schedulerRunner:    make(chan struct{}, 20),
+			schedulerRunner:    make(chan struct{}, 20000),
 			reqFinisher:        make(chan *eRequestFinisher),
 			notifier:           make(chan struct{}),
 			dropWorker:         make(chan WorkerID, 10),
