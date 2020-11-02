@@ -249,9 +249,6 @@ func (sh *scheduler) runESched() {
 				priv: w,
 			}
 			sh.esched.NewWorker(worker)
-			sh.watchClosing <- worker.WID()
-		case wid := <-sh.workerClosing:
-			sh.esched.DropWorker(wid)
 		}
 	}
 }
@@ -259,13 +256,12 @@ func (sh *scheduler) runESched() {
 func (sh *scheduler) runSched() {
 	defer close(sh.closed)
 
-	go sh.runWorkerWatcher()
-
 	if sh.useExtScheduler() {
 		sh.runESched()
 		return
 	}
 
+	go sh.runWorkerWatcher()
 	iw := time.After(InitWait)
 	var initialised bool
 

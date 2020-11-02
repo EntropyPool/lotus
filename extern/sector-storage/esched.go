@@ -154,6 +154,8 @@ type eStoreAction struct {
 	stat eStoreStat
 }
 
+const eschedInvalidWorkerID = -1
+
 type edispatcher struct {
 	spt             abi.RegisteredSealProof
 	nextWorker      WorkerID
@@ -166,6 +168,8 @@ type edispatcher struct {
 	storage         *EStorage
 	storageNotifier chan eStoreAction
 	droppedWorker   chan string
+	closing         chan struct{}
+	ctx             context.Context
 }
 
 const eschedWorkerBuckets = 10
@@ -582,6 +586,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 		},
 		storageNotifier: make(chan eStoreAction, 10),
 		droppedWorker:   make(chan string, 10),
+		closing:         make(chan struct{}, 2),
 	}
 
 	for i := range dispatcher.buckets {
@@ -728,15 +733,42 @@ func (sh *edispatcher) onStorageNotify(act eStoreAction) {
 }
 
 func (sh *edispatcher) onWorkerDropped(address string) {
-	sh.storage.workerNotifier <- eWorkerAction{act: eschedAdd, address: address}
+	sh.storage.workerNotifier <- eWorkerAction{act: eschedDrop, address: address}
+}
+
+func (sh *edispatcher) closeAllBuckets() {
+	// TODO: close scheduler of buckets and cleanup all workers in scheduler
+}
+
+func (sh *edispatcher) watchWorkerClosing(closing <-chan struct{}, wid WorkerID) {
+	select {
+	case <-closing:
+		sh.dropWorker <- wid
+	}
+}
+
+func (sh *edispatcher) addWorkerClosingWatcher(w *eWorkerHandle) {
+	workerClosing, err := w.w.Closing(sh.ctx)
+	if nil != err {
+		log.Errorf("<%s> fail to watch worker closing for [%v] %s", eschedTag, w.wid, w.info.Address)
+		return
+	}
+	// It's ugly but I think it's not a problem because most of the time the watcher is sleep
+	go sh.watchWorkerClosing(workerClosing, w.wid)
 }
 
 func (sh *edispatcher) runSched() {
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	sh.ctx = ctx
+
 	for {
 		select {
 		case req := <-sh.newRequest:
 			sh.addNewWorkerRequestToBucketWorker(req)
 		case w := <-sh.newWorker:
+			sh.addWorkerClosingWatcher(w)
 			sh.addNewWorkerToBucket(w)
 		case wid := <-sh.dropWorker:
 			sh.dropWorkerFromBucket(wid)
@@ -744,6 +776,9 @@ func (sh *edispatcher) runSched() {
 			sh.onStorageNotify(act)
 		case address := <-sh.droppedWorker:
 			sh.onWorkerDropped(address)
+		case <-sh.closing:
+			sh.closeAllBuckets()
+			return
 		}
 	}
 }
@@ -753,6 +788,7 @@ func (sh *edispatcher) Info(ctx context.Context) (interface{}, error) {
 }
 
 func (sh *edispatcher) Close(ctx context.Context) error {
+	sh.closing <- struct{}{}
 	return nil
 }
 
@@ -760,13 +796,4 @@ func (sh *edispatcher) NewWorker(w *eWorkerHandle) {
 	w.wid = sh.nextWorker
 	sh.nextWorker += 1
 	sh.newWorker <- w
-}
-
-func (w *eWorkerHandle) WID() WorkerID {
-	return w.wid
-}
-
-func (sh *edispatcher) DropWorker(wid WorkerID) {
-	log.Infof("------------------drop----- %v", wid)
-	sh.dropWorker <- wid
 }
