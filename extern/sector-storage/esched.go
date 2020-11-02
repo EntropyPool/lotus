@@ -80,23 +80,38 @@ type eWorkerRequest struct {
 	endTime      int64
 }
 
-type eWorkerReqList struct {
+var eschedDefaultTaskPriority = 99
+
+var eTaskPriority = map[sealtasks.TaskType]int{
+	sealtasks.TTFinalize:   0,
+	sealtasks.TTCommit1:    1,
+	sealtasks.TTCommit2:    2,
+	sealtasks.TTPreCommit2: 3,
+	sealtasks.TTPreCommit1: 4,
+}
+
+type eWorkerReqTypedList struct {
 	taskType sealtasks.TaskType
 	tasks    []*eWorkerRequest
 }
 
+type eWorkerReqPriorityList struct {
+	priority        int
+	typedTasksQueue map[sealtasks.TaskType]*eWorkerReqTypedList
+}
+
 type eWorkerHandle struct {
-	priv       interface{}
-	wid        WorkerID
-	w          Worker
-	wt         *workTracker
-	info       storiface.WorkerInfo
-	memUsed    uint64
-	cpuUsed    int
-	gpuUsed    int
-	diskUsed   int64
-	diskTotal  int64
-	typedTasks map[sealtasks.TaskType]*eWorkerReqList
+	priv               interface{}
+	wid                WorkerID
+	w                  Worker
+	wt                 *workTracker
+	info               storiface.WorkerInfo
+	memUsed            uint64
+	cpuUsed            int
+	gpuUsed            int
+	diskUsed           int64
+	diskTotal          int64
+	priorityTasksQueue map[int]*eWorkerReqPriorityList
 }
 
 const eschedTag = "esched"
@@ -307,7 +322,7 @@ func (w *eWorkerHandle) releaseRequestResource(req *eWorkerRequest) {
 	w.diskUsed -= req.diskUsed
 }
 
-func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, reqQueue *eRequestQueue) int {
+func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, tasksQueue *eWorkerReqTypedList, reqQueue *eRequestQueue) int {
 	log.Debugf("<%s> peek as many request to worker", eschedTag)
 	worker.dumpWorkerInfo()
 	log.Debugf("<%s> %v need following resource", eschedTag, taskType)
@@ -337,7 +352,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		// TODO: disk space need to be added
 
 		req := reqs[0]
-		worker.typedTasks[taskType].tasks = append(worker.typedTasks[taskType].tasks, req)
+		tasksQueue.tasks = append(tasksQueue.tasks, req)
 
 		req.cpuUsed = res.CPUs
 		req.gpuUsed = res.GPUs
@@ -363,14 +378,16 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	peekReqs := 0
 
 	for _, worker := range bucket.workers {
-		for taskType, _ := range worker.typedTasks {
-			bucket.reqQueue.mutex.Lock()
-			if _, ok := bucket.reqQueue.reqs[taskType]; ok {
-				if 0 < len(bucket.reqQueue.reqs[taskType]) {
-					peekReqs += bucket.tryPeekAsManyRequests(worker, taskType, bucket.reqQueue)
+		for _, pq := range worker.priorityTasksQueue {
+			for taskType, tq := range pq.typedTasksQueue {
+				bucket.reqQueue.mutex.Lock()
+				if _, ok := bucket.reqQueue.reqs[taskType]; ok {
+					if 0 < len(bucket.reqQueue.reqs[taskType]) {
+						peekReqs += bucket.tryPeekAsManyRequests(worker, taskType, tq, bucket.reqQueue)
+					}
 				}
+				bucket.reqQueue.mutex.Unlock()
 			}
-			bucket.reqQueue.mutex.Unlock()
 		}
 	}
 
@@ -408,17 +425,29 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 }
 
 func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
-	for _, typedTasks := range worker.typedTasks {
-		tasks := typedTasks.tasks
-		for {
-			if 0 == len(tasks) {
-				break
-			}
-			task := tasks[0]
-			go bucket.runTypedTask(worker, task)
-			tasks = tasks[1:]
+	scheduled := false
+	for priority := 0; priority <= eschedDefaultTaskPriority; priority++ {
+		pq, ok := worker.priorityTasksQueue[priority]
+		if !ok {
+			continue
 		}
-		typedTasks.tasks = tasks
+		for _, typedTasks := range pq.typedTasksQueue {
+			tasks := typedTasks.tasks
+			for {
+				if 0 == len(tasks) {
+					break
+				}
+				task := tasks[0]
+				go bucket.runTypedTask(worker, task)
+				tasks = tasks[1:]
+				scheduled = true
+			}
+			typedTasks.tasks = tasks
+		}
+		if scheduled {
+			// Always run only one priority for each time
+			return
+		}
 	}
 }
 
@@ -431,25 +460,25 @@ func (bucket *eWorkerBucket) scheduleBucketTask() {
 
 func (bucket *eWorkerBucket) removeTaskFromBucketWorker(w *eWorkerHandle, req *eWorkerRequest) {
 	taskIndex := -1
-	var typedTasks *eWorkerReqList
+	var typedTasks *eWorkerReqTypedList
 
-	for _, tts := range w.typedTasks {
-		for id, task := range tts.tasks {
-			if task.id == req.id {
-				taskIndex = id
-				typedTasks = tts
-				goto l_remove_task
+	for _, pq := range w.priorityTasksQueue {
+		for _, tq := range pq.typedTasksQueue {
+			for id, task := range tq.tasks {
+				if task.id == req.id {
+					taskIndex = id
+					typedTasks = tq
+					goto lRemoveTask
+				}
 			}
 		}
 	}
 
+lRemoveTask:
 	if taskIndex < 0 {
 		return
 	}
-
 	w.releaseRequestResource(req)
-
-l_remove_task:
 	typedTasks.tasks = append(typedTasks.tasks[:taskIndex], typedTasks.tasks[taskIndex+1:]...)
 }
 
@@ -486,9 +515,11 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid WorkerID) {
 	log.Infof("<%s> try to drop worker %v from bucket %d", eschedTag, wid, bucket.id)
 	worker := bucket.findBucketWorkerByID(wid)
 	if nil != worker {
-		for _, typedTasks := range worker.typedTasks {
-			for _, task := range typedTasks.tasks {
-				go func() { bucket.retRequest <- task }()
+		for _, pq := range worker.priorityTasksQueue {
+			for _, tq := range pq.typedTasksQueue {
+				for _, task := range tq.tasks {
+					go func() { bucket.retRequest <- task }()
+				}
 			}
 		}
 	}
@@ -679,15 +710,30 @@ func (w *eWorkerHandle) patchLocalhost() {
 	}
 }
 
+func getTaskPriority(taskType sealtasks.TaskType) int {
+	priority, ok := eTaskPriority[taskType]
+	if !ok {
+		priority = eschedDefaultTaskPriority
+	}
+	return priority
+}
+
 func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	w.patchLocalhost()
 
 	log.Infof("<%s> add new worker %s to bucket", eschedTag, w.info.Address)
 	w.dumpWorkerInfo()
 
-	w.typedTasks = make(map[sealtasks.TaskType]*eWorkerReqList)
+	w.priorityTasksQueue = make(map[int]*eWorkerReqPriorityList)
 	for _, taskType := range w.info.SupportTasks {
-		w.typedTasks[taskType] = &eWorkerReqList{
+		priority := getTaskPriority(taskType)
+		if _, ok := w.priorityTasksQueue[priority]; !ok {
+			w.priorityTasksQueue[priority] = &eWorkerReqPriorityList{
+				typedTasksQueue: make(map[sealtasks.TaskType]*eWorkerReqTypedList),
+				priority:        priority,
+			}
+		}
+		w.priorityTasksQueue[priority].typedTasksQueue[taskType] = &eWorkerReqTypedList{
 			taskType: taskType,
 			tasks:    make([]*eWorkerRequest, 0),
 		}
