@@ -476,6 +476,7 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	log.Infof("<%s> prepared typed task %v/%v", eschedTag, task.sector, task.taskType)
 	task.preparedTime = time.Now().UnixNano()
 	worker.preparedTasks = append(worker.preparedTasks, task)
+	bucket.schedulerRunner <- struct{}{}
 
 	canBindTaskType := false
 	nextTaskType, ok := eschedTaskBindWorker[task.taskType]
@@ -570,7 +571,6 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 		}
 		if scheduled {
 			// Always run only one priority for each time
-			bucket.schedulerRunner <- struct{}{}
 			return
 		}
 	}
@@ -625,14 +625,14 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 }
 
 func (bucket *eWorkerBucket) scheduleBucketTask() {
-	log.Debugf("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
+	log.Infof("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
 	for _, worker := range bucket.workers {
 		bucket.scheduleTypedTasks(worker)
 	}
 }
 
 func (bucket *eWorkerBucket) schedulePreparedTask() {
-	log.Debugf("<%s> try schedule prepared task for bucket [%d]", eschedTag, bucket.id)
+	log.Infof("<%s> try schedule prepared task for bucket [%d]", eschedTag, bucket.id)
 	for _, worker := range bucket.workers {
 		bucket.schedulePreparedTasks(worker)
 	}
