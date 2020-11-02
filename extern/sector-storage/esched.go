@@ -13,10 +13,11 @@ import (
 )
 
 type eResources struct {
-	Memory    uint64
-	CPUs      int
-	GPUs      int
-	DiskSpace int64
+	Memory           uint64
+	CPUs             int
+	GPUs             int
+	DiskSpace        int64
+	InheritDiskSpace int64
 }
 
 const eKiB = 1024
@@ -40,11 +41,11 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 	},
 	sealtasks.TTPreCommit2: {
 		/* Specially, for P2 at the different worker as P1, it should add disk space of P1 */
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 32 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 16 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 1024 * 1024 * 1024, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
-		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 32 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: 64 * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 16 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: 32 * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 1024 * 1024 * 1024, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: 512 * eMiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB, InheritDiskSpace: 2 * eKiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB, InheritDiskSpace: 8 * eMiB * 11 / 10},
 	},
 	sealtasks.TTCommit1: {
 		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 4 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
@@ -123,20 +124,26 @@ type eRequestFinisher struct {
 	wid  WorkerID
 }
 
+type eTaskWorkerBinder struct {
+	mutex  sync.Mutex
+	binder map[abi.SectorID]string
+}
+
 type eWorkerBucket struct {
-	spt             abi.RegisteredSealProof
-	id              int
-	newWorker       chan *eWorkerHandle
-	workers         []*eWorkerHandle
-	reqQueue        *eRequestQueue
-	schedulerWaker  chan struct{}
-	reqFinisher     chan *eRequestFinisher
-	notifier        chan struct{}
-	dropWorker      chan WorkerID
-	retRequest      chan *eWorkerRequest
-	storageNotifier chan eStoreAction
-	droppedWorker   chan string
-	storeIDs        map[stores.ID]struct{}
+	spt              abi.RegisteredSealProof
+	id               int
+	newWorker        chan *eWorkerHandle
+	workers          []*eWorkerHandle
+	reqQueue         *eRequestQueue
+	schedulerWaker   chan struct{}
+	reqFinisher      chan *eRequestFinisher
+	notifier         chan struct{}
+	dropWorker       chan WorkerID
+	retRequest       chan *eWorkerRequest
+	storageNotifier  chan eStoreAction
+	droppedWorker    chan string
+	storeIDs         map[stores.ID]struct{}
+	taskWorkerBinder *eTaskWorkerBinder
 }
 
 type eRequestQueue struct {
@@ -173,20 +180,29 @@ type eStoreAction struct {
 
 const eschedInvalidWorkerID = -1
 
+var eschedTaskBindWorker = map[sealtasks.TaskType]sealtasks.TaskType{
+	sealtasks.TTAddPiece:   sealtasks.TTPreCommit1,
+	sealtasks.TTPreCommit1: sealtasks.TTPreCommit2,
+	sealtasks.TTPreCommit2: sealtasks.TTCommit1,
+}
+
+var eschedTaskInheritDiskSpace = map[sealtasks.TaskType]int64{}
+
 type edispatcher struct {
-	spt             abi.RegisteredSealProof
-	nextWorker      WorkerID
-	nextRequest     uint64
-	newWorker       chan *eWorkerHandle
-	dropWorker      chan WorkerID
-	newRequest      chan *eWorkerRequest
-	buckets         []*eWorkerBucket
-	reqQueue        *eRequestQueue
-	storage         *EStorage
-	storageNotifier chan eStoreAction
-	droppedWorker   chan string
-	closing         chan struct{}
-	ctx             context.Context
+	spt              abi.RegisteredSealProof
+	nextWorker       WorkerID
+	nextRequest      uint64
+	newWorker        chan *eWorkerHandle
+	dropWorker       chan WorkerID
+	newRequest       chan *eWorkerRequest
+	buckets          []*eWorkerBucket
+	reqQueue         *eRequestQueue
+	storage          *EStorage
+	storageNotifier  chan eStoreAction
+	droppedWorker    chan string
+	closing          chan struct{}
+	ctx              context.Context
+	taskWorkerBinder *eTaskWorkerBinder
 }
 
 const eschedWorkerBuckets = 10
@@ -335,31 +351,65 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 	log.Debugf("<%s> %d %v tasks waiting for run", eschedTag, len(reqs), taskType)
 
 	peekReqs := 0
+	remainReqs := make([]*eWorkerRequest, 0)
+
 	for {
 		if 0 == len(reqs) {
 			break
 		}
-		if int(worker.info.Resources.CPUs)-idleCpus < res.CPUs+worker.cpuUsed {
-			break
-		}
-		if 0 < res.GPUs && 0 < len(worker.info.Resources.GPUs) {
-			if len(worker.info.Resources.GPUs) < res.GPUs+worker.gpuUsed {
-				break
+
+		needCPUs := res.CPUs
+		if 0 < res.GPUs {
+			if 0 < len(worker.info.Resources.GPUs) {
+				if len(worker.info.Resources.GPUs) < res.GPUs+worker.gpuUsed {
+					log.Infof("<%s> need %d = %d + %d GPUs but only %d available [%v]",
+						eschedTag, res.GPUs+worker.gpuUsed, res.GPUs, worker.gpuUsed, taskType)
+					break
+				}
+			} else {
+				needCPUs = int(worker.info.Resources.CPUs) - idleCpus
 			}
 		}
-		if worker.info.Resources.MemPhysical < res.Memory+worker.memUsed {
+		if int(worker.info.Resources.CPUs)-idleCpus < needCPUs+worker.cpuUsed {
+			log.Infof("<%s> need %d = %d + %d CPUs but only %d available [%v]",
+				eschedTag, needCPUs+worker.cpuUsed, needCPUs, worker.cpuUsed,
+				int(worker.info.Resources.CPUs)-idleCpus, taskType)
 			break
 		}
-		// TODO: disk space need to be added
+		if worker.info.Resources.MemPhysical < res.Memory+worker.memUsed {
+			log.Infof("<%s> need %d = %d + %d memory but only %d available [%v]",
+				eschedTag, res.Memory+worker.memUsed, res.Memory, worker.memUsed,
+				worker.info.Resources.MemPhysical, taskType)
+			break
+		}
 
 		req := reqs[0]
+
+		bindWorker := false
+		bucket.taskWorkerBinder.mutex.Lock()
+		address, ok := bucket.taskWorkerBinder.binder[req.sector]
+		if ok {
+			if address != worker.info.Address {
+				bucket.taskWorkerBinder.mutex.Unlock()
+				remainReqs = append(remainReqs, reqs[0])
+				reqs = reqs[1:]
+				continue
+			}
+			bindWorker = true
+		}
+		bucket.taskWorkerBinder.mutex.Unlock()
+
 		tasksQueue.tasks = append(tasksQueue.tasks, req)
 
-		req.cpuUsed = res.CPUs
-		req.gpuUsed = res.GPUs
+		req.cpuUsed = needCPUs
+		if 0 < len(worker.info.Resources.GPUs) {
+			req.gpuUsed = res.GPUs
+		}
 		req.memUsed = res.Memory
-		// TODO: if P1 and P2 is the different worker, we need to process it
 		req.diskUsed = res.DiskSpace
+		if bindWorker {
+			req.diskUsed += res.InheritDiskSpace
+		}
 
 		req.inqueueTime = time.Now().UnixNano()
 		worker.acquireRequestResource(req)
@@ -368,7 +418,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		reqs = reqs[1:]
 	}
 
-	reqQueue.reqs[taskType] = reqs
+	reqQueue.reqs[taskType] = remainReqs
 
 	return peekReqs
 }
@@ -398,7 +448,7 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 }
 
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
-	log.Infof("<%s> run typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Debugf("<%s> run typed task %v/%v", eschedTag, task.sector, task.taskType)
 	worker.dumpWorkerInfo()
 	task.dumpWorkerRequest()
 
@@ -413,7 +463,7 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		return
 	}
 
-	log.Infof("<%s> prepared typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Debugf("<%s> prepared typed task %v/%v", eschedTag, task.sector, task.taskType)
 	task.preparedTime = time.Now().UnixNano()
 	err = task.work(task.ctx, worker.wt.worker(worker.w))
 	bucket.reqFinisher <- &eRequestFinisher{
@@ -422,7 +472,25 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		wid:  worker.wid,
 	}
 	task.endTime = time.Now().UnixNano()
-	log.Infof("<%s> finished typed task %v/%v [%v]", eschedTag, task.sector, task.taskType, err)
+	log.Debugf("<%s> finished typed task %v/%v [%v]", eschedTag, task.sector, task.taskType, err)
+
+	canBindTaskType := false
+	nextTaskType, ok := eschedTaskBindWorker[task.taskType]
+	if ok {
+		for _, taskType := range worker.info.SupportTasks {
+			if taskType == nextTaskType {
+				canBindTaskType = true
+			}
+		}
+	}
+
+	bucket.taskWorkerBinder.mutex.Lock()
+	if canBindTaskType {
+		bucket.taskWorkerBinder.binder[task.sector] = worker.info.Address
+	} else {
+		delete(bucket.taskWorkerBinder.binder, task.sector)
+	}
+	bucket.taskWorkerBinder.mutex.Unlock()
 }
 
 func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
@@ -459,30 +527,6 @@ func (bucket *eWorkerBucket) scheduleBucketTask() {
 	}
 }
 
-func (bucket *eWorkerBucket) removeTaskFromBucketWorker(w *eWorkerHandle, req *eWorkerRequest) {
-	taskIndex := -1
-	var typedTasks *eWorkerReqTypedList
-
-	for _, pq := range w.priorityTasksQueue {
-		for _, tq := range pq.typedTasksQueue {
-			for id, task := range tq.tasks {
-				if task.id == req.id {
-					taskIndex = id
-					typedTasks = tq
-					goto lRemoveTask
-				}
-			}
-		}
-	}
-
-lRemoveTask:
-	if taskIndex < 0 {
-		return
-	}
-	w.releaseRequestResource(req)
-	typedTasks.tasks = append(typedTasks.tasks[:taskIndex], typedTasks.tasks[taskIndex+1:]...)
-}
-
 func (bucket *eWorkerBucket) findBucketWorkerByID(wid WorkerID) *eWorkerHandle {
 	for _, worker := range bucket.workers {
 		if wid == worker.wid {
@@ -504,7 +548,7 @@ func (bucket *eWorkerBucket) findBucketWorkerIndexByID(wid WorkerID) int {
 func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 	w := bucket.findBucketWorkerByID(finisher.wid)
 	if nil != w {
-		bucket.removeTaskFromBucketWorker(w, finisher.req)
+		w.releaseRequestResource(finisher.req)
 	}
 
 	go func() { finisher.req.ret <- *finisher.resp }()
@@ -631,23 +675,27 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 		storageNotifier: make(chan eStoreAction, 10),
 		droppedWorker:   make(chan string, 10),
 		closing:         make(chan struct{}, 2),
+		taskWorkerBinder: &eTaskWorkerBinder{
+			binder: make(map[abi.SectorID]string),
+		},
 	}
 
 	for i := range dispatcher.buckets {
 		dispatcher.buckets[i] = &eWorkerBucket{
-			spt:             spt,
-			id:              i,
-			newWorker:       make(chan *eWorkerHandle),
-			workers:         make([]*eWorkerHandle, 0),
-			reqQueue:        dispatcher.reqQueue,
-			schedulerWaker:  make(chan struct{}, 20),
-			reqFinisher:     make(chan *eRequestFinisher),
-			notifier:        make(chan struct{}),
-			dropWorker:      make(chan WorkerID, 10),
-			retRequest:      dispatcher.newRequest,
-			storageNotifier: make(chan eStoreAction, 10),
-			droppedWorker:   dispatcher.droppedWorker,
-			storeIDs:        make(map[stores.ID]struct{}),
+			spt:              spt,
+			id:               i,
+			newWorker:        make(chan *eWorkerHandle),
+			workers:          make([]*eWorkerHandle, 0),
+			reqQueue:         dispatcher.reqQueue,
+			schedulerWaker:   make(chan struct{}, 20),
+			reqFinisher:      make(chan *eRequestFinisher),
+			notifier:         make(chan struct{}),
+			dropWorker:       make(chan WorkerID, 10),
+			retRequest:       dispatcher.newRequest,
+			storageNotifier:  make(chan eStoreAction, 10),
+			droppedWorker:    dispatcher.droppedWorker,
+			storeIDs:         make(map[stores.ID]struct{}),
+			taskWorkerBinder: dispatcher.taskWorkerBinder,
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -795,6 +843,13 @@ func (sh *edispatcher) onStorageNotify(act eStoreAction) {
 }
 
 func (sh *edispatcher) onWorkerDropped(address string) {
+	sh.taskWorkerBinder.mutex.Lock()
+	for sector, binder := range sh.taskWorkerBinder.binder {
+		if binder == address {
+			delete(sh.taskWorkerBinder.binder, sector)
+		}
+	}
+	sh.taskWorkerBinder.mutex.Unlock()
 	sh.storage.workerNotifier <- eWorkerAction{act: eschedDrop, address: address}
 }
 
