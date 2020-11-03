@@ -70,8 +70,18 @@ type LocalStorage interface {
 }
 
 const MetaFile = "sectorstore.json"
+const FailSectorsFile = "failsectors.json"
 
 var PathTypes = []SectorFileType{FTUnsealed, FTSealed, FTCache}
+
+type FailInfo struct {
+	Address string `json:"fail_address"`
+}
+
+type FailSector struct {
+	Miner abi.ActorID            `json:"actor_id"`
+	Fails map[string][]*FailInfo `json:"fails_info"`
+}
 
 type Local struct {
 	localStorage LocalStorage
@@ -81,6 +91,9 @@ type Local struct {
 	paths map[ID]*path
 
 	localLk sync.RWMutex
+
+	FailSectors     map[abi.SectorNumber]*FailSector
+	failSectorsPath string
 }
 
 type path struct {
@@ -146,10 +159,73 @@ func NewLocal(ctx context.Context, ls LocalStorage, index SectorIndex, urls []st
 		localStorage: ls,
 		index:        index,
 		urls:         urls,
-
-		paths: map[ID]*path{},
+		paths:        map[ID]*path{},
+		FailSectors:  make(map[abi.SectorNumber]*FailSector),
 	}
 	return l, l.open(ctx)
+}
+
+func (st *Local) AddFailSector(ctx context.Context, sector abi.SectorID, stage string, address string) {
+	st.localLk.Lock()
+	defer st.localLk.Unlock()
+
+	log.Warnf("add fail sector %v / %s / %s to %s", sector, stage, address, st.failSectorsPath)
+	_, ok := st.FailSectors[sector.Number]
+	if !ok {
+		st.FailSectors[sector.Number] = &FailSector{
+			Miner: sector.Miner,
+			Fails: make(map[string][]*FailInfo),
+		}
+	}
+
+	_, ok = st.FailSectors[sector.Number].Fails[stage]
+	if !ok {
+		st.FailSectors[sector.Number].Fails[stage] = make([]*FailInfo, 0)
+	}
+	fails, _ := st.FailSectors[sector.Number].Fails[stage]
+
+	st.FailSectors[sector.Number].Fails[stage] = append(fails, &FailInfo{Address: address})
+	if 0 < len(st.failSectorsPath) {
+		jsonStr, err := json.Marshal(st.FailSectors)
+		if nil == err {
+			ioutil.WriteFile(filepath.Join(st.failSectorsPath, FailSectorsFile), jsonStr, 0644)
+		}
+	}
+}
+
+func (st *Local) DropFailSector(ctx context.Context, sector abi.SectorID) {
+	st.localLk.Lock()
+	defer st.localLk.Unlock()
+
+	log.Warnf("remove fail sector %v from %s", sector, st.failSectorsPath)
+	_, ok := st.FailSectors[sector.Number]
+	if !ok {
+		return
+	}
+
+	delete(st.FailSectors, sector.Number)
+
+	if 0 < len(st.failSectorsPath) {
+		jsonStr, err := json.Marshal(st.FailSectors)
+		if nil == err {
+			ioutil.WriteFile(filepath.Join(st.failSectorsPath, FailSectorsFile), jsonStr, 0644)
+		}
+	}
+}
+
+func (st *Local) createFailSectorsFile() {
+	cfg, err := st.localStorage.GetStorage()
+	if err != nil {
+		return
+	}
+
+	if 0 < len(cfg.StoragePaths) && 0 == len(st.failSectorsPath) {
+		st.failSectorsPath = cfg.StoragePaths[0].Path
+		fb, err := ioutil.ReadFile(filepath.Join(st.failSectorsPath, FailSectorsFile))
+		if nil == err {
+			json.Unmarshal(fb, st.FailSectors)
+		}
+	}
 }
 
 func (st *Local) OpenPath(ctx context.Context, p string) error {
@@ -165,6 +241,8 @@ func (st *Local) OpenPath(ctx context.Context, p string) error {
 	if err := json.Unmarshal(mb, &meta); err != nil {
 		return xerrors.Errorf("unmarshalling storage metadata for %s: %w", p, err)
 	}
+
+	st.createFailSectorsFile()
 
 	// TODO: Check existing / dedupe
 
@@ -241,6 +319,8 @@ func (st *Local) open(ctx context.Context) error {
 			return xerrors.Errorf("opening path %s: %w", path.Path, err)
 		}
 	}
+
+	st.createFailSectorsFile()
 
 	go st.reportHealth(ctx)
 
