@@ -150,6 +150,8 @@ type eWorkerBucket struct {
 	taskCleaner        chan eWorkerCleanerParam
 	taskCleanerHandler chan eWorkerCleanerParam
 	taskCleanerQueue   *eWorkerRequestCleanerQueue
+	workerStatsQuery   chan *eWorkerStatsParam
+	closing            chan struct{}
 }
 
 type eRequestQueue struct {
@@ -225,6 +227,14 @@ type eWorkerRequestCleanerQueue struct {
 	queue map[abi.SectorNumber]map[sealtasks.TaskType]*eWorkerRequestCleaner
 }
 
+const eschedWorkerJobs = "worker_jobs"
+const eschedWorkerStats = "worker_stats"
+
+type eWorkerStatsParam struct {
+	command string
+	resp    chan map[uint64]storiface.WorkerStats
+}
+
 type edispatcher struct {
 	spt              abi.RegisteredSealProof
 	nextWorker       WorkerID
@@ -242,6 +252,7 @@ type edispatcher struct {
 	ctx              context.Context
 	taskWorkerBinder *eTaskWorkerBinder
 	taskCleanerQueue *eWorkerRequestCleanerQueue
+	workerStatsQuery chan *eWorkerStatsParam
 }
 
 const eschedWorkerBuckets = 10
@@ -763,6 +774,20 @@ func (bucket *eWorkerBucket) onTaskClean(param eWorkerCleanerParam) {
 	bucket.taskCleanerQueue.mutex.Unlock()
 }
 
+func (bucket *eWorkerBucket) onWorkerInfoQuery(param *eWorkerStatsParam) {
+	out := map[uint64]storiface.WorkerStats{}
+
+	for _, worker := range bucket.workers {
+		out[uint64(worker.wid)] = storiface.WorkerStats{
+			Info:    worker.info,
+			GpuUsed: 0 < worker.gpuUsed,
+			CpuUse:  uint64(worker.cpuUsed),
+		}
+	}
+
+	go func() { param.resp <- out }()
+}
+
 func (bucket *eWorkerBucket) scheduler() {
 	log.Infof("<%s> run scheduler for bucket %d", eschedTag, bucket.id)
 
@@ -784,10 +809,13 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.onStorageNotify(act)
 		case param := <-bucket.taskCleanerHandler:
 			bucket.onTaskClean(param)
+		case param := <-bucket.workerStatsQuery:
+			bucket.onWorkerInfoQuery(param)
+		case <-bucket.closing:
+			log.Infof("<%s> finish scheduler for bucket %d", eschedTag, bucket.id)
+			return
 		}
 	}
-
-	log.Infof("<%s> finish scheduler for bucket %d", eschedTag, bucket.id)
 }
 
 func (bucket *eWorkerBucket) addNewWorker(w *eWorkerHandle) {
@@ -821,6 +849,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 		taskCleanerQueue: &eWorkerRequestCleanerQueue{
 			queue: make(map[abi.SectorNumber]map[sealtasks.TaskType]*eWorkerRequestCleaner),
 		},
+		workerStatsQuery: make(chan *eWorkerStatsParam, 10),
 	}
 
 	for i := range dispatcher.buckets {
@@ -843,6 +872,8 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 			taskCleaner:        dispatcher.taskCleaner,
 			taskCleanerHandler: make(chan eWorkerCleanerParam, 10),
 			taskCleanerQueue:   dispatcher.taskCleanerQueue,
+			workerStatsQuery:   make(chan *eWorkerStatsParam, 10),
+			closing:            make(chan struct{}, 2),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -1004,7 +1035,11 @@ func (sh *edispatcher) onWorkerDropped(address string) {
 }
 
 func (sh *edispatcher) closeAllBuckets() {
-	// TODO: close scheduler of buckets and cleanup all workers in scheduler
+	go func() {
+		for _, bucket := range sh.buckets {
+			bucket.closing <- struct{}{}
+		}
+	}()
 }
 
 func (sh *edispatcher) watchWorkerClosing(closing <-chan struct{}, wid WorkerID) {
@@ -1032,6 +1067,27 @@ func (sh *edispatcher) onTaskClean(param eWorkerCleanerParam) {
 	}()
 }
 
+func (sh *edispatcher) onWorkerInfoQuery(param *eWorkerStatsParam) {
+	go func(param *eWorkerStatsParam) {
+		out := map[uint64]storiface.WorkerStats{}
+		for _, bucket := range sh.buckets {
+			resp := make(chan map[uint64]storiface.WorkerStats)
+			queryParam := &eWorkerStatsParam{
+				command: param.command,
+				resp:    resp,
+			}
+			bucket.workerStatsQuery <- queryParam
+			select {
+			case r := <-resp:
+				for k, v := range r {
+					out[k] = v
+				}
+			}
+		}
+		param.resp <- out
+	}(param)
+}
+
 func (sh *edispatcher) runSched() {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
@@ -1053,6 +1109,8 @@ func (sh *edispatcher) runSched() {
 			sh.onWorkerDropped(address)
 		case param := <-sh.taskCleaner:
 			sh.onTaskClean(param)
+		case param := <-sh.workerStatsQuery:
+			sh.onWorkerInfoQuery(param)
 		case <-sh.closing:
 			sh.closeAllBuckets()
 			return
@@ -1073,4 +1131,21 @@ func (sh *edispatcher) NewWorker(w *eWorkerHandle) {
 	w.wid = sh.nextWorker
 	sh.nextWorker += 1
 	sh.newWorker <- w
+}
+
+func (sh *edispatcher) WorkerStats() map[uint64]storiface.WorkerStats {
+	resp := make(chan map[uint64]storiface.WorkerStats)
+	param := &eWorkerStatsParam{
+		command: eschedWorkerStats,
+		resp:    resp,
+	}
+	sh.workerStatsQuery <- param
+	select {
+	case out := <-resp:
+		return out
+	}
+}
+
+func (sh *edispatcher) WorkerJobs() map[uint64][]storiface.WorkerJob {
+	return map[uint64][]storiface.WorkerJob{}
 }

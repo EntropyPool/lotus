@@ -5,6 +5,10 @@ import (
 )
 
 func (m *Manager) WorkerStats() map[uint64]storiface.WorkerStats {
+	if m.sched.useExtSched {
+		return m.sched.esched.WorkerStats()
+	}
+
 	m.sched.workersLk.RLock()
 	defer m.sched.workersLk.RUnlock()
 
@@ -24,6 +28,10 @@ func (m *Manager) WorkerStats() map[uint64]storiface.WorkerStats {
 }
 
 func (m *Manager) WorkerJobs() map[uint64][]storiface.WorkerJob {
+	if m.sched.useExtSched {
+		return m.sched.esched.WorkerJobs()
+	}
+
 	m.sched.workersLk.RLock()
 	defer m.sched.workersLk.RUnlock()
 
