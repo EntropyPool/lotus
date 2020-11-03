@@ -75,6 +75,7 @@ type eWorkerRequest struct {
 	cpuUsed      int
 	gpuUsed      int
 	diskUsed     int64
+	requestTime  int64
 	inqueueTime  int64
 	startTime    int64
 	preparedTime int64
@@ -458,7 +459,7 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 }
 
 func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
-	log.Infof("<%s> preparing typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Debugf("<%s> preparing typed task %v/%v", eschedTag, task.sector, task.taskType)
 	worker.dumpWorkerInfo()
 	task.dumpWorkerRequest()
 
@@ -473,7 +474,7 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 		return
 	}
 
-	log.Infof("<%s> prepared typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Debugf("<%s> prepared typed task %v/%v", eschedTag, task.sector, task.taskType)
 	task.preparedTime = time.Now().UnixNano()
 	worker.preparedTasks = append(worker.preparedTasks, task)
 	bucket.schedulerRunner <- struct{}{}
@@ -508,7 +509,7 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 }
 
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
-	log.Infof("<%s> executing typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Debugf("<%s> executing typed task %v/%v", eschedTag, task.sector, task.taskType)
 	err := task.work(task.ctx, worker.wt.worker(worker.w))
 	bucket.reqFinisher <- &eRequestFinisher{
 		req:  task,
@@ -516,7 +517,12 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		wid:  worker.wid,
 	}
 	task.endTime = time.Now().UnixNano()
-	log.Infof("<%s> finished typed task %v/%v [%v]", eschedTag, task.sector, task.taskType, err)
+	log.Infof("<%s> finished typed task %v/%v duration (%dms / %d ms / %d ms) [%v]",
+		eschedTag, task.sector, task.taskType,
+		(task.inqueueTime-task.requestTime)/1000000.0,
+		(task.preparedTime-task.inqueueTime)/1000000.0,
+		(task.endTime-task.preparedTime)/1000000.0,
+		err)
 	if nil != err {
 		needCleaner := false
 		for taskType, _ := range eschedTaskBindCleaner {
@@ -591,7 +597,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		if 0 < res.GPUs {
 			if 0 < len(worker.info.Resources.GPUs) {
 				if len(worker.info.Resources.GPUs) < res.GPUs+worker.gpuUsed {
-					log.Infof("<%s> need %d = %d + %d GPUs but only %d available [%v]",
+					log.Debugf("<%s> need %d = %d + %d GPUs but only %d available [%v]",
 						eschedTag, res.GPUs+worker.gpuUsed, res.GPUs, worker.gpuUsed, taskType)
 					break
 				}
@@ -600,13 +606,13 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			}
 		}
 		if int(worker.info.Resources.CPUs)-idleCpus < needCPUs+worker.cpuUsed {
-			log.Infof("<%s> need %d = %d + %d CPUs but only %d available [%v]",
+			log.Debugf("<%s> need %d = %d + %d CPUs but only %d available [%v]",
 				eschedTag, needCPUs+worker.cpuUsed, needCPUs, worker.cpuUsed,
 				int(worker.info.Resources.CPUs)-idleCpus, taskType)
 			break
 		}
 		if worker.info.Resources.MemPhysical < res.Memory+worker.memUsed {
-			log.Infof("<%s> need %d = %d + %d memory but only %d available [%v]",
+			log.Debugf("<%s> need %d = %d + %d memory but only %d available [%v]",
 				eschedTag, res.Memory+worker.memUsed, res.Memory, worker.memUsed,
 				worker.info.Resources.MemPhysical, taskType)
 			break
@@ -625,14 +631,14 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 }
 
 func (bucket *eWorkerBucket) scheduleBucketTask() {
-	log.Infof("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
+	log.Debugf("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
 	for _, worker := range bucket.workers {
 		bucket.scheduleTypedTasks(worker)
 	}
 }
 
 func (bucket *eWorkerBucket) schedulePreparedTask() {
-	log.Infof("<%s> try schedule prepared task for bucket [%d]", eschedTag, bucket.id)
+	log.Debugf("<%s> try schedule prepared task for bucket [%d]", eschedTag, bucket.id)
 	for _, worker := range bucket.workers {
 		bucket.schedulePreparedTasks(worker)
 	}
@@ -952,6 +958,7 @@ func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
 
 	req.id = sh.nextRequest
 	sh.nextRequest += 1
+	req.requestTime = time.Now().UnixNano()
 
 	sh.reqQueue.mutex.Lock()
 	if _, ok := sh.reqQueue.reqs[req.taskType]; !ok {
