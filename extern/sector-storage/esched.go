@@ -64,22 +64,24 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 }
 
 type eWorkerRequest struct {
-	id           uint64
-	sector       abi.SectorID
-	taskType     sealtasks.TaskType
-	prepare      WorkerAction
-	work         WorkerAction
-	ret          chan workerResponse
-	ctx          context.Context
-	memUsed      uint64
-	cpuUsed      int
-	gpuUsed      int
-	diskUsed     int64
-	requestTime  int64
-	inqueueTime  int64
-	startTime    int64
-	preparedTime int64
-	endTime      int64
+	id              uint64
+	sector          abi.SectorID
+	taskType        sealtasks.TaskType
+	prepare         WorkerAction
+	work            WorkerAction
+	ret             chan workerResponse
+	ctx             context.Context
+	memUsed         uint64
+	cpuUsed         int
+	gpuUsed         int
+	diskUsed        int64
+	requestTime     int64
+	inqueueTime     int64
+	inqueueTimeRaw  time.Time
+	startTime       int64
+	preparedTime    int64
+	preparedTimeRaw time.Time
+	endTime         int64
 }
 
 var eschedDefaultTaskPriority = 99
@@ -116,6 +118,7 @@ type eWorkerHandle struct {
 	diskTotal          int64
 	priorityTasksQueue map[int]*eWorkerReqPriorityList
 	preparedTasks      []*eWorkerRequest
+	runningTasks       []*eWorkerRequest
 }
 
 const eschedTag = "esched"
@@ -151,6 +154,7 @@ type eWorkerBucket struct {
 	taskCleanerHandler chan eWorkerCleanerParam
 	taskCleanerQueue   *eWorkerRequestCleanerQueue
 	workerStatsQuery   chan *eWorkerStatsParam
+	workerJobsQuery    chan *eWorkerJobsParam
 	closing            chan struct{}
 }
 
@@ -235,6 +239,11 @@ type eWorkerStatsParam struct {
 	resp    chan map[uint64]storiface.WorkerStats
 }
 
+type eWorkerJobsParam struct {
+	command string
+	resp    chan map[uint64][]storiface.WorkerJob
+}
+
 type edispatcher struct {
 	spt              abi.RegisteredSealProof
 	nextWorker       WorkerID
@@ -253,6 +262,7 @@ type edispatcher struct {
 	taskWorkerBinder *eTaskWorkerBinder
 	taskCleanerQueue *eWorkerRequestCleanerQueue
 	workerStatsQuery chan *eWorkerStatsParam
+	workerJobsQuery  chan *eWorkerJobsParam
 }
 
 const eschedWorkerBuckets = 10
@@ -434,6 +444,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 
 		req.inqueueTime = time.Now().UnixNano()
+		req.inqueueTimeRaw = time.Now()
 		worker.acquireRequestResource(req, eschedResStagePrepare)
 
 		peekReqs += 1
@@ -487,6 +498,7 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 
 	log.Debugf("<%s> prepared typed task %v/%v", eschedTag, task.sector, task.taskType)
 	task.preparedTime = time.Now().UnixNano()
+	task.preparedTimeRaw = time.Now()
 	worker.preparedTasks = append(worker.preparedTasks, task)
 	bucket.schedulerRunner <- struct{}{}
 
@@ -637,6 +649,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		worker.acquireRequestResource(task, eschedResStageRuntime)
 		worker.preparedTasks = worker.preparedTasks[1:]
 
+		worker.runningTasks = append(worker.runningTasks, task)
 		go bucket.runTypedTask(worker, task)
 	}
 }
@@ -677,6 +690,18 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 	w := bucket.findBucketWorkerByID(finisher.wid)
 	if nil != w {
 		w.releaseRequestResource(finisher.req, eschedResStageRuntime)
+
+		idx := -1
+		for id, task := range w.runningTasks {
+			if task.id == finisher.req.id {
+				idx = id
+				break
+			}
+		}
+
+		if 0 <= idx {
+			w.runningTasks = append(w.runningTasks[:idx], w.runningTasks[idx+1:]...)
+		}
 	}
 
 	go func() { finisher.req.ret <- *finisher.resp }()
@@ -774,7 +799,7 @@ func (bucket *eWorkerBucket) onTaskClean(param eWorkerCleanerParam) {
 	bucket.taskCleanerQueue.mutex.Unlock()
 }
 
-func (bucket *eWorkerBucket) onWorkerInfoQuery(param *eWorkerStatsParam) {
+func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 	out := map[uint64]storiface.WorkerStats{}
 
 	for _, worker := range bucket.workers {
@@ -782,6 +807,33 @@ func (bucket *eWorkerBucket) onWorkerInfoQuery(param *eWorkerStatsParam) {
 			Info:    worker.info,
 			GpuUsed: 0 < worker.gpuUsed,
 			CpuUse:  uint64(worker.cpuUsed),
+		}
+	}
+
+	go func() { param.resp <- out }()
+}
+
+func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
+	out := map[uint64][]storiface.WorkerJob{}
+
+	for _, worker := range bucket.workers {
+		for _, task := range worker.runningTasks {
+			out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
+				ID:     task.id,
+				Sector: task.sector,
+				Task:   task.taskType,
+				Start:  task.preparedTimeRaw,
+			})
+		}
+
+		for wi, task := range worker.preparedTasks {
+			out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
+				ID:      task.id,
+				Sector:  task.sector,
+				Task:    task.taskType,
+				RunWait: wi + 1,
+				Start:   task.inqueueTimeRaw,
+			})
 		}
 	}
 
@@ -810,7 +862,9 @@ func (bucket *eWorkerBucket) scheduler() {
 		case param := <-bucket.taskCleanerHandler:
 			bucket.onTaskClean(param)
 		case param := <-bucket.workerStatsQuery:
-			bucket.onWorkerInfoQuery(param)
+			bucket.onWorkerStatsQuery(param)
+		case param := <-bucket.workerJobsQuery:
+			bucket.onWorkerJobsQuery(param)
 		case <-bucket.closing:
 			log.Infof("<%s> finish scheduler for bucket %d", eschedTag, bucket.id)
 			return
@@ -850,6 +904,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 			queue: make(map[abi.SectorNumber]map[sealtasks.TaskType]*eWorkerRequestCleaner),
 		},
 		workerStatsQuery: make(chan *eWorkerStatsParam, 10),
+		workerJobsQuery:  make(chan *eWorkerJobsParam, 10),
 	}
 
 	for i := range dispatcher.buckets {
@@ -873,6 +928,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 			taskCleanerHandler: make(chan eWorkerCleanerParam, 10),
 			taskCleanerQueue:   dispatcher.taskCleanerQueue,
 			workerStatsQuery:   make(chan *eWorkerStatsParam, 10),
+			workerJobsQuery:    make(chan *eWorkerJobsParam, 10),
 			closing:            make(chan struct{}, 2),
 		}
 		go dispatcher.buckets[i].scheduler()
@@ -969,6 +1025,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	}
 
 	w.preparedTasks = make([]*eWorkerRequest, 0)
+	w.runningTasks = make([]*eWorkerRequest, 0)
 
 	workerBucketIndex := w.wid % eschedWorkerBuckets
 	bucket := sh.buckets[workerBucketIndex]
@@ -1067,7 +1124,28 @@ func (sh *edispatcher) onTaskClean(param eWorkerCleanerParam) {
 	}()
 }
 
-func (sh *edispatcher) onWorkerInfoQuery(param *eWorkerStatsParam) {
+func (sh *edispatcher) onWorkerJobsQuery(param *eWorkerJobsParam) {
+	go func(param *eWorkerJobsParam) {
+		out := map[uint64][]storiface.WorkerJob{}
+		for _, bucket := range sh.buckets {
+			resp := make(chan map[uint64][]storiface.WorkerJob)
+			queryParam := &eWorkerJobsParam{
+				command: param.command,
+				resp:    resp,
+			}
+			bucket.workerJobsQuery <- queryParam
+			select {
+			case r := <-resp:
+				for k, v := range r {
+					out[k] = v
+				}
+			}
+		}
+		param.resp <- out
+	}(param)
+}
+
+func (sh *edispatcher) onWorkerStatsQuery(param *eWorkerStatsParam) {
 	go func(param *eWorkerStatsParam) {
 		out := map[uint64]storiface.WorkerStats{}
 		for _, bucket := range sh.buckets {
@@ -1110,7 +1188,9 @@ func (sh *edispatcher) runSched() {
 		case param := <-sh.taskCleaner:
 			sh.onTaskClean(param)
 		case param := <-sh.workerStatsQuery:
-			sh.onWorkerInfoQuery(param)
+			sh.onWorkerStatsQuery(param)
+		case param := <-sh.workerJobsQuery:
+			sh.onWorkerJobsQuery(param)
 		case <-sh.closing:
 			sh.closeAllBuckets()
 			return
@@ -1147,5 +1227,14 @@ func (sh *edispatcher) WorkerStats() map[uint64]storiface.WorkerStats {
 }
 
 func (sh *edispatcher) WorkerJobs() map[uint64][]storiface.WorkerJob {
-	return map[uint64][]storiface.WorkerJob{}
+	resp := make(chan map[uint64][]storiface.WorkerJob)
+	param := &eWorkerJobsParam{
+		command: eschedWorkerJobs,
+		resp:    resp,
+	}
+	sh.workerJobsQuery <- param
+	select {
+	case out := <-resp:
+		return out
+	}
 }
