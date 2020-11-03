@@ -117,6 +117,10 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 		Prover: prover,
 	}
 
+	m.sched.SetStorage(&EStorage{
+		ctx:   ctx,
+		index: si,
+	})
 	go m.sched.runSched()
 
 	localTasks := []sealtasks.TaskType{
@@ -185,6 +189,14 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 		preparing: &activeResources{},
 		active:    &activeResources{},
 	}
+
+	failSectors := m.localStore.FailSectors
+	for failSector, failInfo := range failSectors {
+		sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
+		m.Remove(ctx, sectorID)
+		m.localStore.DropFailSector(ctx, sectorID)
+	}
+
 	return nil
 }
 
@@ -337,6 +349,12 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTAddPiece, sector, start, end, err)
 		if err != nil {
+			info, ierr := w.Info(ctx)
+			address := "unknow"
+			if nil == ierr {
+				address = info.Address
+			}
+			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTAddPiece), address)
 			return err
 		}
 		out = p
@@ -364,6 +382,12 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, err)
 		if err != nil {
+			info, ierr := w.Info(ctx)
+			address := "unknow"
+			if nil == ierr {
+				address = info.Address
+			}
+			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTPreCommit1), address)
 			return err
 		}
 		out = p
@@ -389,6 +413,12 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, err)
 		if err != nil {
+			info, ierr := w.Info(ctx)
+			address := "unknow"
+			if nil == ierr {
+				address = info.Address
+			}
+			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTPreCommit2), address)
 			return err
 		}
 		out = p
