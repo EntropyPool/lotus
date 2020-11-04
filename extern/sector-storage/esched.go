@@ -120,6 +120,7 @@ type eWorkerHandle struct {
 	priorityTasksQueue map[int]*eWorkerReqPriorityList
 	preparedTasks      []*eWorkerRequest
 	runningTasks       []*eWorkerRequest
+	prepareMutex       sync.Mutex
 }
 
 const eschedTag = "esched"
@@ -487,14 +488,23 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	worker.dumpWorkerInfo()
 	task.dumpWorkerRequest()
 
+	worker.prepareMutex.Lock()
+	defer worker.prepareMutex.Unlock()
+
 	task.startTime = time.Now().UnixNano()
 	err := task.prepare(task.ctx, worker.wt.worker(worker.w))
 	if nil != err {
-		bucket.reqFinisher <- &eRequestFinisher{
-			req:  task,
-			resp: &workerResponse{err: err},
-			wid:  worker.wid,
-		}
+		go func() { bucket.retRequest <- task }()
+		/**
+		 * Never return to manager if prepare fail, just wait for next time schedule
+		 */
+		/*
+			bucket.reqFinisher <- &eRequestFinisher{
+				req:  task,
+				resp: &workerResponse{err: err},
+				wid:  worker.wid,
+			}
+		*/
 		return
 	}
 
