@@ -159,11 +159,12 @@ func (p *path) sectorPath(sid abi.SectorID, fileType SectorFileType) string {
 
 func NewLocal(ctx context.Context, ls LocalStorage, index SectorIndex, urls []string) (*Local, error) {
 	l := &Local{
-		localStorage: ls,
-		index:        index,
-		urls:         urls,
-		paths:        map[ID]*path{},
-		FailSectors:  make(map[abi.SectorNumber]*FailSector),
+		localStorage:   ls,
+		index:          index,
+		urls:           urls,
+		paths:          map[ID]*path{},
+		FailSectors:    make(map[abi.SectorNumber]*FailSector),
+		MayFailSectors: make(map[abi.SectorNumber]*FailSector),
 	}
 	return l, l.open(ctx)
 }
