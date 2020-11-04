@@ -88,12 +88,12 @@ type eWorkerRequest struct {
 var eschedDefaultTaskPriority = 99
 
 var eTaskPriority = map[sealtasks.TaskType]int{
-	sealtasks.TTFinalize:   0,
-	sealtasks.TTFetch:      1,
-	sealtasks.TTCommit1:    2,
-	sealtasks.TTCommit2:    3,
-	sealtasks.TTPreCommit2: 4,
-	sealtasks.TTPreCommit1: 5,
+	sealtasks.TTFinalize:   1,
+	sealtasks.TTFetch:      2,
+	sealtasks.TTCommit1:    3,
+	sealtasks.TTCommit2:    4,
+	sealtasks.TTPreCommit2: 5,
+	sealtasks.TTPreCommit1: 6,
 }
 
 type eWorkerReqTypedList struct {
@@ -439,8 +439,6 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 		bucket.taskWorkerBinder.mutex.Unlock()
 
-		tasksQueue.tasks = append(tasksQueue.tasks, req)
-
 		req.diskUsed = res.DiskSpace
 		if !bindWorker {
 			req.diskUsed += res.InheritDiskSpace
@@ -463,9 +461,10 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 
 		peekReqs += 1
 		reqs = reqs[1:]
+		tasksQueue.tasks = append(tasksQueue.tasks, req)
 	}
 
-	reqQueue.reqs[taskType] = remainReqs
+	reqQueue.reqs[taskType] = append(remainReqs, reqs[0:]...)
 
 	return peekReqs
 }
@@ -505,17 +504,13 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	task.startTime = time.Now().UnixNano()
 	err := task.prepare(task.ctx, worker.wt.worker(worker.w))
 	if nil != err {
+		log.Errorf("<%s> cannot prepare typed task %v/%v[%v]", eschedTag, task.sector, task.taskType, err)
 		go func() { bucket.retRequest <- task }()
-		/**
-		 * Never return to manager if prepare fail, just wait for next time schedule
-		 */
-		/*
-			bucket.reqFinisher <- &eRequestFinisher{
-				req:  task,
-				resp: &workerResponse{err: err},
-				wid:  worker.wid,
-			}
-		*/
+		bucket.reqFinisher <- &eRequestFinisher{
+			req:  task,
+			resp: &workerResponse{err: err},
+			wid:  worker.wid,
+		}
 		return
 	}
 
@@ -850,6 +845,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 			})
 		}
 
+		wi := 0
 		for wi, task := range worker.preparedTasks {
 			out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
 				ID:      task.id,
@@ -858,6 +854,22 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				RunWait: wi + 1,
 				Start:   task.inqueueTimeRaw,
 			})
+		}
+
+		wi += 100000
+		for priority, pq := range worker.priorityTasksQueue {
+			for _, tq := range pq.typedTasksQueue {
+				for _, task := range tq.tasks {
+					out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
+						ID:      task.id,
+						Sector:  task.sector,
+						Task:    task.taskType,
+						RunWait: wi * priority + 1,
+						Start:   task.inqueueTimeRaw,
+					})
+					wi += 1
+				}
+			}
 		}
 	}
 
@@ -1167,18 +1179,20 @@ func (sh *edispatcher) onWorkerJobsQuery(param *eWorkerJobsParam) {
 			}
 		}
 		sh.reqQueue.mutex.Lock()
+		wi := 5000000
 		for taskType, reqs := range sh.reqQueue.reqs {
 			if _, ok := out[eschedUnassignedWorker]; !ok {
 				out[uint64(eschedUnassignedWorker)] = make([]storiface.WorkerJob, 0)
 			}
-			for wi, req := range reqs {
+			for _, req := range reqs {
 				out[uint64(eschedUnassignedWorker)] = append(out[uint64(eschedUnassignedWorker)], storiface.WorkerJob{
 					ID:      req.id,
 					Sector:  req.sector,
 					Task:    taskType,
-					RunWait: wi + 1000001,
+					RunWait: wi + 1,
 					Start:   req.requestTimeRaw,
 				})
+				wi += 1
 			}
 		}
 		sh.reqQueue.mutex.Unlock()

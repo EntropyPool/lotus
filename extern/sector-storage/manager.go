@@ -401,6 +401,12 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	for sid, _ := range m.failSectors {
+		if sid.Number == sector.Number {
+			return nil, xerrors.Errorf("sector removed by miner fail")
+		}
+	}
+
 	if err := m.index.StorageLock(ctx, sector, stores.FTUnsealed, stores.FTSealed|stores.FTCache); err != nil {
 		return nil, xerrors.Errorf("acquiring sector lock: %v", err)
 	}
@@ -440,6 +446,12 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase1Out storage.PreCommit1Out) (out storage.SectorCids, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	for sid, _ := range m.failSectors {
+		if sid.Number == sector.Number {
+			return storage.SectorCids{}, xerrors.Errorf("sector removed by miner fail")
+		}
+	}
 
 	if err := m.index.StorageLock(ctx, sector, stores.FTSealed, stores.FTCache); err != nil {
 		return storage.SectorCids{}, xerrors.Errorf("acquiring sector lock: %v", err)
