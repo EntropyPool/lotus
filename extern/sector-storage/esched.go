@@ -17,6 +17,7 @@ type eResources struct {
 	CPUs             int
 	GPUs             int
 	DiskSpace        int64
+	DisableSwap      bool
 	InheritDiskSpace int64
 }
 
@@ -26,8 +27,8 @@ const eGiB = 1024 * eMiB
 
 var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResources{
 	sealtasks.TTAddPiece: {
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 64 * eGiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 32 * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 64 * eGiB * 11 / 10, DisableSwap: true},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 32 * eGiB * 11 / 10, DisableSwap: true},
 		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 64 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 2 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eKiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 8 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 8 * eMiB * 11 / 10},
@@ -658,10 +659,14 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 				int(worker.info.Resources.CPUs)-idleCpus, taskType)
 			break
 		}
-		if worker.info.Resources.MemPhysical < res.Memory+worker.memUsed {
+		extraMem := 0
+		if !res.DisableSwap {
+			extraMem = w.info.Resources.MemSwap
+		}
+		if worker.info.Resources.MemPhysical+extraMem < res.Memory+worker.memUsed {
 			log.Debugf("<%s> need %d = %d + %d memory but only %d available [%v]",
 				eschedTag, res.Memory+worker.memUsed, res.Memory, worker.memUsed,
-				worker.info.Resources.MemPhysical, taskType)
+				worker.info.Resources.MemPhysical+extraMem, taskType)
 			break
 		}
 
