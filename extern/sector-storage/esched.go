@@ -654,9 +654,9 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 				int(worker.info.Resources.CPUs)-idleCpus, taskType)
 			break
 		}
-		extraMem := 0
+		var extraMem uint64 = 0
 		if !res.DisableSwap {
-			extraMem = w.info.Resources.MemSwap
+			extraMem = worker.info.Resources.MemSwap
 		}
 		if worker.info.Resources.MemPhysical+extraMem < res.Memory+worker.memUsed {
 			log.Debugf("<%s> need %d = %d + %d memory but only %d available [%v]",
