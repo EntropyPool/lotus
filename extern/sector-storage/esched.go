@@ -76,6 +76,7 @@ type eWorkerRequest struct {
 	gpuUsed         int
 	diskUsed        int64
 	requestTime     int64
+	requestTimeRaw  time.Time
 	inqueueTime     int64
 	inqueueTimeRaw  time.Time
 	startTime       int64
@@ -266,6 +267,7 @@ type edispatcher struct {
 }
 
 const eschedWorkerBuckets = 10
+const eschedUnassignedWorker = 99999999
 
 func (sh *edispatcher) dumpStorageInfo(store *stores.StorageEntry) {
 	log.Infof("Storage %v", store.Info().ID)
@@ -1047,6 +1049,7 @@ func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
 	req.id = sh.nextRequest
 	sh.nextRequest += 1
 	req.requestTime = time.Now().UnixNano()
+	req.requestTimeRaw = time.Now()
 
 	sh.reqQueue.mutex.Lock()
 	if _, ok := sh.reqQueue.reqs[req.taskType]; !ok {
@@ -1141,6 +1144,22 @@ func (sh *edispatcher) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				}
 			}
 		}
+		sh.reqQueue.mutex.Lock()
+		for taskType, reqs := range sh.reqQueue.reqs {
+			if _, ok := out[eschedUnassignedWorker]; !ok {
+				out[uint64(eschedUnassignedWorker)] = make([]storiface.WorkerJob, 0)
+			}
+			for wi, req := range reqs {
+				out[uint64(eschedUnassignedWorker)] = append(out[uint64(eschedUnassignedWorker)], storiface.WorkerJob{
+					ID:      req.id,
+					Sector:  req.sector,
+					Task:    taskType,
+					RunWait: wi + 1000001,
+					Start:   req.requestTimeRaw,
+				})
+			}
+		}
+		sh.reqQueue.mutex.Unlock()
 		param.resp <- out
 	}(param)
 }
