@@ -75,6 +75,8 @@ type Manager struct {
 	sched *scheduler
 
 	storage.Prover
+
+	failSectors map[abi.SectorID]struct{}
 }
 
 type SealerConfig struct {
@@ -114,7 +116,8 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 
 		sched: newScheduler(cfg.SealProofType),
 
-		Prover: prover,
+		Prover:      prover,
+		failSectors: make(map[abi.SectorID]struct{}),
 	}
 
 	m.sched.SetStorage(&EStorage{
@@ -165,6 +168,12 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 		return xerrors.Errorf("opening local path: %v", err)
 	}
 
+	failSectors := m.localStore.FailSectors
+	for failSector, failInfo := range failSectors {
+		sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
+		m.failSectors[sectorID] = struct{}{}
+	}
+
 	if err := m.ls.SetStorage(func(sc *stores.StorageConfig) {
 		sc.StoragePaths = append(sc.StoragePaths, stores.LocalPath{Path: path})
 	}); err != nil {
@@ -200,6 +209,11 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 				sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
 				m.Remove(ctx, sectorID)
 				m.localStore.DropFailSector(ctx, sectorID)
+			}
+			for sectorID, _ := range m.failSectors {
+				m.Remove(ctx, sectorID)
+				m.localStore.DropMayFailSector(ctx, sectorID)
+				delete(m.failSectors, sectorID)
 			}
 		}
 	}()
@@ -352,15 +366,17 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 	var out abi.PieceInfo
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTAddPiece, selector, schedNop, func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
+		info, ierr := w.Info(ctx)
+		address := "unknow"
+		if nil == ierr {
+			address = info.Address
+		}
+		m.localStore.AddMayFailSector(ctx, sector, string(sealtasks.TTAddPiece), address)
 		p, err := w.AddPiece(ctx, sector, existingPieces, sz, r)
+		m.localStore.DropMayFailSector(ctx, sector)
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTAddPiece, sector, start, end, err)
 		if err != nil {
-			info, ierr := w.Info(ctx)
-			address := "unknow"
-			if nil == ierr {
-				address = info.Address
-			}
 			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTAddPiece), address)
 			return err
 		}
@@ -385,7 +401,14 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit1, selector, schedFetch(sector, stores.FTUnsealed, stores.PathSealing, stores.AcquireMove), func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
+		info, ierr := w.Info(ctx)
+		address := "unknow"
+		if nil == ierr {
+			address = info.Address
+		}
+		m.localStore.AddMayFailSector(ctx, sector, string(sealtasks.TTPreCommit1), address)
 		p, err := w.SealPreCommit1(ctx, sector, ticket, pieces)
+		m.localStore.DropMayFailSector(ctx, sector)
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, err)
 		if err != nil {
@@ -416,7 +439,14 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit2, selector, schedFetch(sector, stores.FTCache|stores.FTSealed, stores.PathSealing, stores.AcquireMove), func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
+		info, ierr := w.Info(ctx)
+		address := "unknow"
+		if nil == ierr {
+			address = info.Address
+		}
+		m.localStore.AddMayFailSector(ctx, sector, string(sealtasks.TTPreCommit2), address)
 		p, err := w.SealPreCommit2(ctx, sector, phase1Out)
+		m.localStore.DropMayFailSector(ctx, sector)
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, err)
 		if err != nil {

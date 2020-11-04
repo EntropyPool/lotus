@@ -72,6 +72,7 @@ type LocalStorage interface {
 
 const MetaFile = "sectorstore.json"
 const FailSectorsFile = "failsectors.json"
+const MayFailSectorsFile = "mayfailsectors.json"
 
 var PathTypes = []SectorFileType{FTUnsealed, FTSealed, FTCache}
 
@@ -95,6 +96,7 @@ type Local struct {
 
 	FailSectors     map[abi.SectorNumber]*FailSector
 	failSectorsPath string
+	MayFailSectors  map[abi.SectorNumber]*FailSector
 }
 
 type path struct {
@@ -166,6 +168,58 @@ func NewLocal(ctx context.Context, ls LocalStorage, index SectorIndex, urls []st
 	return l, l.open(ctx)
 }
 
+func (st *Local) AddMayFailSector(ctx context.Context, sector abi.SectorID, stage string, address string) {
+	st.localLk.Lock()
+	defer st.localLk.Unlock()
+
+	log.Warnf("add may fail sector %v / %s / %s to %s", sector, stage, address, st.failSectorsPath)
+	_, ok := st.MayFailSectors[sector.Number]
+	if !ok {
+		st.MayFailSectors[sector.Number] = &FailSector{
+			Miner: sector.Miner,
+			Fails: make(map[string][]*FailInfo),
+		}
+	}
+
+	_, ok = st.MayFailSectors[sector.Number].Fails[stage]
+	if !ok {
+		st.MayFailSectors[sector.Number].Fails[stage] = make([]*FailInfo, 0)
+	}
+	fails, _ := st.MayFailSectors[sector.Number].Fails[stage]
+
+	st.MayFailSectors[sector.Number].Fails[stage] = append(fails, &FailInfo{Address: address})
+	if 0 < len(st.failSectorsPath) {
+		jsonStr, err := json.Marshal(st.MayFailSectors)
+		if nil == err {
+			ioutil.WriteFile(filepath.Join(st.failSectorsPath, MayFailSectorsFile), jsonStr, 0644)
+		}
+	}
+}
+
+func (st *Local) DropMayFailSector(ctx context.Context, sector abi.SectorID) {
+	st.localLk.Lock()
+	defer st.localLk.Unlock()
+
+	log.Warnf("remove may fail sector %v from %s", sector, st.failSectorsPath)
+	_, ok := st.MayFailSectors[sector.Number]
+	if !ok {
+		return
+	}
+
+	delete(st.MayFailSectors, sector.Number)
+
+	if _, ok := st.MayFailSectors[sector.Number]; ok {
+		delete(st.MayFailSectors, sector.Number)
+	}
+
+	if 0 < len(st.failSectorsPath) {
+		jsonStr, err := json.Marshal(st.MayFailSectors)
+		if nil == err {
+			ioutil.WriteFile(filepath.Join(st.failSectorsPath, MayFailSectorsFile), jsonStr, 0644)
+		}
+	}
+}
+
 func (st *Local) AddFailSector(ctx context.Context, sector abi.SectorID, stage string, address string) {
 	st.localLk.Lock()
 	defer st.localLk.Unlock()
@@ -192,6 +246,10 @@ func (st *Local) AddFailSector(ctx context.Context, sector abi.SectorID, stage s
 			ioutil.WriteFile(filepath.Join(st.failSectorsPath, FailSectorsFile), jsonStr, 0644)
 		}
 	}
+
+	if _, ok := st.MayFailSectors[sector.Number]; ok {
+		delete(st.MayFailSectors, sector.Number)
+	}
 }
 
 func (st *Local) DropFailSector(ctx context.Context, sector abi.SectorID) {
@@ -205,6 +263,10 @@ func (st *Local) DropFailSector(ctx context.Context, sector abi.SectorID) {
 	}
 
 	delete(st.FailSectors, sector.Number)
+
+	if _, ok := st.MayFailSectors[sector.Number]; ok {
+		delete(st.MayFailSectors, sector.Number)
+	}
 
 	if 0 < len(st.failSectorsPath) {
 		jsonStr, err := json.Marshal(st.FailSectors)
@@ -225,6 +287,10 @@ func (st *Local) createFailSectorsFile() {
 		fb, err := ioutil.ReadFile(filepath.Join(st.failSectorsPath, FailSectorsFile))
 		if nil == err {
 			json.Unmarshal(fb, st.FailSectors)
+		}
+		mfb, err := ioutil.ReadFile(filepath.Join(st.failSectorsPath, MayFailSectorsFile))
+		if nil == err {
+			json.Unmarshal(mfb, st.MayFailSectors)
 		}
 	}
 }
