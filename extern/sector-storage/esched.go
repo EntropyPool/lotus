@@ -442,13 +442,24 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		tasksQueue.tasks = append(tasksQueue.tasks, req)
 
 		req.diskUsed = res.DiskSpace
-		if bindWorker {
+		if !bindWorker {
 			req.diskUsed += res.InheritDiskSpace
+		}
+
+		if worker.diskTotal <= req.diskUsed+worker.diskUsed {
+			log.Debugf("<%s> need %d = %d + %d disk space but only %d available [%v]",
+				eschedTag, req.diskUsed+worker.diskUsed, req.diskUsed, worker.diskUsed,
+				worker.diskTotal-worker.diskUsed, taskType)
+			break
 		}
 
 		req.inqueueTime = time.Now().UnixNano()
 		req.inqueueTimeRaw = time.Now()
 		worker.acquireRequestResource(req, eschedResStagePrepare)
+		log.Infof("<%s> request %v / %v takes %d bytes [%d / %d] from %s",
+			eschedTag, req.sector, req.taskType,
+			req.diskUsed, worker.diskTotal-worker.diskUsed, worker.diskTotal,
+			worker.info.Address)
 
 		peekReqs += 1
 		reqs = reqs[1:]
@@ -633,7 +644,8 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			if 0 < len(worker.info.Resources.GPUs) {
 				if len(worker.info.Resources.GPUs) < res.GPUs+worker.gpuUsed {
 					log.Debugf("<%s> need %d = %d + %d GPUs but only %d available [%v]",
-						eschedTag, res.GPUs+worker.gpuUsed, res.GPUs, worker.gpuUsed, taskType)
+						eschedTag, res.GPUs+worker.gpuUsed, res.GPUs, worker.gpuUsed,
+						len(worker.info.Resources.GPUs)-worker.gpuUsed, taskType)
 					break
 				}
 			} else {

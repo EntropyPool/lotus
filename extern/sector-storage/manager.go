@@ -190,12 +190,19 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 		active:    &activeResources{},
 	}
 
-	failSectors := m.localStore.FailSectors
-	for failSector, failInfo := range failSectors {
-		sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
-		m.Remove(ctx, sectorID)
-		m.localStore.DropFailSector(ctx, sectorID)
-	}
+	timer := time.NewTimer(30 * time.Second)
+	go func() {
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			failSectors := m.localStore.FailSectors
+			for failSector, failInfo := range failSectors {
+				sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
+				m.Remove(ctx, sectorID)
+				m.localStore.DropFailSector(ctx, sectorID)
+			}
+		}
+	}()
 
 	return nil
 }

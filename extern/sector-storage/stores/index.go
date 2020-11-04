@@ -157,6 +157,13 @@ func (i *Index) StorageList(ctx context.Context) (map[ID][]Decl, error) {
 	return out, nil
 }
 
+func (i *Index) storageNotify(ctx context.Context) {
+	go func() {
+		time.Sleep(3 * time.Minute)
+		i.StorageNotifier <- struct{}{}
+	}()
+}
+
 func (i *Index) StorageAttach(ctx context.Context, si StorageInfo, st fsutil.FsStat) error {
 	i.lk.Lock()
 	defer i.lk.Unlock()
@@ -181,7 +188,7 @@ func (i *Index) StorageAttach(ctx context.Context, si StorageInfo, st fsutil.FsS
 			i.stores[si.ID].info.URLs = append(i.stores[si.ID].info.URLs, u)
 		}
 
-		i.StorageNotifier <- struct{}{}
+		i.storageNotify(ctx)
 
 		return nil
 	}
@@ -192,7 +199,7 @@ func (i *Index) StorageAttach(ctx context.Context, si StorageInfo, st fsutil.FsS
 		lastHeartbeat: time.Now(),
 	}
 
-	i.StorageNotifier <- struct{}{}
+	i.storageNotify(ctx)
 
 	return nil
 }
