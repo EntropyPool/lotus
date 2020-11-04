@@ -287,11 +287,11 @@ func (st *Local) createFailSectorsFile() {
 		st.failSectorsPath = cfg.StoragePaths[0].Path
 		fb, err := ioutil.ReadFile(filepath.Join(st.failSectorsPath, FailSectorsFile))
 		if nil == err {
-			json.Unmarshal(fb, st.FailSectors)
+			json.Unmarshal(fb, &st.FailSectors)
 		}
 		mfb, err := ioutil.ReadFile(filepath.Join(st.failSectorsPath, MayFailSectorsFile))
 		if nil == err {
-			json.Unmarshal(mfb, st.MayFailSectors)
+			json.Unmarshal(mfb, &st.MayFailSectors)
 		}
 	}
 }
@@ -309,8 +309,6 @@ func (st *Local) OpenPath(ctx context.Context, p string) error {
 	if err := json.Unmarshal(mb, &meta); err != nil {
 		return xerrors.Errorf("unmarshalling storage metadata for %s: %w", p, err)
 	}
-
-	st.createFailSectorsFile()
 
 	// TODO: Check existing / dedupe
 

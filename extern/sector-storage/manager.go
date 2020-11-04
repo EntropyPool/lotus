@@ -120,6 +120,14 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 		failSectors: make(map[abi.SectorID]struct{}),
 	}
 
+	log.Infof("try to collect removable miner fail sector")
+	failSectors := m.localStore.MayFailSectors
+	for failSector, failInfo := range failSectors {
+		sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
+		log.Infof("collect removable miner fail sector: %v", sectorID)
+		m.failSectors[sectorID] = struct{}{}
+	}
+
 	m.sched.SetStorage(&EStorage{
 		ctx:   ctx,
 		index: si,
@@ -168,12 +176,6 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 		return xerrors.Errorf("opening local path: %v", err)
 	}
 
-	failSectors := m.localStore.FailSectors
-	for failSector, failInfo := range failSectors {
-		sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
-		m.failSectors[sectorID] = struct{}{}
-	}
-
 	if err := m.ls.SetStorage(func(sc *stores.StorageConfig) {
 		sc.StoragePaths = append(sc.StoragePaths, stores.LocalPath{Path: path})
 	}); err != nil {
@@ -207,11 +209,19 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 			failSectors := m.localStore.FailSectors
 			for failSector, failInfo := range failSectors {
 				sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
-				m.Remove(ctx, sectorID)
+				log.Infof("try to remove worker fail sector: %v", sectorID)
+				err := m.Remove(ctx, sectorID)
+				if nil != err {
+					log.Errorf("cannot remove worker fail sector %v [%v]", sectorID, err)
+				}
 				m.localStore.DropFailSector(ctx, sectorID)
 			}
 			for sectorID, _ := range m.failSectors {
-				m.Remove(ctx, sectorID)
+				log.Infof("try to remove miner fail sector: %v", sectorID)
+				err := m.Remove(ctx, sectorID)
+				if nil != err {
+					log.Errorf("cannot remove worker fail sector %v [%v]", sectorID, err)
+				}
 				m.localStore.DropMayFailSector(ctx, sectorID)
 				delete(m.failSectors, sectorID)
 			}
