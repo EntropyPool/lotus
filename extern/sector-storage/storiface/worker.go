@@ -25,6 +25,12 @@ type WorkerResources struct {
 	GPUs []string
 }
 
+type TasksInfo struct {
+	Running  int
+	Prepared int
+	Waiting  int
+}
+
 type WorkerStats struct {
 	Info WorkerInfo
 
@@ -32,7 +38,7 @@ type WorkerStats struct {
 	MemUsedMax uint64
 	GpuUsed    bool   // nolint
 	CpuUse     uint64 // nolint
-	Tasks      map[sealtasks.TaskType]int
+	Tasks      map[sealtasks.TaskType]TasksInfo
 }
 
 type WorkerJob struct {

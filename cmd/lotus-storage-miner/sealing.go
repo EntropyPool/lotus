@@ -94,7 +94,14 @@ var sealingWorkersCmd = &cli.Command{
 				if isNum.MatchString(lastSpec) {
 					taskTypes += taskSpecs[len(taskSpecs)-2]
 				}
-				taskTypes += taskSpecs[len(taskSpecs)-1] + "(" + strconv.Itoa(stat.Tasks[taskType]) + ")"
+				taskTypes += taskSpecs[len(taskSpecs)-1] +
+					"(" +
+					strconv.Itoa(stat.Tasks[taskType].Running) +
+					"/" +
+					strconv.Itoa(stat.Tasks[taskType].Prepared) +
+					"/" +
+					strconv.Itoa(stat.Tasks[taskType].Waiting) +
+					")"
 			}
 			fmt.Printf("\tTSK: %s\n", taskTypes)
 

@@ -20,7 +20,6 @@ type eResources struct {
 	DiskSpace        int64
 	DisableSwap      bool
 	InheritDiskSpace int64
-	DisableSwap      bool
 }
 
 const eKiB = 1024
@@ -871,15 +870,31 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			Info:    worker.info,
 			GpuUsed: 0 < worker.gpuUsed,
 			CpuUse:  uint64(worker.cpuUsed),
-			Tasks:   make(map[sealtasks.TaskType]int),
+			Tasks:   make(map[sealtasks.TaskType]storiface.TasksInfo),
+		}
+		for _, taskType := range worker.info.SupportTasks {
+			out[uint64(worker.wid)].Tasks[taskType] = storiface.TasksInfo{
+				Waiting:  0,
+				Running:  0,
+				Prepared: 0,
+			}
 		}
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
-				if _, ok := out[uint64(worker.wid)].Tasks[taskType]; !ok {
-					out[uint64(worker.wid)].Tasks[taskType] = 0
-				}
-				out[uint64(worker.wid)].Tasks[taskType] += len(tq.tasks)
+				info := out[uint64(worker.wid)].Tasks[taskType]
+				info.Waiting += len(tq.tasks)
+				out[uint64(worker.wid)].Tasks[taskType] = info
 			}
+		}
+		for _, task := range worker.preparedTasks {
+			info := out[uint64(worker.wid)].Tasks[task.taskType]
+			info.Prepared += 1
+			out[uint64(worker.wid)].Tasks[task.taskType] = info
+		}
+		for _, task := range worker.preparedTasks {
+			info := out[uint64(worker.wid)].Tasks[task.taskType]
+			info.Running += 1
+			out[uint64(worker.wid)].Tasks[task.taskType] = info
 		}
 	}
 
