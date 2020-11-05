@@ -32,6 +32,7 @@ type WorkerStats struct {
 	MemUsedMax uint64
 	GpuUsed    bool   // nolint
 	CpuUse     uint64 // nolint
+	Tasks      map[sealtasks.TaskType]int
 }
 
 type WorkerJob struct {

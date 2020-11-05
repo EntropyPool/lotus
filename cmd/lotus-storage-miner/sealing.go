@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -84,16 +85,16 @@ var sealingWorkersCmd = &cli.Command{
 
 			taskTypes := ""
 			for _, taskType := range stat.Info.SupportTasks {
-				taskSpecs := strings.Split(string(taskType), "/")
 				if 0 < len(taskTypes) {
 					taskTypes += " | "
 				}
+				taskSpecs := strings.Split(string(taskType), "/")
 				lastSpec := taskSpecs[len(taskSpecs)-1]
 				isNum := regexp.MustCompile(`[0-9]+`)
 				if isNum.MatchString(lastSpec) {
 					taskTypes += taskSpecs[len(taskSpecs)-2]
 				}
-				taskTypes += taskSpecs[len(taskSpecs)-1]
+				taskTypes += taskSpecs[len(taskSpecs)-1] + "(" + strconv.Itoa(stat.Tasks[taskType]) + ")"
 			}
 			fmt.Printf("\tTSK: %s\n", taskTypes)
 

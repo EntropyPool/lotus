@@ -871,6 +871,15 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			Info:    worker.info,
 			GpuUsed: 0 < worker.gpuUsed,
 			CpuUse:  uint64(worker.cpuUsed),
+			Tasks:   make(map[sealtasks.TaskType]int),
+		}
+		for _, pq := range worker.priorityTasksQueue {
+			for taskType, tq := range pq.typedTasksQueue {
+				if _, ok := out[uint64(worker.wid)].Tasks[taskType]; !ok {
+					out[uint64(worker.wid)].Tasks[taskType] = 0
+				}
+				out[uint64(worker.wid)].Tasks[taskType] += len(tq.tasks)
+			}
 		}
 	}
 
