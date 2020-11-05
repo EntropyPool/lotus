@@ -4,9 +4,9 @@ import (
 	"context"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
-	"golang.org/x/xerrors"
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
+	"golang.org/x/xerrors"
 	"reflect"
 	"strings"
 	"sync"
@@ -888,7 +888,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 						ID:      task.id,
 						Sector:  task.sector,
 						Task:    task.taskType,
-						RunWait: wi * priority + 1,
+						RunWait: wi*priority + 1,
 						Start:   task.inqueueTimeRaw,
 					})
 					wi += 1
