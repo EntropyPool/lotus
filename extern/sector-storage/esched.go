@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
+	"golang.org/x/xerrors"
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	"reflect"
@@ -506,7 +507,6 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	err := task.prepare(task.ctx, worker.wt.worker(worker.w))
 	if nil != err {
 		log.Errorf("<%s> cannot prepare typed task %v/%v[%v]", eschedTag, task.sector, task.taskType, err)
-		go func() { bucket.retRequest <- task }()
 		bucket.reqFinisher <- &eRequestFinisher{
 			req:  task,
 			resp: &workerResponse{err: err},
@@ -740,9 +740,28 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid WorkerID) {
 	if nil != worker {
 		for _, pq := range worker.priorityTasksQueue {
 			for _, tq := range pq.typedTasksQueue {
-				for _, task := range tq.tasks {
+				for {
+					if 0 == len(tq.tasks) {
+						break
+					}
+					task := tq.tasks[0]
+					log.Infof("<%s> return typed task %v/%v to reqQueue", task.sector, task.taskType)
+					tq.tasks = tq.tasks[1:]
 					go func() { bucket.retRequest <- task }()
 				}
+			}
+		}
+		for {
+			if 0 == len(worker.preparedTasks) {
+				break
+			}
+			task := worker.preparedTasks[0]
+			log.Infof("<%s> finish task %v/%v", eschedTag, task.sector, task.taskType)
+			worker.preparedTasks = worker.preparedTasks[1:]
+			bucket.reqFinisher <- &eRequestFinisher{
+				req:  task,
+				resp: &workerResponse{err: xerrors.Errorf("worker dropped unexpected")},
+				wid:  worker.wid,
 			}
 		}
 	}
