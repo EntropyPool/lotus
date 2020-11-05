@@ -27,8 +27,15 @@ func newExistingSelector(index stores.SectorIndex, sector abi.SectorID, alloc st
 	}
 }
 
-func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, whnd *workerHandle) (bool, error) {
-	tasks, err := whnd.w.TaskTypes(ctx)
+func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, wi interface{}) (bool, error) {
+	var w Worker
+	switch wi.(type) {
+	case *workerHandle:
+		w = wi.(*workerHandle).w
+	case *eWorkerHandle:
+		w = wi.(*eWorkerHandle).w
+	}
+	tasks, err := w.TaskTypes(ctx)
 	if err != nil {
 		return false, xerrors.Errorf("getting supported worker task types: %w", err)
 	}
@@ -36,7 +43,7 @@ func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt 
 		return false, nil
 	}
 
-	paths, err := whnd.w.Paths(ctx)
+	paths, err := w.Paths(ctx)
 	if err != nil {
 		return false, xerrors.Errorf("getting worker paths: %w", err)
 	}

@@ -20,6 +20,7 @@ type eResources struct {
 	DiskSpace        int64
 	DisableSwap      bool
 	InheritDiskSpace int64
+	DisableSwap      bool
 }
 
 const eKiB = 1024
@@ -59,7 +60,7 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 	sealtasks.TTCommit2: {
 		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 580 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
 		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 290 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 8 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 128 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
 		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 32 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 32 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
 	},
@@ -85,6 +86,7 @@ type eWorkerRequest struct {
 	preparedTime    int64
 	preparedTimeRaw time.Time
 	endTime         int64
+	sel             WorkerSelector
 }
 
 var eschedDefaultTaskPriority = 99
@@ -433,13 +435,32 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		if ok {
 			if address != worker.info.Address {
 				bucket.taskWorkerBinder.mutex.Unlock()
-				remainReqs = append(remainReqs, reqs[0])
+				remainReqs = append(remainReqs, req)
 				reqs = reqs[1:]
 				continue
 			}
 			bindWorker = true
 		}
 		bucket.taskWorkerBinder.mutex.Unlock()
+
+		rpcCtx, cancel := context.WithTimeout(req.ctx, SelectorTimeout)
+		ok, err := req.sel.Ok(rpcCtx, req.taskType, bucket.spt, worker)
+		cancel()
+		if err != nil {
+			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %+v",
+				eschedTag, worker.info.Address, req.sector, req.taskType, err)
+			remainReqs = append(remainReqs, req)
+			reqs = reqs[1:]
+			continue
+		}
+
+		if !ok {
+			log.Debugf("<%s> worker %s is not OK for task %v/%v",
+				eschedTag, worker.info.Address, req.sector, req.taskType)
+			remainReqs = append(remainReqs, req)
+			reqs = reqs[1:]
+			continue
+		}
 
 		req.diskUsed = res.DiskSpace
 		if !bindWorker {
@@ -496,7 +517,7 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 }
 
 func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
-	log.Debugf("<%s> preparing typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Debugf("<%s> preparing typed task %v/%v to %s", eschedTag, task.sector, task.taskType, worker.info.Address)
 	worker.dumpWorkerInfo()
 	task.dumpWorkerRequest()
 
@@ -506,7 +527,7 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	task.startTime = time.Now().UnixNano()
 	err := task.prepare(task.ctx, worker.wt.worker(worker.w))
 	if nil != err {
-		log.Errorf("<%s> cannot prepare typed task %v/%v[%v]", eschedTag, task.sector, task.taskType, err)
+		log.Errorf("<%s> cannot prepare typed task %v/%v/%s[%v]", eschedTag, task.sector, task.taskType, worker.info.Address, err)
 		bucket.reqFinisher <- &eRequestFinisher{
 			req:  task,
 			resp: &workerResponse{err: err},
@@ -515,7 +536,7 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 		return
 	}
 
-	log.Debugf("<%s> prepared typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Debugf("<%s> prepared typed task %v/%v by %s", eschedTag, task.sector, task.taskType, worker.info.Address)
 	task.preparedTime = time.Now().UnixNano()
 	task.preparedTimeRaw = time.Now()
 	worker.preparedTasks = append(worker.preparedTasks, task)
@@ -551,7 +572,7 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 }
 
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
-	log.Debugf("<%s> executing typed task %v/%v", eschedTag, task.sector, task.taskType)
+	log.Debugf("<%s> executing typed task %v/%v at %s", eschedTag, task.sector, task.taskType, worker.info.Address)
 	err := task.work(task.ctx, worker.wt.worker(worker.w))
 	bucket.reqFinisher <- &eRequestFinisher{
 		req:  task,
@@ -559,12 +580,12 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		wid:  worker.wid,
 	}
 	task.endTime = time.Now().UnixNano()
-	log.Infof("<%s> finished typed task %v/%v duration (%dms / %d ms / %d ms) [%v]",
+	log.Infof("<%s> finished typed task %v/%v duration (%dms / %d ms / %d ms) by %s [%v]",
 		eschedTag, task.sector, task.taskType,
 		(task.inqueueTime-task.requestTime)/1000000.0,
 		(task.preparedTime-task.inqueueTime)/1000000.0,
 		(task.endTime-task.preparedTime)/1000000.0,
-		err)
+		worker.info.Address, err)
 	if nil != err {
 		needCleaner := false
 		for taskType, _ := range eschedTaskBindCleaner {
@@ -1002,7 +1023,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 	return dispatcher
 }
 
-func (sh *edispatcher) Schedule(ctx context.Context, sector abi.SectorID, taskType sealtasks.TaskType, prepare WorkerAction, work WorkerAction) error {
+func (sh *edispatcher) Schedule(ctx context.Context, sector abi.SectorID, taskType sealtasks.TaskType, sel WorkerSelector, prepare WorkerAction, work WorkerAction) error {
 	ret := make(chan workerResponse)
 
 	select {
@@ -1013,6 +1034,7 @@ func (sh *edispatcher) Schedule(ctx context.Context, sector abi.SectorID, taskTy
 		work:     work,
 		ret:      ret,
 		ctx:      ctx,
+		sel:      sel,
 	}:
 	}
 

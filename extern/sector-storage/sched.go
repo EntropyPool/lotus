@@ -45,7 +45,7 @@ const mib = 1 << 20
 type WorkerAction func(ctx context.Context, w Worker) error
 
 type WorkerSelector interface {
-	Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, a *workerHandle) (bool, error) // true if worker is acceptable for performing a task
+	Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, a interface{}) (bool, error) // true if worker is acceptable for performing a task
 
 	Cmp(ctx context.Context, task sealtasks.TaskType, a, b *workerHandle) (bool, error) // true if a is preferred over b
 }
@@ -182,7 +182,7 @@ func (sh *scheduler) useExtScheduler() bool {
 
 func (sh *scheduler) Schedule(ctx context.Context, sector abi.SectorID, taskType sealtasks.TaskType, sel WorkerSelector, prepare WorkerAction, work WorkerAction) error {
 	if sh.useExtScheduler() {
-		return sh.esched.Schedule(ctx, sector, taskType, prepare, work)
+		return sh.esched.Schedule(ctx, sector, taskType, sel, prepare, work)
 	}
 
 	ret := make(chan workerResponse)
