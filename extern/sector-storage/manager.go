@@ -131,6 +131,7 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 	m.sched.SetStorage(&EStorage{
 		ctx:   ctx,
 		index: si,
+		ls:    m.localStore,
 	})
 	go m.sched.runSched()
 

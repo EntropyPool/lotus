@@ -299,6 +299,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft Sector
 		}
 
 		for _, id := range i.sectors[Decl{s, pathType}] {
+			log.Infof("%v/%v has %v", id, i.stores[id.storage].info.URLs, s)
 			storageIDs[id.storage]++
 			isprimary[id.storage] = isprimary[id.storage] || id.primary
 		}
@@ -344,6 +345,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft Sector
 
 		for id, st := range i.stores {
 			if !st.info.CanSeal {
+				log.Debugf("%s is not for seal", st.info.ID)
 				continue
 			}
 
@@ -418,9 +420,11 @@ func (i *Index) StorageBestAlloc(ctx context.Context, allocate SectorFileType, s
 
 	for _, p := range i.stores {
 		if (pathType == PathSealing) && !p.info.CanSeal {
+			log.Debugf("%s is not suitable for %v", p.info.ID, pathType)
 			continue
 		}
 		if (pathType == PathStorage) && !p.info.CanStore {
+			log.Debugf("%s is not suitable for %v", p.info.ID, pathType)
 			continue
 		}
 

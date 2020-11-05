@@ -177,6 +177,7 @@ const eschedResStageRuntime = "runtime"
 type eStoreStat struct {
 	space int64
 	URLs  []string
+	local bool
 }
 
 type eWorkerAction struct {
@@ -190,6 +191,7 @@ type EStorage struct {
 	indexInstance  *stores.Index
 	storeIDs       map[stores.ID]eStoreStat
 	workerNotifier chan eWorkerAction
+	ls             *stores.Local
 }
 
 type eStoreAction struct {
@@ -208,6 +210,7 @@ var eschedTaskBindWorker = map[sealtasks.TaskType]sealtasks.TaskType{
 
 const eschedWorkerCleanAtPrepare = "prepare"
 const eschedWorkerCleanAtFinish = "finish"
+const eschedWorkerLocalAddress = "localhost"
 
 type eWorkerCleanerParam struct {
 	stage        string
@@ -296,6 +299,20 @@ func (sh *edispatcher) storeNotify(id stores.ID, stat eStoreStat, act string) {
 	}
 }
 
+func (sh *edispatcher) isLocalStorage(id stores.ID) bool {
+	l, err := sh.storage.ls.Local(sh.ctx)
+	if nil != err {
+		log.Errorf("<%s> cannot get local storage", eschedTag)
+		return false
+	}
+	for _, st := range l {
+		if id == st.ID {
+			return true
+		}
+	}
+	return false
+}
+
 func (sh *edispatcher) checkStorageUpdate() {
 	stors := sh.storage.indexInstance.Stores()
 	for id, store := range stors {
@@ -322,6 +339,7 @@ func (sh *edispatcher) checkStorageUpdate() {
 		sh.storage.storeIDs[id] = eStoreStat{
 			space: stor.FsStat().Available,
 			URLs:  stor.Info().URLs,
+			local: sh.isLocalStorage(id),
 		}
 		log.Infof("<%s> add storage %v to watcher", eschedTag, id)
 		sh.dumpStorageInfo(stor)
@@ -415,7 +433,7 @@ func (w *eWorkerHandle) releaseRequestResource(req *eWorkerRequest, resType stri
 
 func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, tasksQueue *eWorkerReqTypedList, reqQueue *eRequestQueue) int {
 	reqs := reqQueue.reqs[taskType]
-	log.Debugf("<%s> %d %v tasks waiting for run", eschedTag, len(reqs), taskType)
+	log.Debugf("<%s> %d %v tasks waiting for run [%s]", eschedTag, len(reqs), taskType, worker.info.Address)
 
 	peekReqs := 0
 	remainReqs := make([]*eWorkerRequest, 0)
@@ -446,7 +464,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		ok, err := req.sel.Ok(rpcCtx, req.taskType, bucket.spt, worker)
 		cancel()
 		if err != nil {
-			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %+v",
+			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %v",
 				eschedTag, worker.info.Address, req.sector, req.taskType, err)
 			remainReqs = append(remainReqs, req)
 			reqs = reqs[1:]
@@ -467,9 +485,9 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 
 		if worker.diskTotal <= req.diskUsed+worker.diskUsed {
-			log.Debugf("<%s> need %d = %d + %d disk space but only %d available [%v]",
+			log.Debugf("<%s> need %d = %d + %d disk space but only %d available %s [%v]",
 				eschedTag, req.diskUsed+worker.diskUsed, req.diskUsed, worker.diskUsed,
-				worker.diskTotal-worker.diskUsed, taskType)
+				worker.diskTotal-worker.diskUsed, worker.info.Address, taskType)
 			break
 		}
 
@@ -801,6 +819,15 @@ func (bucket *eWorkerBucket) appendNewWorker(w *eWorkerHandle) {
 	go func() { bucket.notifier <- struct{}{} }()
 }
 
+func (bucket *eWorkerBucket) getLocalWorker() *eWorkerHandle {
+	for _, worker := range bucket.workers {
+		if worker.info.Address == eschedWorkerLocalAddress {
+			return worker
+		}
+	}
+	return nil
+}
+
 func (bucket *eWorkerBucket) findWorkerByStoreURL(urls []string) *eWorkerHandle {
 	for _, worker := range bucket.workers {
 		for _, url := range urls {
@@ -832,6 +859,11 @@ func (bucket *eWorkerBucket) onDropStore(w *eWorkerHandle, act eStoreAction) {
 
 func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 	worker := bucket.findWorkerByStoreURL(act.stat.URLs)
+	if nil == worker {
+		if act.stat.local {
+			worker = bucket.getLocalWorker()
+		}
+	}
 	if nil == worker {
 		return
 	}
@@ -891,7 +923,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			info.Prepared += 1
 			out[uint64(worker.wid)].Tasks[task.taskType] = info
 		}
-		for _, task := range worker.preparedTasks {
+		for _, task := range worker.runningTasks {
 			info := out[uint64(worker.wid)].Tasks[task.taskType]
 			info.Running += 1
 			out[uint64(worker.wid)].Tasks[task.taskType] = info
@@ -1095,9 +1127,9 @@ func (w *eWorkerHandle) dumpWorkerInfo() {
 
 func (w *eWorkerHandle) patchLocalhost() {
 	if w.info.Address == "" {
-		w.info.Address = "localhost"
-		w.info.Hostname = "localhost"
-		w.info.GroupName = "localhost"
+		w.info.Address = eschedWorkerLocalAddress
+		w.info.Hostname = eschedWorkerLocalAddress
+		w.info.GroupName = eschedWorkerLocalAddress
 	}
 }
 
