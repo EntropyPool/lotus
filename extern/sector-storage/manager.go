@@ -214,7 +214,7 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 				if nil != err {
 					log.Errorf("cannot remove worker fail sector %v [%v]", sectorID, err)
 				}
-				m.localStore.DropFailSector(ctx, sectorID)
+				// m.localStore.DropFailSector(ctx, sectorID)
 			}
 			for sectorID, _ := range m.failSectors {
 				log.Infof("try to remove miner fail sector: %v", sectorID)
@@ -222,7 +222,7 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 				if nil != err {
 					log.Errorf("cannot remove worker fail sector %v [%v]", sectorID, err)
 				}
-				m.localStore.DropMayFailSector(ctx, sectorID)
+				// m.localStore.DropMayFailSector(ctx, sectorID)
 				delete(m.failSectors, sectorID)
 			}
 		}
