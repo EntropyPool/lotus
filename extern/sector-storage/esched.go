@@ -28,6 +28,7 @@ const eGiB = 1024 * eMiB
 
 var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResources{
 	sealtasks.TTAddPiece: {
+		/* Here we keep the same constraint as PC1 */
 		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 128 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 64 * eGiB * 11 / 10, DisableSwap: true},
 		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 64 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 32 * eGiB * 11 / 10, DisableSwap: true},
 		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB * 11 / 10},
@@ -42,12 +43,12 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: (8*14 + 8) * eMiB},
 	},
 	sealtasks.TTPreCommit2: {
-		/* Specially, for P2 at the different worker as P1, it should add disk space of P1 */
+		/* Specially, for P2 at the different worker as PC1, it should add disk space of PC1 */
 		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 32 * eGiB, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (64*14 + 1) * eGiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 16 * eGiB, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (32*14 + 1) * eGiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (512*14+1) * eMiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (512*14 + 1) * eMiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB, InheritDiskSpace: (2*14 + 1) * eKiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB, InheritDiskSpace: (8*14+1) * eMiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB, InheritDiskSpace: (8*14 + 1) * eMiB * 11 / 10},
 	},
 	sealtasks.TTCommit1: {
 		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 4 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
@@ -122,7 +123,7 @@ type eWorkerHandle struct {
 	diskTotal          int64
 	priorityTasksQueue map[int]*eWorkerReqPriorityList
 	preparedTasks      []*eWorkerRequest
-	preparingTask     *eWorkerRequest
+	preparingTask      *eWorkerRequest
 	runningTasks       []*eWorkerRequest
 	prepareMutex       sync.Mutex
 }
@@ -141,28 +142,29 @@ type eTaskWorkerBinder struct {
 }
 
 type eWorkerBucket struct {
-	spt                abi.RegisteredSealProof
-	id                 int
-	newWorker          chan *eWorkerHandle
-	workers            []*eWorkerHandle
-	reqQueue           *eRequestQueue
-	schedulerWaker     chan struct{}
-	schedulerRunner    chan struct{}
-	reqFinisher        chan *eRequestFinisher
-	notifier           chan struct{}
-	dropWorker         chan WorkerID
-	retRequest         chan *eWorkerRequest
-	storageNotifier    chan eStoreAction
-	droppedWorker      chan string
-	storeIDs           map[stores.ID]struct{}
-	taskWorkerBinder   *eTaskWorkerBinder
-	taskCleaner        chan eWorkerCleanerParam
-	taskCleanerHandler chan eWorkerCleanerParam
-	taskCleanerQueue   *eWorkerRequestCleanerQueue
-	workerStatsQuery   chan *eWorkerStatsParam
-	workerJobsQuery    chan *eWorkerJobsParam
-	closing            chan struct{}
-	ticker             *time.Ticker
+	spt                  abi.RegisteredSealProof
+	id                   int
+	newWorker            chan *eWorkerHandle
+	workers              []*eWorkerHandle
+	reqQueue             *eRequestQueue
+	schedulerWaker       chan struct{}
+	schedulerRunner      chan struct{}
+	reqFinisher          chan *eRequestFinisher
+	notifier             chan struct{}
+	dropWorker           chan WorkerID
+	retRequest           chan *eWorkerRequest
+	storageNotifier      chan eStoreAction
+	droppedWorker        chan string
+	storeIDs             map[stores.ID]struct{}
+	taskWorkerBinder     *eTaskWorkerBinder
+	taskCleaner          chan eWorkerCleanerParam
+	taskCleanerHandler   chan eWorkerCleanerParam
+	taskCleanerQueue     *eWorkerRequestCleanerQueue
+	bigCacheCleanerQueue *eWorkerBigCacheCleanerQueue
+	workerStatsQuery     chan *eWorkerStatsParam
+	workerJobsQuery      chan *eWorkerJobsParam
+	closing              chan struct{}
+	ticker               *time.Ticker
 }
 
 type eRequestQueue struct {
@@ -231,7 +233,7 @@ var eschedTaskBindCleaner = map[sealtasks.TaskType]eWorkerCleanerParam{
 	},
 }
 
-var escheTaskCachable = []sealtasks.TaskType {
+var escheTaskCachable = []sealtasks.TaskType{
 	sealtasks.TTPreCommit2,
 }
 
@@ -264,25 +266,25 @@ type eWorkerJobsParam struct {
 }
 
 type edispatcher struct {
-	spt              abi.RegisteredSealProof
-	nextWorker       WorkerID
-	nextRequest      uint64
-	newWorker        chan *eWorkerHandle
-	dropWorker       chan WorkerID
-	newRequest       chan *eWorkerRequest
-	buckets          []*eWorkerBucket
-	reqQueue         *eRequestQueue
-	storage          *EStorage
-	storageNotifier  chan eStoreAction
-	droppedWorker    chan string
-	taskCleaner      chan eWorkerCleanerParam
-	closing          chan struct{}
-	ctx              context.Context
-	taskWorkerBinder *eTaskWorkerBinder
-	taskCleanerQueue *eWorkerRequestCleanerQueue
+	spt                  abi.RegisteredSealProof
+	nextWorker           WorkerID
+	nextRequest          uint64
+	newWorker            chan *eWorkerHandle
+	dropWorker           chan WorkerID
+	newRequest           chan *eWorkerRequest
+	buckets              []*eWorkerBucket
+	reqQueue             *eRequestQueue
+	storage              *EStorage
+	storageNotifier      chan eStoreAction
+	droppedWorker        chan string
+	taskCleaner          chan eWorkerCleanerParam
+	closing              chan struct{}
+	ctx                  context.Context
+	taskWorkerBinder     *eTaskWorkerBinder
+	taskCleanerQueue     *eWorkerRequestCleanerQueue
 	bigCacheCleanerQueue *eWorkerBigCacheCleanerQueue
-	workerStatsQuery chan *eWorkerStatsParam
-	workerJobsQuery  chan *eWorkerJobsParam
+	workerStatsQuery     chan *eWorkerStatsParam
+	workerJobsQuery      chan *eWorkerJobsParam
 }
 
 const eschedWorkerBuckets = 10
@@ -744,6 +746,15 @@ func (bucket *eWorkerBucket) schedulePreparedTask() {
 	}
 }
 
+func (bucket *eWorkerBucket) findBucketWorkerByAddress(addr string) *eWorkerHandle {
+	for _, worker := range bucket.workers {
+		if addr == worker.info.Address {
+			return worker
+		}
+	}
+	return nil
+}
+
 func (bucket *eWorkerBucket) findBucketWorkerByID(wid WorkerID) *eWorkerHandle {
 	for _, worker := range bucket.workers {
 		if wid == worker.wid {
@@ -1071,34 +1082,38 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 		taskCleanerQueue: &eWorkerRequestCleanerQueue{
 			queue: make(map[abi.SectorNumber]map[sealtasks.TaskType]*eWorkerRequestCleaner),
 		},
+		bigCacheCleanerQueue: &eWorkerBigCacheCleanerQueue{
+			queue: make(map[abi.SectorNumber]map[sealtasks.TaskType]string),
+		},
 		workerStatsQuery: make(chan *eWorkerStatsParam, 10),
 		workerJobsQuery:  make(chan *eWorkerJobsParam, 10),
 	}
 
 	for i := range dispatcher.buckets {
 		dispatcher.buckets[i] = &eWorkerBucket{
-			spt:                spt,
-			id:                 i,
-			newWorker:          make(chan *eWorkerHandle),
-			workers:            make([]*eWorkerHandle, 0),
-			reqQueue:           dispatcher.reqQueue,
-			schedulerWaker:     make(chan struct{}, 20),
-			schedulerRunner:    make(chan struct{}, 20000),
-			reqFinisher:        make(chan *eRequestFinisher),
-			notifier:           make(chan struct{}),
-			dropWorker:         make(chan WorkerID, 10),
-			retRequest:         dispatcher.newRequest,
-			storageNotifier:    make(chan eStoreAction, 10),
-			droppedWorker:      dispatcher.droppedWorker,
-			storeIDs:           make(map[stores.ID]struct{}),
-			taskWorkerBinder:   dispatcher.taskWorkerBinder,
-			taskCleaner:        dispatcher.taskCleaner,
-			taskCleanerHandler: make(chan eWorkerCleanerParam, 10),
-			taskCleanerQueue:   dispatcher.taskCleanerQueue,
-			workerStatsQuery:   make(chan *eWorkerStatsParam, 10),
-			workerJobsQuery:    make(chan *eWorkerJobsParam, 10),
-			closing:            make(chan struct{}, 2),
-			ticker:             time.NewTicker(3 * 60 * time.Second),
+			spt:                  spt,
+			id:                   i,
+			newWorker:            make(chan *eWorkerHandle),
+			workers:              make([]*eWorkerHandle, 0),
+			reqQueue:             dispatcher.reqQueue,
+			schedulerWaker:       make(chan struct{}, 20),
+			schedulerRunner:      make(chan struct{}, 20000),
+			reqFinisher:          make(chan *eRequestFinisher),
+			notifier:             make(chan struct{}),
+			dropWorker:           make(chan WorkerID, 10),
+			retRequest:           dispatcher.newRequest,
+			storageNotifier:      make(chan eStoreAction, 10),
+			droppedWorker:        dispatcher.droppedWorker,
+			storeIDs:             make(map[stores.ID]struct{}),
+			taskWorkerBinder:     dispatcher.taskWorkerBinder,
+			taskCleaner:          dispatcher.taskCleaner,
+			taskCleanerHandler:   make(chan eWorkerCleanerParam, 10),
+			taskCleanerQueue:     dispatcher.taskCleanerQueue,
+			bigCacheCleanerQueue: dispatcher.bigCacheCleanerQueue,
+			workerStatsQuery:     make(chan *eWorkerStatsParam, 10),
+			workerJobsQuery:      make(chan *eWorkerJobsParam, 10),
+			closing:              make(chan struct{}, 2),
+			ticker:               time.NewTicker(3 * 60 * time.Second),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -1429,5 +1444,5 @@ func (sh *edispatcher) WorkerJobs() map[uint64][]storiface.WorkerJob {
 }
 
 func (sh *edispatcher) MoveCacheDone(sector abi.SectorID) {
-
+	// TODO: when cache moving done, add the space to the worker
 }
