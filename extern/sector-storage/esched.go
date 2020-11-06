@@ -28,40 +28,40 @@ const eGiB = 1024 * eMiB
 
 var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResources{
 	sealtasks.TTAddPiece: {
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 64 * eGiB * 11 / 10, DisableSwap: true},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 32 * eGiB * 11 / 10, DisableSwap: true},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 64 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 2 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eKiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 128 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 64 * eGiB * 11 / 10, DisableSwap: true},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 64 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 32 * eGiB * 11 / 10, DisableSwap: true},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eKiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 8 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 8 * eMiB * 11 / 10},
 	},
 	sealtasks.TTPreCommit1: {
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 128 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: (64*14 + 1) * eGiB},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 64 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: (32*14 + 1) * eGiB},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: (512*14 + 512) * eMiB},
-		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * 1024, CPUs: 1, GPUs: 0, DiskSpace: (2*14 + 2) * eKiB},
-		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: (8*14 + 8) * eMiB},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 128 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: (64*14 + 1) * eGiB},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 64 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: (32*14 + 1) * eGiB},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: (512*14 + 512) * eMiB},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: (2*14 + 2) * eKiB},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: (8*14 + 8) * eMiB},
 	},
 	sealtasks.TTPreCommit2: {
 		/* Specially, for P2 at the different worker as P1, it should add disk space of P1 */
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 32 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (64*14 + 1) * eGiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 16 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (32*14 + 1) * eGiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 1024 * 1024 * 1024, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (512*14+1) * eMiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB, InheritDiskSpace: (2*14 + 1) * eKiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB, InheritDiskSpace: (8*14+1) * eMiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 32 * eGiB, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (64*14 + 1) * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 16 * eGiB, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (32*14 + 1) * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (512*14+1) * eMiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB, InheritDiskSpace: (2*14 + 1) * eKiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB, InheritDiskSpace: (8*14+1) * eMiB * 11 / 10},
 	},
 	sealtasks.TTCommit1: {
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 4 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 2 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 512 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 2 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
-		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 8 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 4 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 2 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 512 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 2 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 8 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
 	},
 	sealtasks.TTCommit2: {
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 580 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 290 * 1024 * 1024 * 1024, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 128 * 1024 * 1024 * 1024, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 32 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
-		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 32 * 1024 * 1024, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 580 * eGiB, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 290 * eGiB, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 128 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 32 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 32 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
 	},
 }
 
@@ -231,6 +231,10 @@ var eschedTaskBindCleaner = map[sealtasks.TaskType]eWorkerCleanerParam{
 	},
 }
 
+var escheTaskCachable = []sealtasks.TaskType {
+	sealtasks.TTPreCommit2,
+}
+
 type eWorkerRequestCleaner struct {
 	req *eWorkerRequest
 	wid WorkerID
@@ -239,6 +243,11 @@ type eWorkerRequestCleaner struct {
 type eWorkerRequestCleanerQueue struct {
 	mutex sync.Mutex
 	queue map[abi.SectorNumber]map[sealtasks.TaskType]*eWorkerRequestCleaner
+}
+
+type eWorkerBigCacheCleanerQueue struct {
+	mutex sync.Mutex
+	queue map[abi.SectorNumber]map[sealtasks.TaskType]string
 }
 
 const eschedWorkerJobs = "worker_jobs"
@@ -271,6 +280,7 @@ type edispatcher struct {
 	ctx              context.Context
 	taskWorkerBinder *eTaskWorkerBinder
 	taskCleanerQueue *eWorkerRequestCleanerQueue
+	bigCacheCleanerQueue *eWorkerBigCacheCleanerQueue
 	workerStatsQuery chan *eWorkerStatsParam
 	workerJobsQuery  chan *eWorkerJobsParam
 }
@@ -1416,4 +1426,8 @@ func (sh *edispatcher) WorkerJobs() map[uint64][]storiface.WorkerJob {
 	case out := <-resp:
 		return out
 	}
+}
+
+func (sh *edispatcher) MoveCacheDone(sector abi.SectorID) {
+
 }

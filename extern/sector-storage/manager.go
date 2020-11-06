@@ -503,6 +503,7 @@ func (m *Manager) MovingCache(ctx context.Context, sector abi.SectorID) error {
 	if err := m.storage.MoveCache(ctx, sector, stores.FTCache, true); err != nil {
 		return xerrors.Errorf("manager moving sector %d cache to hdd error: %v", sector, err)
 	}
+	m.sched.MoveCacheDone(sector)
 	log.Infof("success to move sector %d's cache to 2layer cache", sector)
 	return nil
 }

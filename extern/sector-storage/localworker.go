@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/elastic/go-sysinfo"
 	"github.com/hashicorp/go-multierror"
@@ -324,11 +325,19 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 		memSwap = 0
 	}
 
+    env := os.Getenv("LOTUS_CACHE_HDD")
+    hdd := strings.Split(env, ";")
+	bigCache := false
+	if 0 < len(hdd) {
+		bigCache = true
+	}
+
 	return storiface.WorkerInfo{
 		Hostname:     hostname,
 		Address:      l.Address,
 		GroupName:    l.GroupName,
 		SupportTasks: taskTypes,
+		BigCache:     bigCache,
 		Resources: storiface.WorkerResources{
 			MemPhysical: mem.Total,
 			MemSwap:     memSwap,

@@ -170,14 +170,20 @@ func newScheduler(spt abi.RegisteredSealProof) *scheduler {
 	}
 }
 
+func (sh *scheduler) useExtScheduler() bool {
+	return sh.useExtSched
+}
+
 func (sh *scheduler) SetStorage(storage *EStorage) {
-	if sh.useExtSched {
+	if sh.useExtScheduler() {
 		sh.esched.SetStorage(storage)
 	}
 }
 
-func (sh *scheduler) useExtScheduler() bool {
-	return sh.useExtSched
+func (sh *scheduler) MoveCacheDone(sector abi.SectorID) {
+	if sh.useExtScheduler() {
+		sh.esched.MoveCacheDone(sector)
+	}
 }
 
 func (sh *scheduler) Schedule(ctx context.Context, sector abi.SectorID, taskType sealtasks.TaskType, sel WorkerSelector, prepare WorkerAction, work WorkerAction) error {
