@@ -127,6 +127,8 @@ type eWorkerHandle struct {
 	runningTasks       []*eWorkerRequest
 	prepareMutex       sync.Mutex
 	maxConcurrent      map[sealtasks.TaskType]int
+	memoryConcurrentLimit int
+	diskConcurrentLimit int
 }
 
 const eschedTag = "esched"
@@ -891,20 +893,23 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 	w.diskTotal += act.stat.space
 
 	var limit int = int(w.diskTotal / eResourceTable[sealtasks.TTPreCommit1][bucket.spt].DiskSpace)
-	if limit < w.maxConcurrent[sealtasks.TTPreCommit1] {
-		w.maxConcurrent[sealtasks.TTPreCommit1] = limit
+	w.diskConcurrentLimit = limit
+	if w.diskConcurrentLimit < w.memoryConcurrentLimit {
+		w.maxConcurrent[sealtasks.TTPreCommit1] = w.diskConcurrentLimit
+		w.maxConcurrent[sealtasks.TTPreCommit2] = w.diskConcurrentLimit
+
 		log.Infof("<%s> update max concurrent for %v = %v [%s]",
 			eschedTag,
 			sealtasks.TTPreCommit1,
 			w.maxConcurrent[sealtasks.TTPreCommit1],
 			w.info.Address)
-	}
-	if limit < w.maxConcurrent[sealtasks.TTPreCommit2] {
-		w.maxConcurrent[sealtasks.TTPreCommit2] = limit
+	} else {
+		w.maxConcurrent[sealtasks.TTPreCommit1] = w.memoryConcurrentLimit
+		w.maxConcurrent[sealtasks.TTPreCommit2] = w.memoryConcurrentLimit
 		log.Infof("<%s> update max concurrent for %v = %v [%s]",
 			eschedTag,
-			sealtasks.TTPreCommit2,
-			w.maxConcurrent[sealtasks.TTPreCommit2],
+			sealtasks.TTPreCommit1,
+			w.maxConcurrent[sealtasks.TTPreCommit1],
 			w.info.Address)
 	}
 }
@@ -1249,8 +1254,9 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	w.runningTasks = make([]*eWorkerRequest, 0)
 	w.maxConcurrent = make(map[sealtasks.TaskType]int)
 
-	var limit1 int = int(w.info.Resources.MemPhysical / eResourceTable[sealtasks.TTPreCommit1][sh.spt].Memory)
+	var limit1 int = int(w.info.Resources.MemPhysical * 92 / eResourceTable[sealtasks.TTPreCommit1][sh.spt].Memory / 100)
 	var limit2 int = int(w.info.Resources.CPUs * 92 / 100)
+	w.memoryConcurrentLimit = limit1
 	w.maxConcurrent[sealtasks.TTPreCommit1] = limit1
 	if limit2 < w.maxConcurrent[sealtasks.TTPreCommit1] {
 		w.maxConcurrent[sealtasks.TTPreCommit1] = limit2
