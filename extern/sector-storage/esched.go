@@ -44,8 +44,8 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 	},
 	sealtasks.TTPreCommit2: {
 		/* Specially, for P2 at the different worker as PC1, it should add disk space of PC1 */
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 32 * eGiB, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (64*14 + 1) * eGiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 16 * eGiB, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (32*14 + 1) * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 32 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (64*14 + 1) * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 16 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (32*14 + 1) * eGiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (512*14 + 1) * eMiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB, InheritDiskSpace: (2*14 + 1) * eKiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB, InheritDiskSpace: (8*14 + 1) * eMiB * 11 / 10},
@@ -58,8 +58,8 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 8 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
 	},
 	sealtasks.TTCommit2: {
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 580 * eGiB, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 290 * eGiB, CPUs: 2, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 580 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 290 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
 		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 128 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
 		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 32 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 32 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
@@ -568,7 +568,6 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 
 func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
 	log.Debugf("<%s> preparing typed task %v/%v to %s", eschedTag, task.sector, task.taskType, worker.info.Address)
-	worker.dumpWorkerInfo()
 	task.dumpWorkerRequest()
 
 	worker.prepareMutex.Lock()
@@ -894,9 +893,19 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 	var limit int = int(w.diskTotal / eResourceTable[sealtasks.TTPreCommit1][bucket.spt].DiskSpace)
 	if limit < w.maxConcurrent[sealtasks.TTPreCommit1] {
 		w.maxConcurrent[sealtasks.TTPreCommit1] = limit
+		log.Infof("<%s> update max concurrent for %v = %v [%s]",
+			eschedTag,
+			sealtasks.TTPreCommit1,
+			w.maxConcurrent[sealtasks.TTPreCommit1],
+			w.info.Address)
 	}
 	if limit < w.maxConcurrent[sealtasks.TTPreCommit2] {
 		w.maxConcurrent[sealtasks.TTPreCommit2] = limit
+		log.Infof("<%s> update max concurrent for %v = %v [%s]",
+			eschedTag,
+			sealtasks.TTPreCommit2,
+			w.maxConcurrent[sealtasks.TTPreCommit2],
+			w.info.Address)
 	}
 }
 
@@ -1177,26 +1186,26 @@ func (sh *edispatcher) Schedule(ctx context.Context, sector abi.SectorID, taskTy
 }
 
 func (w *eWorkerHandle) dumpWorkerInfo() {
-	log.Debugf("Worker information -----------")
-	log.Debugf("  Address: ------------------- %v", w.info.Address)
-	log.Debugf("  Group: --------------------- %v", w.info.GroupName)
-	log.Debugf("  Support Tasks: -------------")
+	log.Infof("Worker information -----------")
+	log.Infof("  Address: ------------------- %v", w.info.Address)
+	log.Infof("  Group: --------------------- %v", w.info.GroupName)
+	log.Infof("  Support Tasks: -------------")
 	for _, taskType := range w.info.SupportTasks {
-		log.Debugf("    + %v", taskType)
+		log.Infof("    + %v", taskType)
 	}
-	log.Debugf("  Hostname: ------------------ %v", w.info.Hostname)
-	log.Debugf("  Mem Physical: -------------- %v", w.info.Resources.MemPhysical)
-	log.Debugf("  Mem Used: ------------------ %v", w.memUsed)
-	log.Debugf("  Mem Swap: ------------------ %v", w.info.Resources.MemSwap)
-	log.Debugf("  Mem Reserved: -------------- %v", w.info.Resources.MemReserved)
-	log.Debugf("  CPUs: ---------------------- %v", w.info.Resources.CPUs)
-	log.Debugf("  CPU Used: ------------------ %v", w.cpuUsed)
-	log.Debugf("  GPUs------------------------")
+	log.Infof("  Hostname: ------------------ %v", w.info.Hostname)
+	log.Infof("  Mem Physical: -------------- %v", w.info.Resources.MemPhysical)
+	log.Infof("  Mem Used: ------------------ %v", w.memUsed)
+	log.Infof("  Mem Swap: ------------------ %v", w.info.Resources.MemSwap)
+	log.Infof("  Mem Reserved: -------------- %v", w.info.Resources.MemReserved)
+	log.Infof("  CPUs: ---------------------- %v", w.info.Resources.CPUs)
+	log.Infof("  CPU Used: ------------------ %v", w.cpuUsed)
+	log.Infof("  GPUs------------------------")
 	for _, gpu := range w.info.Resources.GPUs {
-		log.Debugf("    + %s", gpu)
+		log.Infof("    + %s", gpu)
 	}
-	log.Debugf("  GPU Used: ------------------ %v", w.gpuUsed)
-	log.Debugf("  Disk Used: ----------------- %v", w.diskUsed)
+	log.Infof("  GPU Used: ------------------ %v", w.gpuUsed)
+	log.Infof("  Disk Used: ----------------- %v", w.diskUsed)
 }
 
 func (w *eWorkerHandle) patchLocalhost() {
@@ -1246,14 +1255,33 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	if limit2 < w.maxConcurrent[sealtasks.TTPreCommit1] {
 		w.maxConcurrent[sealtasks.TTPreCommit1] = limit2
 	}
+	log.Infof("<%s> max concurrent for %v = %v [%s]",
+		eschedTag,
+		sealtasks.TTPreCommit1,
+		w.maxConcurrent[sealtasks.TTPreCommit1],
+		w.info.Address)
 
 	w.maxConcurrent[sealtasks.TTPreCommit2] = 4 * len(w.info.Resources.GPUs)
+	if w.maxConcurrent[sealtasks.TTPreCommit2] < 8 {
+		w.maxConcurrent[sealtasks.TTPreCommit2] = 8
+	}
+	log.Infof("<%s> max concurrent for %v = %v [%s]",
+		eschedTag,
+		sealtasks.TTPreCommit2,
+		w.maxConcurrent[sealtasks.TTPreCommit2],
+		w.info.Address)
+
 	w.maxConcurrent[sealtasks.TTCommit1] = 1280
 	w.maxConcurrent[sealtasks.TTCommit2] = len(w.info.Resources.GPUs)
 	var limit int = int(w.info.Resources.MemPhysical / eResourceTable[sealtasks.TTCommit2][sh.spt].Memory)
 	if limit < w.maxConcurrent[sealtasks.TTCommit2] {
 		w.maxConcurrent[sealtasks.TTCommit2] = limit
 	}
+	log.Infof("<%s> max concurrent for %v = %v [%s]",
+		eschedTag,
+		sealtasks.TTCommit2,
+		w.maxConcurrent[sealtasks.TTCommit2],
+		w.info.Address)
 
 	workerBucketIndex := w.wid % eschedWorkerBuckets
 	bucket := sh.buckets[workerBucketIndex]
