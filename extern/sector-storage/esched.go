@@ -896,6 +896,7 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 	w.diskConcurrentLimit = limit
 	if w.diskConcurrentLimit < w.memoryConcurrentLimit {
 		w.maxConcurrent[sealtasks.TTPreCommit1] = w.diskConcurrentLimit
+		w.maxConcurrent[sealtasks.TTAddPiece] = w.diskConcurrentLimit
 		w.maxConcurrent[sealtasks.TTPreCommit2] = w.diskConcurrentLimit
 
 		log.Infof("<%s> update max concurrent for %v = %v [%s]",
@@ -905,6 +906,7 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 			w.info.Address)
 	} else {
 		w.maxConcurrent[sealtasks.TTPreCommit1] = w.memoryConcurrentLimit
+		w.maxConcurrent[sealtasks.TTAddPiece] = w.memoryConcurrentLimit
 		w.maxConcurrent[sealtasks.TTPreCommit2] = w.memoryConcurrentLimit
 		log.Infof("<%s> update max concurrent for %v = %v [%s]",
 			eschedTag,
@@ -1261,6 +1263,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	if limit2 < w.maxConcurrent[sealtasks.TTPreCommit1] {
 		w.maxConcurrent[sealtasks.TTPreCommit1] = limit2
 	}
+	w.maxConcurrent[sealtasks.TTAddPiece] = w.maxConcurrent[sealtasks.TTPreCommit1]
 	log.Infof("<%s> max concurrent for %v = %v [%s]",
 		eschedTag,
 		sealtasks.TTPreCommit1,
