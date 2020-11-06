@@ -161,6 +161,7 @@ type eWorkerBucket struct {
 	workerStatsQuery   chan *eWorkerStatsParam
 	workerJobsQuery    chan *eWorkerJobsParam
 	closing            chan struct{}
+	ticker             *time.Ticker
 }
 
 type eRequestQueue struct {
@@ -977,6 +978,10 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 	go func() { param.resp <- out }()
 }
 
+func (bucket *eWorkerBucket) onScheduleTick() {
+	go func() { bucket.notifier <- struct{}{} }()
+}
+
 func (bucket *eWorkerBucket) scheduler() {
 	log.Infof("<%s> run scheduler for bucket %d", eschedTag, bucket.id)
 
@@ -1002,6 +1007,8 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.onWorkerStatsQuery(param)
 		case param := <-bucket.workerJobsQuery:
 			bucket.onWorkerJobsQuery(param)
+		case <-bucket.ticker.C:
+			bucket.onScheduleTick()
 		case <-bucket.closing:
 			log.Infof("<%s> finish scheduler for bucket %d", eschedTag, bucket.id)
 			return
@@ -1067,6 +1074,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 			workerStatsQuery:   make(chan *eWorkerStatsParam, 10),
 			workerJobsQuery:    make(chan *eWorkerJobsParam, 10),
 			closing:            make(chan struct{}, 2),
+			ticker:             time.NewTicker(3 * 60 * time.Second),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
