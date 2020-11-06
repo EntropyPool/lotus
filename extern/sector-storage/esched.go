@@ -126,6 +126,7 @@ type eWorkerHandle struct {
 	preparingTask      *eWorkerRequest
 	runningTasks       []*eWorkerRequest
 	prepareMutex       sync.Mutex
+	maxConcurrent      map[sealtasks.TaskType]int
 }
 
 const eschedTag = "esched"
@@ -453,12 +454,29 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 	remainReqs := make([]*eWorkerRequest, 0)
 	res := findTaskResource(bucket.spt, taskType)
 
+	taskCount := 0
+	if nil != worker.preparingTask {
+		taskCount += 1
+	}
+	taskCount += len(worker.preparedTasks)
+	taskCount += len(worker.runningTasks)
+	for _, pq := range worker.priorityTasksQueue {
+		for _, tq := range pq.typedTasksQueue {
+			taskCount += len(tq.tasks)
+		}
+	}
+
 	for {
 		if 0 == len(reqs) {
 			break
 		}
 
 		req := reqs[0]
+		if worker.maxConcurrent[req.taskType] <= taskCount {
+			remainReqs = append(remainReqs, req)
+			reqs = reqs[1:]
+			continue
+		}
 
 		bindWorker := false
 		bucket.taskWorkerBinder.mutex.Lock()
@@ -516,6 +534,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		peekReqs += 1
 		reqs = reqs[1:]
 		tasksQueue.tasks = append(tasksQueue.tasks, req)
+		taskCount += 1
 	}
 
 	reqQueue.reqs[taskType] = append(remainReqs, reqs[0:]...)
@@ -871,6 +890,14 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 	}
 	bucket.storeIDs[act.id] = struct{}{}
 	w.diskTotal += act.stat.space
+
+	var limit int = int(w.diskTotal / eResourceTable[sealtasks.TTPreCommit1][bucket.spt].DiskSpace)
+	if limit < w.maxConcurrent[sealtasks.TTPreCommit1] {
+		w.maxConcurrent[sealtasks.TTPreCommit1] = limit
+	}
+	if limit < w.maxConcurrent[sealtasks.TTPreCommit2] {
+		w.maxConcurrent[sealtasks.TTPreCommit2] = limit
+	}
 }
 
 func (bucket *eWorkerBucket) onDropStore(w *eWorkerHandle, act eStoreAction) {
@@ -1211,6 +1238,22 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 
 	w.preparedTasks = make([]*eWorkerRequest, 0)
 	w.runningTasks = make([]*eWorkerRequest, 0)
+	w.maxConcurrent = make(map[sealtasks.TaskType]int)
+
+	var limit1 int = int(w.info.Resources.MemPhysical / eResourceTable[sealtasks.TTPreCommit1][sh.spt].Memory)
+	var limit2 int = int(w.info.Resources.CPUs * 92 / 100)
+	w.maxConcurrent[sealtasks.TTPreCommit1] = limit1
+	if limit2 < w.maxConcurrent[sealtasks.TTPreCommit1] {
+		w.maxConcurrent[sealtasks.TTPreCommit1] = limit2
+	}
+
+	w.maxConcurrent[sealtasks.TTPreCommit2] = 4 * len(w.info.Resources.GPUs)
+	w.maxConcurrent[sealtasks.TTCommit1] = 1280
+	w.maxConcurrent[sealtasks.TTCommit2] = len(w.info.Resources.GPUs)
+	var limit int = int(w.info.Resources.MemPhysical / eResourceTable[sealtasks.TTCommit2][sh.spt].Memory)
+	if limit < w.maxConcurrent[sealtasks.TTCommit2] {
+		w.maxConcurrent[sealtasks.TTCommit2] = limit
+	}
 
 	workerBucketIndex := w.wid % eschedWorkerBuckets
 	bucket := sh.buckets[workerBucketIndex]
