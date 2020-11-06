@@ -185,24 +185,8 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 	return nil
 }
 
-func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
-	info, err := w.Info(ctx)
-	if err != nil {
-		return xerrors.Errorf("getting worker info: %v", err)
-	}
-
-	log.Infof("add worker: %+v", info)
-	m.sched.newWorkers <- &workerHandle{
-		w: w,
-		wt: &workTracker{
-			running: map[uint64]storiface.WorkerJob{},
-		},
-		info:      info,
-		preparing: &activeResources{},
-		active:    &activeResources{},
-	}
-
-	timer := time.NewTimer(30 * time.Second)
+func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
+	timer := time.NewTimer(delay * time.Second)
 	go func() {
 		defer timer.Stop()
 		select {
@@ -228,6 +212,26 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 			}
 		}
 	}()
+}
+
+func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
+	info, err := w.Info(ctx)
+	if err != nil {
+		return xerrors.Errorf("getting worker info: %v", err)
+	}
+
+	log.Infof("add worker: %+v", info)
+	m.sched.newWorkers <- &workerHandle{
+		w: w,
+		wt: &workTracker{
+			running: map[uint64]storiface.WorkerJob{},
+		},
+		info:      info,
+		preparing: &activeResources{},
+		active:    &activeResources{},
+	}
+
+	m.removeFailSectors(ctx, 30)
 
 	return nil
 }
@@ -395,9 +399,7 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		return nil
 	})
 
-	if nil != err {
-		m.Remove(ctx, sector)
-	}
+	m.removeFailSectors(ctx, 60)
 
 	return out, err
 }
@@ -445,9 +447,7 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 		return nil
 	})
 
-	if nil != err {
-		m.Remove(ctx, sector)
-	}
+	m.removeFailSectors(ctx, 60)
 
 	return out, err
 }
@@ -493,9 +493,7 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		return nil
 	})
 
-	if nil != err {
-		m.Remove(ctx, sector)
-	}
+	m.removeFailSectors(ctx, 60)
 
 	return out, err
 }
