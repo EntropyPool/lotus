@@ -224,7 +224,7 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 					log.Errorf("cannot remove worker fail sector %v [%v]", sectorID, err)
 				}
 				// m.localStore.DropMayFailSector(ctx, sectorID)
-				delete(m.failSectors, sectorID)
+				// delete(m.failSectors, sectorID)
 			}
 		}
 	}()
@@ -395,6 +395,10 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		return nil
 	})
 
+	if nil != err {
+		m.Remove(ctx, sector)
+	}
+
 	return out, err
 }
 
@@ -441,6 +445,10 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 		return nil
 	})
 
+	if nil != err {
+		m.Remove(ctx, sector)
+	}
+
 	return out, err
 }
 
@@ -484,6 +492,11 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		out = p
 		return nil
 	})
+
+	if nil != err {
+		m.Remove(ctx, sector)
+	}
+
 	return out, err
 }
 
