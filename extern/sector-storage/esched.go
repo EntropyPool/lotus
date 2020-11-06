@@ -122,6 +122,7 @@ type eWorkerHandle struct {
 	diskTotal          int64
 	priorityTasksQueue map[int]*eWorkerReqPriorityList
 	preparedTasks      []*eWorkerRequest
+	preparingTask     *eWorkerRequest
 	runningTasks       []*eWorkerRequest
 	prepareMutex       sync.Mutex
 }
@@ -543,7 +544,9 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	defer worker.prepareMutex.Unlock()
 
 	task.startTime = time.Now().UnixNano()
+	worker.preparingTask = task
 	err := task.prepare(task.ctx, worker.wt.worker(worker.w))
+	worker.preparingTask = nil
 	if nil != err {
 		log.Errorf("<%s> cannot prepare typed task %v/%v/%s[%v]", eschedTag, task.sector, task.taskType, worker.info.Address, err)
 		bucket.reqFinisher <- &eRequestFinisher{
@@ -949,6 +952,17 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 
 		wi := 0
 		for wi, task := range worker.preparedTasks {
+			out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
+				ID:      task.id,
+				Sector:  task.sector,
+				Task:    task.taskType,
+				RunWait: wi + 1,
+				Start:   task.inqueueTimeRaw,
+			})
+		}
+
+		if nil != worker.preparingTask {
+			task := worker.preparingTask
 			out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
 				ID:      task.id,
 				Sector:  task.sector,
