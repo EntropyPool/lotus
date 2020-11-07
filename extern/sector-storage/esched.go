@@ -110,6 +110,11 @@ type eWorkerReqPriorityList struct {
 	typedTasksQueue map[sealtasks.TaskType]*eWorkerReqTypedList
 }
 
+type eWorkerTaskPrepared struct {
+	wid WorkerID
+	req *eWorkerRequest
+}
+
 type eWorkerHandle struct {
 	priv                  interface{}
 	wid                   WorkerID
@@ -166,6 +171,7 @@ type eWorkerBucket struct {
 	workerJobsQuery    chan *eWorkerJobsParam
 	closing            chan struct{}
 	ticker             *time.Ticker
+	taskPrepared       chan *eWorkerTaskPrepared
 }
 
 type eRequestQueue struct {
@@ -221,17 +227,6 @@ type eWorkerCleanerParam struct {
 	stage        string
 	sectorNumber abi.SectorNumber
 	taskType     sealtasks.TaskType
-}
-
-var eschedTaskBindCleaner = map[sealtasks.TaskType]eWorkerCleanerParam{
-	sealtasks.TTPreCommit2: {
-		stage:    eschedWorkerCleanAtPrepare,
-		taskType: sealtasks.TTPreCommit1,
-	},
-	sealtasks.TTFinalize: {
-		stage:    eschedWorkerCleanAtFinish,
-		taskType: sealtasks.TTPreCommit2,
-	},
 }
 
 var escheTaskCachable = []sealtasks.TaskType{
@@ -452,9 +447,11 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 	remainReqs := make([]*eWorkerRequest, 0)
 
 	taskCount := 0
+	worker.prepareMutex.Lock()
 	if nil != worker.preparingTask {
 		taskCount += 1
 	}
+	worker.prepareMutex.Unlock()
 	taskCount += len(worker.preparedTasks)
 	taskCount += len(worker.runningTasks)
 	for _, pq := range worker.priorityTasksQueue {
@@ -552,13 +549,18 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	log.Debugf("<%s> preparing typed task %v/%v to %s", eschedTag, task.sector, task.taskType, worker.info.Address)
 	task.dumpWorkerRequest()
 
-	worker.prepareMutex.Lock()
-	defer worker.prepareMutex.Unlock()
-
 	task.startTime = time.Now().UnixNano()
+
+	worker.prepareMutex.Lock()
 	worker.preparingTask = task
+	worker.prepareMutex.Unlock()
+
 	err := task.prepare(task.ctx, worker.wt.worker(worker.w))
+
+	worker.prepareMutex.Lock()
 	worker.preparingTask = nil
+	worker.prepareMutex.Unlock()
+
 	if nil != err {
 		log.Errorf("<%s> cannot prepare typed task %v/%v/%s[%v]", eschedTag, task.sector, task.taskType, worker.info.Address, err)
 		bucket.reqFinisher <- &eRequestFinisher{
@@ -572,7 +574,11 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	log.Debugf("<%s> prepared typed task %v/%v by %s", eschedTag, task.sector, task.taskType, worker.info.Address)
 	task.preparedTime = time.Now().UnixNano()
 	task.preparedTimeRaw = time.Now()
-	worker.preparedTasks = append(worker.preparedTasks, task)
+
+	bucket.taskPrepared <- &eWorkerTaskPrepared{
+		wid: worker.wid,
+		req: task,
+	}
 	bucket.schedulerRunner <- struct{}{}
 
 	canBindTaskType := false
@@ -592,16 +598,6 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 		delete(bucket.taskWorkerBinder.binder, task.sector.Number)
 	}
 	bucket.taskWorkerBinder.mutex.Unlock()
-
-	cleanerParam, ok := eschedTaskBindCleaner[task.taskType]
-	if ok {
-		if eschedWorkerCleanAtPrepare == cleanerParam.stage {
-			bucket.taskCleaner <- eWorkerCleanerParam{
-				sectorNumber: task.sector.Number,
-				taskType:     cleanerParam.taskType,
-			}
-		}
-	}
 }
 
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
@@ -964,6 +960,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 			})
 		}
 
+		worker.prepareMutex.Lock()
 		if nil != worker.preparingTask {
 			task := worker.preparingTask
 			out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
@@ -974,6 +971,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				Start:   task.inqueueTimeRaw,
 			})
 		}
+		worker.prepareMutex.Unlock()
 
 		wi += 100000
 		for priority, pq := range worker.priorityTasksQueue {
@@ -997,6 +995,14 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 
 func (bucket *eWorkerBucket) onScheduleTick() {
 	// go func() { bucket.notifier <- struct{}{} }()
+}
+
+func (bucket *eWorkerBucket) onTaskPrepared(prepared *eWorkerTaskPrepared) {
+	worker := bucket.findBucketWorkerByID(prepared.wid)
+	if nil == worker {
+		return
+	}
+	worker.preparedTasks = append(worker.preparedTasks, prepared.req)
 }
 
 func (bucket *eWorkerBucket) scheduler() {
@@ -1026,6 +1032,8 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.onWorkerJobsQuery(param)
 		case <-bucket.ticker.C:
 			bucket.onScheduleTick()
+		case prepared := <-bucket.taskPrepared:
+			bucket.onTaskPrepared(prepared)
 		case <-bucket.closing:
 			log.Infof("<%s> finish scheduler for bucket %d", eschedTag, bucket.id)
 			return
@@ -1088,6 +1096,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 			workerJobsQuery:    make(chan *eWorkerJobsParam, 10),
 			closing:            make(chan struct{}, 2),
 			ticker:             time.NewTicker(3 * 60 * time.Second),
+			taskPrepared:       make(chan *eWorkerTaskPrepared, 10),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
