@@ -450,7 +450,6 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 
 	peekReqs := 0
 	remainReqs := make([]*eWorkerRequest, 0)
-	res := findTaskResource(bucket.spt, taskType)
 
 	taskCount := 0
 	if nil != worker.preparingTask {
@@ -471,12 +470,14 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 
 		req := reqs[0]
 		if worker.maxConcurrent[req.taskType] <= taskCount {
+			log.Debugf("<%s> worker %s's %v tasks queue is full %d / %d",
+				eschedTag, worker.info.Address, req.taskType,
+				taskCount, worker.maxConcurrent[req.taskType], req.taskType)
 			remainReqs = append(remainReqs, req)
 			reqs = reqs[1:]
 			continue
 		}
 
-		bindWorker := false
 		bucket.taskWorkerBinder.mutex.Lock()
 		address, ok := bucket.taskWorkerBinder.binder[req.sector.Number]
 		if ok {
@@ -486,7 +487,6 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 				reqs = reqs[1:]
 				continue
 			}
-			bindWorker = true
 		}
 		bucket.taskWorkerBinder.mutex.Unlock()
 
@@ -509,25 +509,9 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			continue
 		}
 
-		req.diskUsed = res.DiskSpace
-		if !bindWorker {
-			req.diskUsed += res.InheritDiskSpace
-		}
-
-		if worker.diskTotal <= req.diskUsed+worker.diskUsed {
-			log.Debugf("<%s> need %d = %d + %d disk space but only %d available %s [%v]",
-				eschedTag, req.diskUsed+worker.diskUsed, req.diskUsed, worker.diskUsed,
-				worker.diskTotal-worker.diskUsed, worker.info.Address, taskType)
-			break
-		}
-
 		req.inqueueTime = time.Now().UnixNano()
 		req.inqueueTimeRaw = time.Now()
 		worker.acquireRequestResource(req, eschedResStagePrepare)
-		log.Infof("<%s> request %v / %v takes %d bytes [%d / %d] from %s",
-			eschedTag, req.sector, req.taskType,
-			req.diskUsed, worker.diskTotal-worker.diskUsed, worker.diskTotal,
-			worker.info.Address)
 
 		peekReqs += 1
 		reqs = reqs[1:]
