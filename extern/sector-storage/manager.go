@@ -376,21 +376,21 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		selector = newExistingSelector(m.index, sector, stores.FTUnsealed, false)
 	}
 
+	m.localStore.AddMayFailSector(ctx, sector, string(sealtasks.TTAddPiece), "")
+
 	var out abi.PieceInfo
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTAddPiece, selector, schedNop, func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
-		info, ierr := w.Info(ctx)
-		address := "unknow"
-		if nil == ierr {
-			address = info.Address
-		}
-		m.localStore.AddMayFailSector(ctx, sector, string(sealtasks.TTAddPiece), address)
 		p, err := w.AddPiece(ctx, sector, existingPieces, sz, r)
 		m.localStore.DropMayFailSector(ctx, sector)
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTAddPiece, sector, start, end, err)
 		if err != nil {
-			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTAddPiece), address)
+			rerr := m.Remove(ctx, sector)
+			if nil != rerr {
+				log.Errorf("cannot remove worker fail sector %v [%v]", sector, rerr)
+			}
+			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTAddPiece), "")
 			return err
 		}
 		out = p
@@ -420,25 +420,20 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 
 	selector := newAllocSelector(m.index, stores.FTCache|stores.FTSealed, stores.PathSealing)
 
+	m.localStore.AddMayFailSector(ctx, sector, string(sealtasks.TTPreCommit1), "")
+
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit1, selector, schedFetch(sector, stores.FTUnsealed, stores.PathSealing, stores.AcquireMove), func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
-		info, ierr := w.Info(ctx)
-		address := "unknow"
-		if nil == ierr {
-			address = info.Address
-		}
-		m.localStore.AddMayFailSector(ctx, sector, string(sealtasks.TTPreCommit1), address)
 		p, err := w.SealPreCommit1(ctx, sector, ticket, pieces)
 		m.localStore.DropMayFailSector(ctx, sector)
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, err)
 		if err != nil {
-			info, ierr := w.Info(ctx)
-			address := "unknow"
-			if nil == ierr {
-				address = info.Address
+			rerr := m.Remove(ctx, sector)
+			if nil != rerr {
+				log.Errorf("cannot remove worker fail sector %v [%v]", sector, rerr)
 			}
-			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTPreCommit1), address)
+			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTPreCommit1), "")
 			return err
 		}
 		out = p
@@ -466,25 +461,20 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 
 	selector := newExistingSelector(m.index, sector, stores.FTCache|stores.FTSealed, true)
 
+	m.localStore.AddMayFailSector(ctx, sector, string(sealtasks.TTPreCommit2), "")
+
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit2, selector, schedFetch(sector, stores.FTCache|stores.FTSealed, stores.PathSealing, stores.AcquireMove), func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
-		info, ierr := w.Info(ctx)
-		address := "unknow"
-		if nil == ierr {
-			address = info.Address
-		}
-		m.localStore.AddMayFailSector(ctx, sector, string(sealtasks.TTPreCommit2), address)
 		p, err := w.SealPreCommit2(ctx, sector, phase1Out)
 		m.localStore.DropMayFailSector(ctx, sector)
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, err)
 		if err != nil {
-			info, ierr := w.Info(ctx)
-			address := "unknow"
-			if nil == ierr {
-				address = info.Address
+			rerr := m.Remove(ctx, sector)
+			if nil != rerr {
+				log.Errorf("cannot remove worker fail sector %v [%v]", sector, rerr)
 			}
-			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTPreCommit2), address)
+			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTPreCommit2), "")
 			return err
 		}
 		out = p
