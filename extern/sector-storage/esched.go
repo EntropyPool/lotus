@@ -117,9 +117,9 @@ type eWorkerTaskPrepared struct {
 }
 
 type eWorkerTaskCleaning struct {
-	sector   abi.SectorID
-	taskId   uint64
-	taskType sealtasks.TaskType
+	sector      abi.SectorID
+	taskType    sealtasks.TaskType
+	byCacheMove bool
 }
 
 type eWorkerSyncTaskList struct {
@@ -627,7 +627,6 @@ func (bucket *eWorkerBucket) addCleaningTask(wid WorkerID, task *eWorkerRequest)
 	for _, attr := range eschedTaskCleanMap {
 		if task.taskType == attr.taskType {
 			worker.cleaningTasks = append(worker.cleaningTasks, &eWorkerTaskCleaning{
-				taskId:   task.id,
 				sector:   task.sector,
 				taskType: task.taskType,
 			})
@@ -646,9 +645,8 @@ func (bucket *eWorkerBucket) doCleanTask(task *eWorkerRequest, stage string) {
 	}
 
 	bucket.taskCleaner <- &eWorkerTaskCleaning{
-		taskId:   task.id,
 		sector:   task.sector,
-		taskType: task.taskType,
+		taskType: clean.taskType,
 	}
 }
 
@@ -961,8 +959,11 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 
 func (bucket *eWorkerBucket) onTaskClean(clean *eWorkerTaskCleaning) {
 	for _, worker := range bucket.workers {
+		if !worker.info.BigCache && clean.byCacheMove {
+			continue
+		}
 		for idx, task := range worker.cleaningTasks {
-			if task.taskId == clean.taskId && task.sector.Number == clean.sector.Number {
+			if clean.taskType == task.taskType && task.sector.Number == clean.sector.Number {
 				worker.cleaningTasks = append(worker.cleaningTasks[:idx], worker.cleaningTasks[idx+1:]...)
 				go func() { bucket.notifier <- struct{}{} }()
 				return
@@ -1551,6 +1552,23 @@ func (sh *edispatcher) WorkerJobs() map[uint64][]storiface.WorkerJob {
 	}
 }
 
+func (sh *edispatcher) doCleanTask(sector abi.SectorID, taskType sealtasks.TaskType, stage string) {
+	clean, ok := eschedTaskCleanMap[taskType]
+	if !ok {
+		return
+	}
+
+	if clean.stage != stage {
+		return
+	}
+
+	sh.taskCleaner <- &eWorkerTaskCleaning{
+		sector:      sector,
+		taskType:    clean.taskType,
+		byCacheMove: true,
+	}
+}
+
 func (sh *edispatcher) MoveCacheDone(sector abi.SectorID) {
-	// TODO: when cache moving done, add the space to the worker
+	sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish)
 }
