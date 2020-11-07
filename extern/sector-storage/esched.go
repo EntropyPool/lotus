@@ -661,7 +661,6 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			worker.preparedTasks.mutex.Unlock()
 			break
 		}
-
 		task := worker.preparedTasks.queue[0]
 		worker.preparedTasks.mutex.Unlock()
 
@@ -707,7 +706,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 
 		worker.preparedTasks.mutex.Lock()
 		worker.preparedTasks.queue = worker.preparedTasks.queue[1:]
-		worker.preparedTasks.mutex.Lock()
+		worker.preparedTasks.mutex.Unlock()
 
 		worker.runningTasks = append(worker.runningTasks, task)
 		go bucket.runTypedTask(worker, task)
