@@ -1194,7 +1194,10 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	if limit2 < w.maxConcurrent[sealtasks.TTPreCommit1] {
 		w.maxConcurrent[sealtasks.TTPreCommit1] = limit2
 	}
+
 	w.maxConcurrent[sealtasks.TTAddPiece] = w.maxConcurrent[sealtasks.TTPreCommit1]
+	w.maxConcurrent[sealtasks.TTUnseal] = w.maxConcurrent[sealtasks.TTPreCommit1]
+
 	log.Infof("<%s> max concurrent for %v = %v [%s]",
 		eschedTag,
 		sealtasks.TTPreCommit1,
@@ -1212,6 +1215,10 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 		w.info.Address)
 
 	w.maxConcurrent[sealtasks.TTCommit1] = 1280
+	w.maxConcurrent[sealtasks.TTFinalize] = 1280
+	w.maxConcurrent[sealtasks.TTFetch] = 1280
+	w.maxConcurrent[sealtasks.TTReadUnsealed] = 1280
+
 	w.maxConcurrent[sealtasks.TTCommit2] = len(w.info.Resources.GPUs)
 	var limit int = int(w.info.Resources.MemPhysical / eResourceTable[sealtasks.TTCommit2][sh.spt].Memory)
 	if limit < w.maxConcurrent[sealtasks.TTCommit2] {
