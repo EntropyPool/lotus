@@ -128,8 +128,8 @@ type eWorkerHandle struct {
 	diskTotal             int64
 	priorityTasksQueue    map[int]*eWorkerReqPriorityList
 	preparedTasks         []*eWorkerRequest
+	preparingTasks        []*eWorkerRequest
 	preparedTaskCount     int
-	preparingTask         *eWorkerRequest
 	runningTasks          []*eWorkerRequest
 	prepareMutex          sync.Mutex
 	maxConcurrent         map[sealtasks.TaskType]int
@@ -449,9 +449,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 
 	taskCount := 0
 	worker.prepareMutex.Lock()
-	if nil != worker.preparingTask {
-		taskCount += 1
-	}
+	taskCount += len(worker.preparingTasks)
 	taskCount += worker.preparedTaskCount
 	worker.prepareMutex.Unlock()
 	taskCount += len(worker.runningTasks)
@@ -553,13 +551,18 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	task.startTime = time.Now().UnixNano()
 
 	worker.prepareMutex.Lock()
-	worker.preparingTask = task
+	worker.preparingTasks = append(worker.preparingTasks, task)
 	worker.prepareMutex.Unlock()
 
 	err := task.prepare(task.ctx, worker.wt.worker(worker.w))
 
 	worker.prepareMutex.Lock()
-	worker.preparingTask = nil
+	for idx, req := range worker.preparingTasks {
+		if req.id == task.id {
+			worker.preparingTasks = append(worker.preparingTasks[0:idx], worker.preparingTasks[idx+1:]...)
+			break
+		}
+	}
 	worker.prepareMutex.Unlock()
 
 	if nil != err {
@@ -697,10 +700,6 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		task.memUsed = res.Memory
 		worker.acquireRequestResource(task, eschedResStageRuntime)
 		worker.preparedTasks = worker.preparedTasks[1:]
-
-		worker.prepareMutex.Lock()
-		worker.preparedTaskCount -= 1
-		worker.prepareMutex.Unlock()
 
 		worker.runningTasks = append(worker.runningTasks, task)
 		go bucket.runTypedTask(worker, task)
@@ -959,7 +958,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		}
 
 		wi := 0
-		for wi, task := range worker.preparedTasks {
+		for _, task := range worker.preparedTasks {
 			out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
 				ID:      task.id,
 				Sector:  task.sector,
@@ -967,11 +966,11 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				RunWait: wi + 1,
 				Start:   task.inqueueTimeRaw,
 			})
+			wi += 1
 		}
 
 		worker.prepareMutex.Lock()
-		if nil != worker.preparingTask {
-			task := worker.preparingTask
+		for _, task := range worker.preparingTasks {
 			out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
 				ID:      task.id,
 				Sector:  task.sector,
@@ -979,6 +978,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				RunWait: wi + 1,
 				Start:   task.inqueueTimeRaw,
 			})
+			wi += 1
 		}
 		worker.prepareMutex.Unlock()
 
@@ -1203,6 +1203,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 
 	w.preparedTasks = make([]*eWorkerRequest, 0)
 	w.runningTasks = make([]*eWorkerRequest, 0)
+	w.preparingTasks = make([]*eWorkerRequest, 0)
 	w.maxConcurrent = make(map[sealtasks.TaskType]int)
 
 	var limit1 int = int(w.info.Resources.MemPhysical * 92 / eResourceTable[sealtasks.TTPreCommit1][sh.spt].Memory / 100)
