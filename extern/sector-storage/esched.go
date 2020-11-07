@@ -115,6 +115,11 @@ type eWorkerTaskPrepared struct {
 	req *eWorkerRequest
 }
 
+type eWorkerSyncTaskList struct {
+	mutex sync.Mutex
+	queue []*eWorkerRequest
+}
+
 type eWorkerHandle struct {
 	priv                  interface{}
 	wid                   WorkerID
@@ -127,11 +132,9 @@ type eWorkerHandle struct {
 	diskUsed              int64
 	diskTotal             int64
 	priorityTasksQueue    map[int]*eWorkerReqPriorityList
-	preparedTasks         []*eWorkerRequest
-	preparingTasks        []*eWorkerRequest
-	preparedTaskCount     int
+	preparedTasks         *eWorkerSyncTaskList
+	preparingTasks        *eWorkerSyncTaskList
 	runningTasks          []*eWorkerRequest
-	prepareMutex          sync.Mutex
 	maxConcurrent         map[sealtasks.TaskType]int
 	memoryConcurrentLimit int
 	diskConcurrentLimit   int
@@ -172,7 +175,6 @@ type eWorkerBucket struct {
 	workerJobsQuery    chan *eWorkerJobsParam
 	closing            chan struct{}
 	ticker             *time.Ticker
-	taskPrepared       chan *eWorkerTaskPrepared
 }
 
 type eRequestQueue struct {
@@ -448,10 +450,14 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 	remainReqs := make([]*eWorkerRequest, 0)
 
 	taskCount := 0
-	worker.prepareMutex.Lock()
-	taskCount += len(worker.preparingTasks)
-	taskCount += worker.preparedTaskCount
-	worker.prepareMutex.Unlock()
+	worker.preparingTasks.mutex.Lock()
+	taskCount += len(worker.preparingTasks.queue)
+	worker.preparingTasks.mutex.Unlock()
+
+	worker.preparedTasks.mutex.Lock()
+	taskCount += len(worker.preparedTasks.queue)
+	worker.preparedTasks.mutex.Unlock()
+
 	taskCount += len(worker.runningTasks)
 	for _, pq := range worker.priorityTasksQueue {
 		for _, tq := range pq.typedTasksQueue {
@@ -550,20 +556,20 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 
 	task.startTime = time.Now().UnixNano()
 
-	worker.prepareMutex.Lock()
-	worker.preparingTasks = append(worker.preparingTasks, task)
-	worker.prepareMutex.Unlock()
+	worker.preparingTasks.mutex.Lock()
+	worker.preparingTasks.queue = append(worker.preparingTasks.queue, task)
+	worker.preparingTasks.mutex.Unlock()
 
 	err := task.prepare(task.ctx, worker.wt.worker(worker.w))
 
-	worker.prepareMutex.Lock()
-	for idx, req := range worker.preparingTasks {
+	worker.preparingTasks.mutex.Lock()
+	for idx, req := range worker.preparingTasks.queue {
 		if req.id == task.id {
-			worker.preparingTasks = append(worker.preparingTasks[0:idx], worker.preparingTasks[idx+1:]...)
+			worker.preparingTasks.queue = append(worker.preparingTasks.queue[0:idx], worker.preparingTasks.queue[idx+1:]...)
 			break
 		}
 	}
-	worker.prepareMutex.Unlock()
+	worker.preparingTasks.mutex.Unlock()
 
 	if nil != err {
 		log.Errorf("<%s> cannot prepare typed task %v/%v/%s[%v]", eschedTag, task.sector, task.taskType, worker.info.Address, err)
@@ -579,14 +585,9 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	task.preparedTime = time.Now().UnixNano()
 	task.preparedTimeRaw = time.Now()
 
-	worker.prepareMutex.Lock()
-	worker.preparedTaskCount += 1
-	worker.prepareMutex.Unlock()
-
-	bucket.taskPrepared <- &eWorkerTaskPrepared{
-		wid: worker.wid,
-		req: task,
-	}
+	worker.preparedTasks.mutex.Lock()
+	worker.preparedTasks.queue = append(worker.preparedTasks.queue, task)
+	worker.preparedTasks.mutex.Unlock()
 	bucket.schedulerRunner <- struct{}{}
 
 	canBindTaskType := false
@@ -655,11 +656,15 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 	idleCpus := int(worker.info.Resources.CPUs * 8 / 100)
 	for {
-		if 0 == len(worker.preparedTasks) {
+		worker.preparedTasks.mutex.Lock()
+		if 0 == len(worker.preparedTasks.queue) {
+			worker.preparedTasks.mutex.Unlock()
 			break
 		}
 
-		task := worker.preparedTasks[0]
+		task := worker.preparedTasks.queue[0]
+		worker.preparedTasks.mutex.Unlock()
+
 		taskType := task.taskType
 		res := findTaskResource(bucket.spt, taskType)
 
@@ -699,7 +704,10 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		}
 		task.memUsed = res.Memory
 		worker.acquireRequestResource(task, eschedResStageRuntime)
-		worker.preparedTasks = worker.preparedTasks[1:]
+
+		worker.preparedTasks.mutex.Lock()
+		worker.preparedTasks.queue = worker.preparedTasks.queue[1:]
+		worker.preparedTasks.mutex.Lock()
 
 		worker.runningTasks = append(worker.runningTasks, task)
 		go bucket.runTypedTask(worker, task)
@@ -789,12 +797,16 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid WorkerID) {
 			}
 		}
 		for {
-			if 0 == len(worker.preparedTasks) {
+			worker.preparedTasks.mutex.Lock()
+			if 0 == len(worker.preparedTasks.queue) {
+				worker.preparedTasks.mutex.Unlock()
 				break
 			}
-			task := worker.preparedTasks[0]
+			task := worker.preparedTasks.queue[0]
 			log.Infof("<%s> finish task %v/%v", eschedTag, task.sector, task.taskType)
-			worker.preparedTasks = worker.preparedTasks[1:]
+			worker.preparedTasks.queue = worker.preparedTasks.queue[1:]
+			worker.preparedTasks.mutex.Unlock()
+
 			bucket.reqFinisher <- &eRequestFinisher{
 				req:  task,
 				resp: &workerResponse{err: xerrors.Errorf("worker dropped unexpected")},
@@ -929,11 +941,13 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				out[uint64(worker.wid)].Tasks[taskType] = info
 			}
 		}
-		for _, task := range worker.preparedTasks {
+		worker.preparedTasks.mutex.Lock()
+		for _, task := range worker.preparedTasks.queue {
 			info := out[uint64(worker.wid)].Tasks[task.taskType]
 			info.Prepared += 1
 			out[uint64(worker.wid)].Tasks[task.taskType] = info
 		}
+		worker.preparedTasks.mutex.Unlock()
 		for _, task := range worker.runningTasks {
 			info := out[uint64(worker.wid)].Tasks[task.taskType]
 			info.Running += 1
@@ -958,7 +972,8 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		}
 
 		wi := 0
-		for _, task := range worker.preparedTasks {
+		worker.preparedTasks.mutex.Lock()
+		for _, task := range worker.preparedTasks.queue {
 			out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
 				ID:      task.id,
 				Sector:  task.sector,
@@ -968,9 +983,10 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 			})
 			wi += 1
 		}
+		worker.preparedTasks.mutex.Unlock()
 
-		worker.prepareMutex.Lock()
-		for _, task := range worker.preparingTasks {
+		worker.preparingTasks.mutex.Lock()
+		for _, task := range worker.preparingTasks.queue {
 			out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
 				ID:      task.id,
 				Sector:  task.sector,
@@ -980,7 +996,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 			})
 			wi += 1
 		}
-		worker.prepareMutex.Unlock()
+		worker.preparingTasks.mutex.Unlock()
 
 		wi += 100000
 		for priority, pq := range worker.priorityTasksQueue {
@@ -1004,14 +1020,6 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 
 func (bucket *eWorkerBucket) onScheduleTick() {
 	// go func() { bucket.notifier <- struct{}{} }()
-}
-
-func (bucket *eWorkerBucket) onTaskPrepared(prepared *eWorkerTaskPrepared) {
-	worker := bucket.findBucketWorkerByID(prepared.wid)
-	if nil == worker {
-		return
-	}
-	worker.preparedTasks = append(worker.preparedTasks, prepared.req)
 }
 
 func (bucket *eWorkerBucket) scheduler() {
@@ -1041,8 +1049,6 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.onWorkerJobsQuery(param)
 		case <-bucket.ticker.C:
 			bucket.onScheduleTick()
-		case prepared := <-bucket.taskPrepared:
-			bucket.onTaskPrepared(prepared)
 		case <-bucket.closing:
 			log.Infof("<%s> finish scheduler for bucket %d", eschedTag, bucket.id)
 			return
@@ -1105,7 +1111,6 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 			workerJobsQuery:    make(chan *eWorkerJobsParam, 10),
 			closing:            make(chan struct{}, 2),
 			ticker:             time.NewTicker(3 * 60 * time.Second),
-			taskPrepared:       make(chan *eWorkerTaskPrepared, 10),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -1201,9 +1206,13 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 		}
 	}
 
-	w.preparedTasks = make([]*eWorkerRequest, 0)
 	w.runningTasks = make([]*eWorkerRequest, 0)
-	w.preparingTasks = make([]*eWorkerRequest, 0)
+	w.preparedTasks = &eWorkerSyncTaskList{
+		queue: make([]*eWorkerRequest, 0),
+	}
+	w.preparingTasks = &eWorkerSyncTaskList{
+		queue: make([]*eWorkerRequest, 0),
+	}
 	w.maxConcurrent = make(map[sealtasks.TaskType]int)
 
 	var limit1 int = int(w.info.Resources.MemPhysical * 92 / eResourceTable[sealtasks.TTPreCommit1][sh.spt].Memory / 100)
