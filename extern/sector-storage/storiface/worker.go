@@ -27,9 +27,10 @@ type WorkerResources struct {
 }
 
 type TasksInfo struct {
-	Running  int
-	Prepared int
-	Waiting  int
+	Running       int
+	Prepared      int
+	Waiting       int
+	MaxConcurrent int
 }
 
 type WorkerStats struct {

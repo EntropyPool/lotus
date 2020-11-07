@@ -912,9 +912,10 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 		}
 		for _, taskType := range worker.info.SupportTasks {
 			out[uint64(worker.wid)].Tasks[taskType] = storiface.TasksInfo{
-				Waiting:  0,
-				Running:  0,
-				Prepared: 0,
+				Waiting:       0,
+				Running:       0,
+				Prepared:      0,
+				MaxConcurrent: worker.maxConcurrent[taskType],
 			}
 		}
 		for _, pq := range worker.priorityTasksQueue {

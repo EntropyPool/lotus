@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -88,19 +87,15 @@ var sealingWorkersCmd = &cli.Command{
 				if 0 < len(taskTypes) {
 					taskTypes += " | "
 				}
-				taskSpecs := strings.Split(string(taskType), "/")
-				lastSpec := taskSpecs[len(taskSpecs)-1]
-				isNum := regexp.MustCompile(`[0-9]+`)
-				if isNum.MatchString(lastSpec) {
-					taskTypes += taskSpecs[len(taskSpecs)-2]
-				}
-				taskTypes += taskSpecs[len(taskSpecs)-1] +
+				taskTypes += taskType.Short() +
 					"(" +
 					strconv.Itoa(stat.Tasks[taskType].Running) +
 					"/" +
 					strconv.Itoa(stat.Tasks[taskType].Prepared) +
 					"/" +
 					strconv.Itoa(stat.Tasks[taskType].Waiting) +
+					"/" +
+					strconv.Itoa(stat.Tasks[taskType].MaxConcurrent) +
 					")"
 			}
 			fmt.Printf("\tTSK: %s\n", taskTypes)
