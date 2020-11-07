@@ -188,6 +188,8 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
 	timer := time.NewTimer(delay * time.Second)
 	go func() {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
 		defer timer.Stop()
 		select {
 		case <-timer.C:
@@ -231,7 +233,7 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 		active:    &activeResources{},
 	}
 
-	m.removeFailSectors(ctx, 30)
+	m.removeFailSectors(context.TODO(), 30)
 
 	return nil
 }
@@ -399,7 +401,7 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		return nil
 	})
 
-	m.removeFailSectors(ctx, 60)
+	m.removeFailSectors(context.TODO(), 60)
 
 	return out, err
 }
@@ -447,7 +449,7 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 		return nil
 	})
 
-	m.removeFailSectors(ctx, 60)
+	m.removeFailSectors(context.TODO(), 60)
 
 	return out, err
 }
@@ -493,7 +495,7 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		return nil
 	})
 
-	m.removeFailSectors(ctx, 60)
+	m.removeFailSectors(context.TODO(), 60)
 
 	return out, err
 }
