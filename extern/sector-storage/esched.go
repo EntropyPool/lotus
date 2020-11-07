@@ -346,11 +346,23 @@ func (sh *edispatcher) checkStorageUpdate() {
 		if _, ok := sh.storage.storeIDs[id]; ok {
 			continue
 		}
+
+		var lastSpace int64 = 0
+		stat, ok := sh.storage.storeIDs[id]
+		if ok {
+			lastSpace = stat.space
+		}
+
 		sh.storage.storeIDs[id] = eStoreStat{
 			space: stor.FsStat().Available,
 			URLs:  stor.Info().URLs,
 			local: sh.isLocalStorage(id),
 		}
+
+		if 10*eMiB < stor.FsStat().Available-lastSpace {
+			continue
+		}
+
 		log.Infof("<%s> add storage %v to watcher", eschedTag, id)
 		sh.dumpStorageInfo(stor)
 		sh.storeNotify(id, sh.storage.storeIDs[id], eschedAdd)
