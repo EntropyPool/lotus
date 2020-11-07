@@ -940,6 +940,13 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				out[uint64(worker.wid)].Tasks[taskType] = info
 			}
 		}
+		worker.preparingTasks.mutex.Lock()
+		for _, task := range worker.preparingTasks.queue {
+			info := out[uint64(worker.wid)].Tasks[task.taskType]
+			info.Prepared += 1
+			out[uint64(worker.wid)].Tasks[task.taskType] = info
+		}
+		worker.preparingTasks.mutex.Unlock()
 		worker.preparedTasks.mutex.Lock()
 		for _, task := range worker.preparedTasks.queue {
 			info := out[uint64(worker.wid)].Tasks[task.taskType]
