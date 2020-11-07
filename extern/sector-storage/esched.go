@@ -132,7 +132,7 @@ type eWorkerHandle struct {
 	gpuUsed               int
 	diskUsed              int64
 	diskTotal             int64
-	priorityTasksQueue    map[int]*eWorkerReqPriorityList
+	priorityTasksQueue    []*eWorkerReqPriorityList
 	preparedTasks         *eWorkerSyncTaskList
 	preparingTasks        *eWorkerSyncTaskList
 	runningTasks          []*eWorkerRequest
@@ -468,75 +468,66 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 	}
 
-	for taskType, _ := range eTaskPriority {
-		reqs := reqQueue.reqs[taskType]
-		remainReqs := make([]*eWorkerRequest, 0)
+	reqs := reqQueue.reqs[taskType]
+	remainReqs := make([]*eWorkerRequest, 0)
 
-		for {
-			if 0 == len(reqs) {
-				break
-			}
-
-			req := reqs[0]
-
-			if taskType != req.taskType {
-				remainReqs = append(remainReqs, req)
-				reqs = reqs[1:]
-				continue
-			}
-
-			if worker.maxConcurrent[req.taskType] <= taskCount {
-				log.Debugf("<%s> worker %s's %v tasks queue is full %d / %d",
-					eschedTag, worker.info.Address, req.taskType,
-					taskCount, worker.maxConcurrent[req.taskType])
-				remainReqs = append(remainReqs, req)
-				reqs = reqs[1:]
-				continue
-			}
-
-			bucket.taskWorkerBinder.mutex.Lock()
-			address, ok := bucket.taskWorkerBinder.binder[req.sector.Number]
-			if ok {
-				if address != worker.info.Address {
-					bucket.taskWorkerBinder.mutex.Unlock()
-					remainReqs = append(remainReqs, req)
-					reqs = reqs[1:]
-					continue
-				}
-			}
-			bucket.taskWorkerBinder.mutex.Unlock()
-
-			rpcCtx, cancel := context.WithTimeout(req.ctx, SelectorTimeout)
-			ok, err := req.sel.Ok(rpcCtx, req.taskType, bucket.spt, worker)
-			cancel()
-			if err != nil {
-				log.Debugf("<%s> cannot judge worker %s for task %v/%v status %v",
-					eschedTag, worker.info.Address, req.sector, req.taskType, err)
-				remainReqs = append(remainReqs, req)
-				reqs = reqs[1:]
-				continue
-			}
-
-			if !ok {
-				log.Debugf("<%s> worker %s is not OK for task %v/%v",
-					eschedTag, worker.info.Address, req.sector, req.taskType)
-				remainReqs = append(remainReqs, req)
-				reqs = reqs[1:]
-				continue
-			}
-
-			req.inqueueTime = time.Now().UnixNano()
-			req.inqueueTimeRaw = time.Now()
-			worker.acquireRequestResource(req, eschedResStagePrepare)
-
-			peekReqs += 1
-			reqs = reqs[1:]
-			tasksQueue.tasks = append(tasksQueue.tasks, req)
-			taskCount += 1
+	for {
+		if 0 == len(reqs) {
+			break
 		}
 
-		reqQueue.reqs[taskType] = append(remainReqs, reqs[0:]...)
+		req := reqs[0]
+		if worker.maxConcurrent[req.taskType] <= taskCount {
+			log.Debugf("<%s> worker %s's %v tasks queue is full %d / %d",
+				eschedTag, worker.info.Address, req.taskType,
+				taskCount, worker.maxConcurrent[req.taskType])
+			remainReqs = append(remainReqs, req)
+			reqs = reqs[1:]
+			continue
+		}
+
+		bucket.taskWorkerBinder.mutex.Lock()
+		address, ok := bucket.taskWorkerBinder.binder[req.sector.Number]
+		if ok {
+			if address != worker.info.Address {
+				bucket.taskWorkerBinder.mutex.Unlock()
+				remainReqs = append(remainReqs, req)
+				reqs = reqs[1:]
+				continue
+			}
+		}
+		bucket.taskWorkerBinder.mutex.Unlock()
+
+		rpcCtx, cancel := context.WithTimeout(req.ctx, SelectorTimeout)
+		ok, err := req.sel.Ok(rpcCtx, req.taskType, bucket.spt, worker)
+		cancel()
+		if err != nil {
+			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %v",
+				eschedTag, worker.info.Address, req.sector, req.taskType, err)
+			remainReqs = append(remainReqs, req)
+			reqs = reqs[1:]
+			continue
+		}
+
+		if !ok {
+			log.Debugf("<%s> worker %s is not OK for task %v/%v",
+				eschedTag, worker.info.Address, req.sector, req.taskType)
+			remainReqs = append(remainReqs, req)
+			reqs = reqs[1:]
+			continue
+		}
+
+		req.inqueueTime = time.Now().UnixNano()
+		req.inqueueTimeRaw = time.Now()
+		worker.acquireRequestResource(req, eschedResStagePrepare)
+
+		peekReqs += 1
+		reqs = reqs[1:]
+		tasksQueue.tasks = append(tasksQueue.tasks, req)
+		taskCount += 1
 	}
+
+	reqQueue.reqs[taskType] = append(remainReqs, reqs[0:]...)
 
 	return peekReqs
 }
@@ -643,11 +634,7 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 
 func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 	scheduled := false
-	for _, priority := range eTaskPriority {
-		pq, ok := worker.priorityTasksQueue[priority]
-		if !ok {
-			continue
-		}
+	for _, pq := range worker.priorityTasksQueue {
 		for _, typedTasks := range pq.typedTasksQueue {
 			tasks := typedTasks.tasks
 			for {
@@ -1024,14 +1011,14 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		worker.preparingTasks.mutex.Unlock()
 
 		wi += 100000
-		for priority, pq := range worker.priorityTasksQueue {
+		for _, pq := range worker.priorityTasksQueue {
 			for _, tq := range pq.typedTasksQueue {
 				for _, task := range tq.tasks {
 					out[uint64(worker.wid)] = append(out[uint64(worker.wid)], storiface.WorkerJob{
 						ID:      task.id,
 						Sector:  task.sector,
 						Task:    task.taskType,
-						RunWait: wi*priority + 1,
+						RunWait: wi*(pq.priority+1) + 1,
 						Start:   task.inqueueTimeRaw,
 					})
 					wi += 1
@@ -1213,18 +1200,20 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	log.Infof("<%s> add new worker %s to bucket", eschedTag, w.info.Address)
 	w.dumpWorkerInfo()
 
-	w.priorityTasksQueue = make(map[int]*eWorkerReqPriorityList)
+	w.priorityTasksQueue = make([]*eWorkerReqPriorityList, len(eTaskPriority))
 	for _, taskType := range w.info.SupportTasks {
 		priority := getTaskPriority(taskType)
-		if _, ok := w.priorityTasksQueue[priority]; !ok {
-			w.priorityTasksQueue[priority] = &eWorkerReqPriorityList{
+		if nil == w.priorityTasksQueue[priority-1] {
+			w.priorityTasksQueue[priority-1] = &eWorkerReqPriorityList{
 				typedTasksQueue: make(map[sealtasks.TaskType]*eWorkerReqTypedList),
 				priority:        priority,
 			}
 		}
-		w.priorityTasksQueue[priority].typedTasksQueue[taskType] = &eWorkerReqTypedList{
-			taskType: taskType,
-			tasks:    make([]*eWorkerRequest, 0),
+		if nil == w.priorityTasksQueue[priority-1].typedTasksQueue[taskType] {
+			w.priorityTasksQueue[priority-1].typedTasksQueue[taskType] = &eWorkerReqTypedList{
+				taskType: taskType,
+				tasks:    make([]*eWorkerRequest, 0),
+			}
 		}
 	}
 
