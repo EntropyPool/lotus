@@ -1201,19 +1201,18 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	w.dumpWorkerInfo()
 
 	w.priorityTasksQueue = make([]*eWorkerReqPriorityList, len(eTaskPriority))
+	for i := 0; i < len(w.priorityTasksQueue); i++ {
+		w.priorityTasksQueue[i] = &eWorkerReqPriorityList{
+			typedTasksQueue: make(map[sealtasks.TaskType]*eWorkerReqTypedList),
+			priority:        i + 1,
+		}
+	}
+
 	for _, taskType := range w.info.SupportTasks {
 		priority := getTaskPriority(taskType)
-		if nil == w.priorityTasksQueue[priority-1] {
-			w.priorityTasksQueue[priority-1] = &eWorkerReqPriorityList{
-				typedTasksQueue: make(map[sealtasks.TaskType]*eWorkerReqTypedList),
-				priority:        priority,
-			}
-		}
-		if nil == w.priorityTasksQueue[priority-1].typedTasksQueue[taskType] {
-			w.priorityTasksQueue[priority-1].typedTasksQueue[taskType] = &eWorkerReqTypedList{
-				taskType: taskType,
-				tasks:    make([]*eWorkerRequest, 0),
-			}
+		w.priorityTasksQueue[priority-1].typedTasksQueue[taskType] = &eWorkerReqTypedList{
+			taskType: taskType,
+			tasks:    make([]*eWorkerRequest, 0),
 		}
 	}
 
