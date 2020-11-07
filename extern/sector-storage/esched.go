@@ -89,15 +89,16 @@ type eWorkerRequest struct {
 	sel             WorkerSelector
 }
 
-var eschedDefaultTaskPriority = 99
-
 var eTaskPriority = map[sealtasks.TaskType]int{
-	sealtasks.TTFinalize:   1,
-	sealtasks.TTFetch:      2,
-	sealtasks.TTCommit1:    3,
-	sealtasks.TTCommit2:    4,
-	sealtasks.TTPreCommit2: 5,
-	sealtasks.TTPreCommit1: 6,
+	sealtasks.TTFinalize:     1,
+	sealtasks.TTFetch:        2,
+	sealtasks.TTCommit1:      3,
+	sealtasks.TTCommit2:      4,
+	sealtasks.TTPreCommit2:   5,
+	sealtasks.TTPreCommit1:   6,
+	sealtasks.TTAddPiece:     7,
+	sealtasks.TTReadUnsealed: 8,
+	sealtasks.TTUnseal:       9,
 }
 
 type eWorkerReqTypedList struct {
@@ -642,7 +643,7 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 
 func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 	scheduled := false
-	for priority := 0; priority <= eschedDefaultTaskPriority; priority++ {
+	for _, priority := range eTaskPriority {
 		pq, ok := worker.priorityTasksQueue[priority]
 		if !ok {
 			continue
@@ -1202,10 +1203,7 @@ func (w *eWorkerHandle) patchLocalhost() {
 }
 
 func getTaskPriority(taskType sealtasks.TaskType) int {
-	priority, ok := eTaskPriority[taskType]
-	if !ok {
-		priority = eschedDefaultTaskPriority
-	}
+	priority, _ := eTaskPriority[taskType]
 	return priority
 }
 
