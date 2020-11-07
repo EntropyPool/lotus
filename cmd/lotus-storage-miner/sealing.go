@@ -83,6 +83,10 @@ var sealingWorkersCmd = &cli.Command{
 				color.MagentaString(addressStr), color.MagentaString(stat.Info.GroupName))
 
 			taskTypes := ""
+			sort.Slice(stat.Info.SupportTasks, func(i, j int) bool {
+				return 0 < strings.Compare(string(stat.Info.SupportTasks[i]), string(stat.Info.SupportTasks[j]))
+			})
+
 			for _, taskType := range stat.Info.SupportTasks {
 				if 0 < len(taskTypes) {
 					taskTypes += " | "
