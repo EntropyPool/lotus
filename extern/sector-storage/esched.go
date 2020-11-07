@@ -111,24 +111,24 @@ type eWorkerReqPriorityList struct {
 }
 
 type eWorkerHandle struct {
-	priv               interface{}
-	wid                WorkerID
-	w                  Worker
-	wt                 *workTracker
-	info               storiface.WorkerInfo
-	memUsed            uint64
-	cpuUsed            int
-	gpuUsed            int
-	diskUsed           int64
-	diskTotal          int64
-	priorityTasksQueue map[int]*eWorkerReqPriorityList
-	preparedTasks      []*eWorkerRequest
-	preparingTask      *eWorkerRequest
-	runningTasks       []*eWorkerRequest
-	prepareMutex       sync.Mutex
-	maxConcurrent      map[sealtasks.TaskType]int
+	priv                  interface{}
+	wid                   WorkerID
+	w                     Worker
+	wt                    *workTracker
+	info                  storiface.WorkerInfo
+	memUsed               uint64
+	cpuUsed               int
+	gpuUsed               int
+	diskUsed              int64
+	diskTotal             int64
+	priorityTasksQueue    map[int]*eWorkerReqPriorityList
+	preparedTasks         []*eWorkerRequest
+	preparingTask         *eWorkerRequest
+	runningTasks          []*eWorkerRequest
+	prepareMutex          sync.Mutex
+	maxConcurrent         map[sealtasks.TaskType]int
 	memoryConcurrentLimit int
-	diskConcurrentLimit int
+	diskConcurrentLimit   int
 }
 
 const eschedTag = "esched"
