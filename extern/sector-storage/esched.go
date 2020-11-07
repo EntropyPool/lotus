@@ -116,6 +116,12 @@ type eWorkerTaskPrepared struct {
 	req *eWorkerRequest
 }
 
+type eWorkerTaskCleaning struct {
+	sector   abi.SectorID
+	taskId   uint64
+	taskType sealtasks.TaskType
+}
+
 type eWorkerSyncTaskList struct {
 	mutex sync.Mutex
 	queue []*eWorkerRequest
@@ -136,6 +142,7 @@ type eWorkerHandle struct {
 	preparedTasks         *eWorkerSyncTaskList
 	preparingTasks        *eWorkerSyncTaskList
 	runningTasks          []*eWorkerRequest
+	cleaningTasks         []*eWorkerTaskCleaning
 	maxConcurrent         map[sealtasks.TaskType]int
 	memoryConcurrentLimit int
 	diskConcurrentLimit   int
@@ -170,8 +177,8 @@ type eWorkerBucket struct {
 	droppedWorker      chan string
 	storeIDs           map[stores.ID]struct{}
 	taskWorkerBinder   *eTaskWorkerBinder
-	taskCleaner        chan eWorkerCleanerParam
-	taskCleanerHandler chan eWorkerCleanerParam
+	taskCleaner        chan *eWorkerTaskCleaning
+	taskCleanerHandler chan *eWorkerTaskCleaning
 	workerStatsQuery   chan *eWorkerStatsParam
 	workerJobsQuery    chan *eWorkerJobsParam
 	closing            chan struct{}
@@ -227,29 +234,20 @@ const eschedWorkerCleanAtPrepare = "prepare"
 const eschedWorkerCleanAtFinish = "finish"
 const eschedWorkerLocalAddress = "localhost"
 
-type eWorkerCleanerParam struct {
-	stage        string
-	sectorNumber abi.SectorNumber
-	taskType     sealtasks.TaskType
+type eWorkerCleanerAttr struct {
+	stage    string
+	taskType sealtasks.TaskType
 }
 
-var escheTaskCachable = []sealtasks.TaskType{
-	sealtasks.TTPreCommit2,
-}
-
-type eWorkerRequestCleaner struct {
-	req *eWorkerRequest
-	wid WorkerID
-}
-
-type eWorkerRequestCleanerQueue struct {
-	mutex sync.Mutex
-	queue map[abi.SectorNumber]map[sealtasks.TaskType]*eWorkerRequestCleaner
-}
-
-type eWorkerBigCacheCleanerQueue struct {
-	mutex sync.Mutex
-	queue map[abi.SectorNumber]map[sealtasks.TaskType]string
+var eschedTaskCleanMap = map[sealtasks.TaskType]*eWorkerCleanerAttr{
+	sealtasks.TTPreCommit2: &eWorkerCleanerAttr{
+		stage:    eschedWorkerCleanAtPrepare,
+		taskType: sealtasks.TTPreCommit1,
+	},
+	sealtasks.TTCommit2: &eWorkerCleanerAttr{
+		stage:    eschedWorkerCleanAtFinish,
+		taskType: sealtasks.TTPreCommit2,
+	},
 }
 
 const eschedWorkerJobs = "worker_jobs"
@@ -277,7 +275,7 @@ type edispatcher struct {
 	storage          *EStorage
 	storageNotifier  chan eStoreAction
 	droppedWorker    chan string
-	taskCleaner      chan eWorkerCleanerParam
+	taskCleaner      chan *eWorkerTaskCleaning
 	closing          chan struct{}
 	ctx              context.Context
 	taskWorkerBinder *eTaskWorkerBinder
@@ -462,6 +460,8 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 	worker.preparedTasks.mutex.Unlock()
 
 	taskCount += len(worker.runningTasks)
+	taskCount += len(worker.cleaningTasks)
+
 	for _, pq := range worker.priorityTasksQueue {
 		for _, tq := range pq.typedTasksQueue {
 			taskCount += len(tq.tasks)
@@ -613,6 +613,43 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 		delete(bucket.taskWorkerBinder.binder, task.sector.Number)
 	}
 	bucket.taskWorkerBinder.mutex.Unlock()
+
+	bucket.doCleanTask(task, eschedWorkerCleanAtPrepare)
+}
+
+func (bucket *eWorkerBucket) addCleaningTask(wid WorkerID, task *eWorkerRequest) {
+	worker := bucket.findBucketWorkerByID(wid)
+
+	if nil == worker {
+		return
+	}
+
+	for _, attr := range eschedTaskCleanMap {
+		if task.taskType == attr.taskType {
+			worker.cleaningTasks = append(worker.cleaningTasks, &eWorkerTaskCleaning{
+				taskId:   task.id,
+				sector:   task.sector,
+				taskType: task.taskType,
+			})
+		}
+	}
+}
+
+func (bucket *eWorkerBucket) doCleanTask(task *eWorkerRequest, stage string) {
+	clean, ok := eschedTaskCleanMap[task.taskType]
+	if !ok {
+		return
+	}
+
+	if clean.stage != stage {
+		return
+	}
+
+	bucket.taskCleaner <- &eWorkerTaskCleaning{
+		taskId:   task.id,
+		sector:   task.sector,
+		taskType: task.taskType,
+	}
 }
 
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
@@ -630,6 +667,10 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		(task.preparedTime-task.inqueueTime)/1000000.0,
 		(task.endTime-task.preparedTime)/1000000.0,
 		worker.info.Address, err)
+
+	if nil == err {
+		bucket.doCleanTask(task, eschedWorkerCleanAtFinish)
+	}
 }
 
 func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
@@ -775,6 +816,7 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 
 		if 0 <= idx {
 			w.runningTasks = append(w.runningTasks[:idx], w.runningTasks[idx+1:]...)
+			bucket.addCleaningTask(finisher.wid, finisher.req)
 		}
 	}
 
@@ -917,8 +959,16 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 	go func() { bucket.notifier <- struct{}{} }()
 }
 
-func (bucket *eWorkerBucket) onTaskClean(param eWorkerCleanerParam) {
-	// TODO
+func (bucket *eWorkerBucket) onTaskClean(clean *eWorkerTaskCleaning) {
+	for _, worker := range bucket.workers {
+		for idx, task := range worker.cleaningTasks {
+			if task.taskId == clean.taskId && task.sector.Number == clean.sector.Number {
+				worker.cleaningTasks = append(worker.cleaningTasks[:idx], worker.cleaningTasks[idx+1:]...)
+				go func() { bucket.notifier <- struct{}{} }()
+				return
+			}
+		}
+	}
 }
 
 func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
@@ -1053,8 +1103,8 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.removeWorkerFromBucket(wid)
 		case act := <-bucket.storageNotifier:
 			bucket.onStorageNotify(act)
-		case param := <-bucket.taskCleanerHandler:
-			bucket.onTaskClean(param)
+		case clean := <-bucket.taskCleanerHandler:
+			bucket.onTaskClean(clean)
 		case param := <-bucket.workerStatsQuery:
 			bucket.onWorkerStatsQuery(param)
 		case param := <-bucket.workerJobsQuery:
@@ -1091,7 +1141,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 		},
 		storageNotifier: make(chan eStoreAction, 10),
 		droppedWorker:   make(chan string, 10),
-		taskCleaner:     make(chan eWorkerCleanerParam, 10),
+		taskCleaner:     make(chan *eWorkerTaskCleaning, 10),
 		closing:         make(chan struct{}, 2),
 		taskWorkerBinder: &eTaskWorkerBinder{
 			binder: make(map[abi.SectorNumber]string),
@@ -1118,7 +1168,7 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 			storeIDs:           make(map[stores.ID]struct{}),
 			taskWorkerBinder:   dispatcher.taskWorkerBinder,
 			taskCleaner:        dispatcher.taskCleaner,
-			taskCleanerHandler: make(chan eWorkerCleanerParam, 10),
+			taskCleanerHandler: make(chan *eWorkerTaskCleaning, 10),
 			workerStatsQuery:   make(chan *eWorkerStatsParam, 10),
 			workerJobsQuery:    make(chan *eWorkerJobsParam, 10),
 			closing:            make(chan struct{}, 2),
@@ -1223,6 +1273,8 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	w.preparingTasks = &eWorkerSyncTaskList{
 		queue: make([]*eWorkerRequest, 0),
 	}
+	w.cleaningTasks = make([]*eWorkerTaskCleaning, 0)
+
 	w.maxConcurrent = make(map[sealtasks.TaskType]int)
 
 	var limit1 int = int(w.info.Resources.MemPhysical * 90 / eResourceTable[sealtasks.TTPreCommit1][sh.spt].Memory / 100)
@@ -1358,10 +1410,10 @@ func (sh *edispatcher) addWorkerClosingWatcher(w *eWorkerHandle) {
 	go sh.watchWorkerClosing(workerClosing, w.wid)
 }
 
-func (sh *edispatcher) onTaskClean(param eWorkerCleanerParam) {
+func (sh *edispatcher) onTaskClean(clean *eWorkerTaskCleaning) {
 	go func() {
 		for _, bucket := range sh.buckets {
-			bucket.taskCleanerHandler <- param
+			bucket.taskCleanerHandler <- clean
 		}
 	}()
 }
@@ -1445,8 +1497,8 @@ func (sh *edispatcher) runSched() {
 			sh.onStorageNotify(act)
 		case address := <-sh.droppedWorker:
 			sh.onWorkerDropped(address)
-		case param := <-sh.taskCleaner:
-			sh.onTaskClean(param)
+		case clean := <-sh.taskCleaner:
+			sh.onTaskClean(clean)
 		case param := <-sh.workerStatsQuery:
 			sh.onWorkerStatsQuery(param)
 		case param := <-sh.workerJobsQuery:
