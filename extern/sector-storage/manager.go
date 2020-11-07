@@ -120,11 +120,9 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 		failSectors: make(map[abi.SectorID]struct{}),
 	}
 
-	log.Infof("try to collect removable miner fail sector")
 	failSectors := m.localStore.MayFailSectors
 	for failSector, failInfo := range failSectors {
 		sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
-		log.Infof("collect removable miner fail sector: %v", sectorID)
 		m.failSectors[sectorID] = struct{}{}
 	}
 
@@ -196,7 +194,6 @@ func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
 			failSectors := m.localStore.FailSectors
 			for failSector, failInfo := range failSectors {
 				sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
-				log.Infof("try to remove worker fail sector: %v", sectorID)
 				err := m.Remove(ctx, sectorID)
 				if nil != err {
 					log.Errorf("cannot remove worker fail sector %v [%v]", sectorID, err)
@@ -204,7 +201,6 @@ func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
 				// m.localStore.DropFailSector(ctx, sectorID)
 			}
 			for sectorID, _ := range m.failSectors {
-				log.Infof("try to remove miner fail sector: %v", sectorID)
 				err := m.Remove(ctx, sectorID)
 				if nil != err {
 					log.Errorf("cannot remove worker fail sector %v [%v]", sectorID, err)
