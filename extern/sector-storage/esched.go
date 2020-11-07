@@ -639,7 +639,7 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		(task.preparedTime-task.inqueueTime)/1000000.0,
 		(task.endTime-task.preparedTime)/1000000.0,
 		worker.info.Address, err)
-	if nil != err {
+	if nil == err {
 		needCleaner := false
 		for taskType, _ := range eschedTaskBindCleaner {
 			if taskType == task.taskType {
