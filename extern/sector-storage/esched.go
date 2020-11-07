@@ -443,11 +443,13 @@ func (w *eWorkerHandle) releaseRequestResource(req *eWorkerRequest, resType stri
 }
 
 func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, tasksQueue *eWorkerReqTypedList, reqQueue *eRequestQueue) int {
-	reqs := reqQueue.reqs[taskType]
-	log.Debugf("<%s> %d %v tasks waiting for run [%s]", eschedTag, len(reqs), taskType, worker.info.Address)
+	if 0 == worker.diskConcurrentLimit {
+		return 0
+	}
+
+	log.Debugf("<%s> %d %v tasks waiting for run [%s]", eschedTag, len(reqQueue.reqs[taskType]), taskType, worker.info.Address)
 
 	peekReqs := 0
-	remainReqs := make([]*eWorkerRequest, 0)
 
 	taskCount := 0
 	worker.preparingTasks.mutex.Lock()
@@ -465,63 +467,75 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 	}
 
-	for {
-		if 0 == len(reqs) || 0 == worker.diskConcurrentLimit {
-			break
-		}
+	for taskType, _ := range eTaskPriority {
+		reqs := reqQueue.reqs[taskType]
+		remainReqs := make([]*eWorkerRequest, 0)
 
-		req := reqs[0]
-		if worker.maxConcurrent[req.taskType] <= taskCount {
-			log.Debugf("<%s> worker %s's %v tasks queue is full %d / %d",
-				eschedTag, worker.info.Address, req.taskType,
-				taskCount, worker.maxConcurrent[req.taskType])
-			remainReqs = append(remainReqs, req)
-			reqs = reqs[1:]
-			continue
-		}
+		for {
+			if 0 == len(reqs) {
+				break
+			}
 
-		bucket.taskWorkerBinder.mutex.Lock()
-		address, ok := bucket.taskWorkerBinder.binder[req.sector.Number]
-		if ok {
-			if address != worker.info.Address {
-				bucket.taskWorkerBinder.mutex.Unlock()
+			req := reqs[0]
+
+			if taskType != req.taskType {
 				remainReqs = append(remainReqs, req)
 				reqs = reqs[1:]
 				continue
 			}
-		}
-		bucket.taskWorkerBinder.mutex.Unlock()
 
-		rpcCtx, cancel := context.WithTimeout(req.ctx, SelectorTimeout)
-		ok, err := req.sel.Ok(rpcCtx, req.taskType, bucket.spt, worker)
-		cancel()
-		if err != nil {
-			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %v",
-				eschedTag, worker.info.Address, req.sector, req.taskType, err)
-			remainReqs = append(remainReqs, req)
+			if worker.maxConcurrent[req.taskType] <= taskCount {
+				log.Debugf("<%s> worker %s's %v tasks queue is full %d / %d",
+					eschedTag, worker.info.Address, req.taskType,
+					taskCount, worker.maxConcurrent[req.taskType])
+				remainReqs = append(remainReqs, req)
+				reqs = reqs[1:]
+				continue
+			}
+
+			bucket.taskWorkerBinder.mutex.Lock()
+			address, ok := bucket.taskWorkerBinder.binder[req.sector.Number]
+			if ok {
+				if address != worker.info.Address {
+					bucket.taskWorkerBinder.mutex.Unlock()
+					remainReqs = append(remainReqs, req)
+					reqs = reqs[1:]
+					continue
+				}
+			}
+			bucket.taskWorkerBinder.mutex.Unlock()
+
+			rpcCtx, cancel := context.WithTimeout(req.ctx, SelectorTimeout)
+			ok, err := req.sel.Ok(rpcCtx, req.taskType, bucket.spt, worker)
+			cancel()
+			if err != nil {
+				log.Debugf("<%s> cannot judge worker %s for task %v/%v status %v",
+					eschedTag, worker.info.Address, req.sector, req.taskType, err)
+				remainReqs = append(remainReqs, req)
+				reqs = reqs[1:]
+				continue
+			}
+
+			if !ok {
+				log.Debugf("<%s> worker %s is not OK for task %v/%v",
+					eschedTag, worker.info.Address, req.sector, req.taskType)
+				remainReqs = append(remainReqs, req)
+				reqs = reqs[1:]
+				continue
+			}
+
+			req.inqueueTime = time.Now().UnixNano()
+			req.inqueueTimeRaw = time.Now()
+			worker.acquireRequestResource(req, eschedResStagePrepare)
+
+			peekReqs += 1
 			reqs = reqs[1:]
-			continue
+			tasksQueue.tasks = append(tasksQueue.tasks, req)
+			taskCount += 1
 		}
 
-		if !ok {
-			log.Debugf("<%s> worker %s is not OK for task %v/%v",
-				eschedTag, worker.info.Address, req.sector, req.taskType)
-			remainReqs = append(remainReqs, req)
-			reqs = reqs[1:]
-			continue
-		}
-
-		req.inqueueTime = time.Now().UnixNano()
-		req.inqueueTimeRaw = time.Now()
-		worker.acquireRequestResource(req, eschedResStagePrepare)
-
-		peekReqs += 1
-		reqs = reqs[1:]
-		tasksQueue.tasks = append(tasksQueue.tasks, req)
-		taskCount += 1
+		reqQueue.reqs[taskType] = append(remainReqs, reqs[0:]...)
 	}
-
-	reqQueue.reqs[taskType] = append(remainReqs, reqs[0:]...)
 
 	return peekReqs
 }
