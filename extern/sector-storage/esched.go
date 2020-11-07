@@ -1057,7 +1057,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 }
 
 func (bucket *eWorkerBucket) onScheduleTick() {
-	go func() { bucket.notifier <- struct{}{} }()
+	// go func() { bucket.notifier <- struct{}{} }()
 }
 
 func (bucket *eWorkerBucket) scheduler() {
