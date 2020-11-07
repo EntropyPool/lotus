@@ -197,9 +197,10 @@ const eschedResStagePrepare = "prepare"
 const eschedResStageRuntime = "runtime"
 
 type eStoreStat struct {
-	space int64
-	URLs  []string
-	local bool
+	space    int64
+	URLs     []string
+	local    bool
+	notified bool
 }
 
 type eWorkerAction struct {
@@ -329,6 +330,7 @@ func (sh *edispatcher) checkStorageUpdate() {
 		stor := (*stores.StorageEntry)(store)
 		timeout := stor.LastHeartbeatTime().Add(10 * time.Minute)
 		now := time.Now()
+
 		if timeout.Before(now) {
 			log.Errorf("<%s> delete storage %v to watcher [lost heartbeat]", eschedTag, id)
 			sh.dumpStorageInfo(stor)
@@ -336,6 +338,7 @@ func (sh *edispatcher) checkStorageUpdate() {
 			delete(sh.storage.storeIDs, id)
 			continue
 		}
+
 		if err := stor.HeartbeatError(); nil != err {
 			log.Errorf("<%s> delete storage %v to watcher [%v | %v]", eschedTag, id, timeout, err)
 			sh.dumpStorageInfo(stor)
@@ -343,24 +346,28 @@ func (sh *edispatcher) checkStorageUpdate() {
 			delete(sh.storage.storeIDs, id)
 			continue
 		}
-		if _, ok := sh.storage.storeIDs[id]; ok {
-			continue
-		}
 
 		var lastSpace int64 = 0
 		stat, ok := sh.storage.storeIDs[id]
 		if ok {
+		    if stat.notified {
+			    continue
+		    }
 			lastSpace = stat.space
 		}
 
-		sh.storage.storeIDs[id] = eStoreStat{
+		stat = eStoreStat{
 			space: stor.FsStat().Available,
 			URLs:  stor.Info().URLs,
 			local: sh.isLocalStorage(id),
 		}
+		sh.storage.storeIDs[id] = stat
 
-		if 10*eMiB < stor.FsStat().Available-lastSpace {
-			continue
+		if !stat.local {
+			if 10*eMiB < stat.space-lastSpace {
+				log.Infof("<%s> storage wave %v too much %v -> %v", eschedTag, id, lastSpace, stat.space)
+				continue
+			}
 		}
 
 		log.Infof("<%s> add storage %v to watcher", eschedTag, id)
