@@ -468,7 +468,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		if worker.maxConcurrent[req.taskType] <= taskCount {
 			log.Debugf("<%s> worker %s's %v tasks queue is full %d / %d",
 				eschedTag, worker.info.Address, req.taskType,
-				taskCount, worker.maxConcurrent[req.taskType], req.taskType)
+				taskCount, worker.maxConcurrent[req.taskType])
 			remainReqs = append(remainReqs, req)
 			reqs = reqs[1:]
 			continue
