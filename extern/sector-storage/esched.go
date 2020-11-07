@@ -464,7 +464,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 	}
 
 	for {
-		if 0 == len(reqs) {
+		if 0 == len(reqs) || 0 == worker.diskConcurrentLimit {
 			break
 		}
 
@@ -842,8 +842,9 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 	bucket.storeIDs[act.id] = struct{}{}
 	w.diskTotal += act.stat.space
 
-	var limit int = int(w.diskTotal / eResourceTable[sealtasks.TTPreCommit1][bucket.spt].DiskSpace)
-	w.diskConcurrentLimit = limit
+	var limit int = int(act.stat.space / eResourceTable[sealtasks.TTPreCommit1][bucket.spt].DiskSpace)
+	w.diskConcurrentLimit += limit
+
 	if w.diskConcurrentLimit < w.memoryConcurrentLimit {
 		w.maxConcurrent[sealtasks.TTPreCommit1] = w.diskConcurrentLimit
 		w.maxConcurrent[sealtasks.TTAddPiece] = w.diskConcurrentLimit
