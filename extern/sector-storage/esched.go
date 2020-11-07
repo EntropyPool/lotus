@@ -1258,7 +1258,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	w.maxConcurrent[sealtasks.TTReadUnsealed] = 1280
 
 	w.maxConcurrent[sealtasks.TTCommit2] = len(w.info.Resources.GPUs)
-	var limit int = int(w.info.Resources.MemPhysical / eResourceTable[sealtasks.TTCommit2][sh.spt].Memory)
+	var limit int = int((w.info.Resources.MemPhysical + w.info.Resources.MemSwap) / eResourceTable[sealtasks.TTCommit2][sh.spt].Memory)
 	if limit < w.maxConcurrent[sealtasks.TTCommit2] {
 		w.maxConcurrent[sealtasks.TTCommit2] = limit
 	}
