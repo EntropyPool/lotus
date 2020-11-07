@@ -145,29 +145,27 @@ type eTaskWorkerBinder struct {
 }
 
 type eWorkerBucket struct {
-	spt                  abi.RegisteredSealProof
-	id                   int
-	newWorker            chan *eWorkerHandle
-	workers              []*eWorkerHandle
-	reqQueue             *eRequestQueue
-	schedulerWaker       chan struct{}
-	schedulerRunner      chan struct{}
-	reqFinisher          chan *eRequestFinisher
-	notifier             chan struct{}
-	dropWorker           chan WorkerID
-	retRequest           chan *eWorkerRequest
-	storageNotifier      chan eStoreAction
-	droppedWorker        chan string
-	storeIDs             map[stores.ID]struct{}
-	taskWorkerBinder     *eTaskWorkerBinder
-	taskCleaner          chan eWorkerCleanerParam
-	taskCleanerHandler   chan eWorkerCleanerParam
-	taskCleanerQueue     *eWorkerRequestCleanerQueue
-	bigCacheCleanerQueue *eWorkerBigCacheCleanerQueue
-	workerStatsQuery     chan *eWorkerStatsParam
-	workerJobsQuery      chan *eWorkerJobsParam
-	closing              chan struct{}
-	ticker               *time.Ticker
+	spt                abi.RegisteredSealProof
+	id                 int
+	newWorker          chan *eWorkerHandle
+	workers            []*eWorkerHandle
+	reqQueue           *eRequestQueue
+	schedulerWaker     chan struct{}
+	schedulerRunner    chan struct{}
+	reqFinisher        chan *eRequestFinisher
+	notifier           chan struct{}
+	dropWorker         chan WorkerID
+	retRequest         chan *eWorkerRequest
+	storageNotifier    chan eStoreAction
+	droppedWorker      chan string
+	storeIDs           map[stores.ID]struct{}
+	taskWorkerBinder   *eTaskWorkerBinder
+	taskCleaner        chan eWorkerCleanerParam
+	taskCleanerHandler chan eWorkerCleanerParam
+	workerStatsQuery   chan *eWorkerStatsParam
+	workerJobsQuery    chan *eWorkerJobsParam
+	closing            chan struct{}
+	ticker             *time.Ticker
 }
 
 type eRequestQueue struct {
@@ -269,25 +267,23 @@ type eWorkerJobsParam struct {
 }
 
 type edispatcher struct {
-	spt                  abi.RegisteredSealProof
-	nextWorker           WorkerID
-	nextRequest          uint64
-	newWorker            chan *eWorkerHandle
-	dropWorker           chan WorkerID
-	newRequest           chan *eWorkerRequest
-	buckets              []*eWorkerBucket
-	reqQueue             *eRequestQueue
-	storage              *EStorage
-	storageNotifier      chan eStoreAction
-	droppedWorker        chan string
-	taskCleaner          chan eWorkerCleanerParam
-	closing              chan struct{}
-	ctx                  context.Context
-	taskWorkerBinder     *eTaskWorkerBinder
-	taskCleanerQueue     *eWorkerRequestCleanerQueue
-	bigCacheCleanerQueue *eWorkerBigCacheCleanerQueue
-	workerStatsQuery     chan *eWorkerStatsParam
-	workerJobsQuery      chan *eWorkerJobsParam
+	spt              abi.RegisteredSealProof
+	nextWorker       WorkerID
+	nextRequest      uint64
+	newWorker        chan *eWorkerHandle
+	dropWorker       chan WorkerID
+	newRequest       chan *eWorkerRequest
+	buckets          []*eWorkerBucket
+	reqQueue         *eRequestQueue
+	storage          *EStorage
+	storageNotifier  chan eStoreAction
+	droppedWorker    chan string
+	taskCleaner      chan eWorkerCleanerParam
+	closing          chan struct{}
+	ctx              context.Context
+	taskWorkerBinder *eTaskWorkerBinder
+	workerStatsQuery chan *eWorkerStatsParam
+	workerJobsQuery  chan *eWorkerJobsParam
 }
 
 const eschedWorkerBuckets = 10
@@ -639,36 +635,6 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		(task.preparedTime-task.inqueueTime)/1000000.0,
 		(task.endTime-task.preparedTime)/1000000.0,
 		worker.info.Address, err)
-	if nil == err {
-		needCleaner := false
-		for taskType, _ := range eschedTaskBindCleaner {
-			if taskType == task.taskType {
-				needCleaner = true
-			}
-		}
-
-		if needCleaner {
-			bucket.taskCleanerQueue.mutex.Lock()
-			if _, ok := bucket.taskCleanerQueue.queue[task.sector.Number]; !ok {
-				bucket.taskCleanerQueue.queue[task.sector.Number] = make(map[sealtasks.TaskType]*eWorkerRequestCleaner)
-			}
-			bucket.taskCleanerQueue.queue[task.sector.Number][task.taskType] = &eWorkerRequestCleaner{
-				req: task,
-				wid: worker.wid,
-			}
-			bucket.taskCleanerQueue.mutex.Unlock()
-		}
-	}
-
-	cleanerParam, ok := eschedTaskBindCleaner[task.taskType]
-	if ok {
-		if eschedWorkerCleanAtFinish == cleanerParam.stage {
-			bucket.taskCleaner <- eWorkerCleanerParam{
-				sectorNumber: task.sector.Number,
-				taskType:     cleanerParam.taskType,
-			}
-		}
-	}
 }
 
 func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
@@ -946,20 +912,7 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 }
 
 func (bucket *eWorkerBucket) onTaskClean(param eWorkerCleanerParam) {
-	bucket.taskCleanerQueue.mutex.Lock()
-	if sectorCleaner, ok := bucket.taskCleanerQueue.queue[param.sectorNumber]; ok {
-		if cleaner, ok := sectorCleaner[param.taskType]; ok {
-			worker := bucket.findBucketWorkerByID(cleaner.wid)
-			if nil != worker {
-				worker.releaseRequestResource(cleaner.req, eschedResStagePrepare)
-			}
-			delete(sectorCleaner, param.taskType)
-		}
-		if 0 == len(sectorCleaner) {
-			delete(bucket.taskCleanerQueue.queue, param.sectorNumber)
-		}
-	}
-	bucket.taskCleanerQueue.mutex.Unlock()
+	// TODO
 }
 
 func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
@@ -1122,41 +1075,33 @@ func newExtScheduler(spt abi.RegisteredSealProof) *edispatcher {
 		taskWorkerBinder: &eTaskWorkerBinder{
 			binder: make(map[abi.SectorNumber]string),
 		},
-		taskCleanerQueue: &eWorkerRequestCleanerQueue{
-			queue: make(map[abi.SectorNumber]map[sealtasks.TaskType]*eWorkerRequestCleaner),
-		},
-		bigCacheCleanerQueue: &eWorkerBigCacheCleanerQueue{
-			queue: make(map[abi.SectorNumber]map[sealtasks.TaskType]string),
-		},
 		workerStatsQuery: make(chan *eWorkerStatsParam, 10),
 		workerJobsQuery:  make(chan *eWorkerJobsParam, 10),
 	}
 
 	for i := range dispatcher.buckets {
 		dispatcher.buckets[i] = &eWorkerBucket{
-			spt:                  spt,
-			id:                   i,
-			newWorker:            make(chan *eWorkerHandle),
-			workers:              make([]*eWorkerHandle, 0),
-			reqQueue:             dispatcher.reqQueue,
-			schedulerWaker:       make(chan struct{}, 20),
-			schedulerRunner:      make(chan struct{}, 20000),
-			reqFinisher:          make(chan *eRequestFinisher),
-			notifier:             make(chan struct{}),
-			dropWorker:           make(chan WorkerID, 10),
-			retRequest:           dispatcher.newRequest,
-			storageNotifier:      make(chan eStoreAction, 10),
-			droppedWorker:        dispatcher.droppedWorker,
-			storeIDs:             make(map[stores.ID]struct{}),
-			taskWorkerBinder:     dispatcher.taskWorkerBinder,
-			taskCleaner:          dispatcher.taskCleaner,
-			taskCleanerHandler:   make(chan eWorkerCleanerParam, 10),
-			taskCleanerQueue:     dispatcher.taskCleanerQueue,
-			bigCacheCleanerQueue: dispatcher.bigCacheCleanerQueue,
-			workerStatsQuery:     make(chan *eWorkerStatsParam, 10),
-			workerJobsQuery:      make(chan *eWorkerJobsParam, 10),
-			closing:              make(chan struct{}, 2),
-			ticker:               time.NewTicker(3 * 60 * time.Second),
+			spt:                spt,
+			id:                 i,
+			newWorker:          make(chan *eWorkerHandle),
+			workers:            make([]*eWorkerHandle, 0),
+			reqQueue:           dispatcher.reqQueue,
+			schedulerWaker:     make(chan struct{}, 20),
+			schedulerRunner:    make(chan struct{}, 20000),
+			reqFinisher:        make(chan *eRequestFinisher),
+			notifier:           make(chan struct{}),
+			dropWorker:         make(chan WorkerID, 10),
+			retRequest:         dispatcher.newRequest,
+			storageNotifier:    make(chan eStoreAction, 10),
+			droppedWorker:      dispatcher.droppedWorker,
+			storeIDs:           make(map[stores.ID]struct{}),
+			taskWorkerBinder:   dispatcher.taskWorkerBinder,
+			taskCleaner:        dispatcher.taskCleaner,
+			taskCleanerHandler: make(chan eWorkerCleanerParam, 10),
+			workerStatsQuery:   make(chan *eWorkerStatsParam, 10),
+			workerJobsQuery:    make(chan *eWorkerJobsParam, 10),
+			closing:            make(chan struct{}, 2),
+			ticker:             time.NewTicker(3 * 60 * time.Second),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
