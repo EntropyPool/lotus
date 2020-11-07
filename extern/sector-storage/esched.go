@@ -128,6 +128,7 @@ type eWorkerHandle struct {
 	diskTotal             int64
 	priorityTasksQueue    map[int]*eWorkerReqPriorityList
 	preparedTasks         []*eWorkerRequest
+	preparedTaskCount     int
 	preparingTask         *eWorkerRequest
 	runningTasks          []*eWorkerRequest
 	prepareMutex          sync.Mutex
@@ -451,8 +452,8 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 	if nil != worker.preparingTask {
 		taskCount += 1
 	}
+	taskCount += worker.preparedTaskCount
 	worker.prepareMutex.Unlock()
-	taskCount += len(worker.preparedTasks)
 	taskCount += len(worker.runningTasks)
 	for _, pq := range worker.priorityTasksQueue {
 		for _, tq := range pq.typedTasksQueue {
@@ -575,6 +576,10 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	task.preparedTime = time.Now().UnixNano()
 	task.preparedTimeRaw = time.Now()
 
+	worker.prepareMutex.Lock()
+	worker.preparedTaskCount += 1
+	worker.prepareMutex.Unlock()
+
 	bucket.taskPrepared <- &eWorkerTaskPrepared{
 		wid: worker.wid,
 		req: task,
@@ -692,6 +697,10 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		task.memUsed = res.Memory
 		worker.acquireRequestResource(task, eschedResStageRuntime)
 		worker.preparedTasks = worker.preparedTasks[1:]
+
+		worker.prepareMutex.Lock()
+		worker.preparedTaskCount -= 1
+		worker.prepareMutex.Unlock()
 
 		worker.runningTasks = append(worker.runningTasks, task)
 		go bucket.runTypedTask(worker, task)
