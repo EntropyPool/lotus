@@ -654,7 +654,11 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 }
 
 func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
-	idleCpus := int(worker.info.Resources.CPUs * 8 / 100)
+	idleCpus := int(worker.info.Resources.CPUs * 4 / 100)
+	if 0 == idleCpus {
+		idleCpus = 1
+	}
+
 	for {
 		worker.preparedTasks.mutex.Lock()
 		if 0 == len(worker.preparedTasks.queue) {
@@ -1221,8 +1225,8 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	}
 	w.maxConcurrent = make(map[sealtasks.TaskType]int)
 
-	var limit1 int = int(w.info.Resources.MemPhysical * 92 / eResourceTable[sealtasks.TTPreCommit1][sh.spt].Memory / 100)
-	var limit2 int = int(w.info.Resources.CPUs * 92 / 100)
+	var limit1 int = int(w.info.Resources.MemPhysical / eResourceTable[sealtasks.TTPreCommit1][sh.spt].Memory)
+	var limit2 int = int(w.info.Resources.CPUs * 90 / 100)
 	w.memoryConcurrentLimit = limit1
 	w.maxConcurrent[sealtasks.TTPreCommit1] = limit1
 	if limit2 < w.maxConcurrent[sealtasks.TTPreCommit1] {
