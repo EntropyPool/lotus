@@ -685,11 +685,6 @@ func (bucket *eWorkerBucket) doCleanTask(task *eWorkerRequest, stage string) {
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
 	log.Debugf("<%s> executing typed task %v/%v at %s", eschedTag, task.sector, task.taskType, worker.info.Address)
 	err := task.work(task.ctx, worker.wt.worker(worker.w))
-	bucket.reqFinisher <- &eRequestFinisher{
-		req:  task,
-		resp: &workerResponse{err: err},
-		wid:  worker.wid,
-	}
 	task.endTime = time.Now().UnixNano()
 	log.Infof("<%s> finished typed task %v/%v duration (%dms / %d ms / %d ms) by %s [%v]",
 		eschedTag, task.sector, task.taskType,
@@ -697,6 +692,12 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		(task.preparedTime-task.inqueueTime)/1000000.0,
 		(task.endTime-task.preparedTime)/1000000.0,
 		worker.info.Address, err)
+
+	bucket.reqFinisher <- &eRequestFinisher{
+		req:  task,
+		resp: &workerResponse{err: err},
+		wid:  worker.wid,
+	}
 
 	if nil == err {
 		bucket.doCleanTask(task, eschedWorkerCleanAtFinish)
