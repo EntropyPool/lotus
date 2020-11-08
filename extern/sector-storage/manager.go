@@ -388,10 +388,7 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTAddPiece, sector, start, end, err)
 		if err != nil {
-			rerr := m.Remove(ctx, sector)
-			if nil != rerr {
-				log.Errorf("cannot remove worker fail sector %v [%v]", sector, rerr)
-			}
+			m.removeFailSectors(context.TODO(), 0)
 			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTAddPiece), "")
 			return err
 		}
@@ -431,10 +428,7 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, err)
 		if err != nil {
-			rerr := m.Remove(ctx, sector)
-			if nil != rerr {
-				log.Errorf("cannot remove worker fail sector %v [%v]", sector, rerr)
-			}
+			m.removeFailSectors(context.TODO(), 0)
 			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTPreCommit1), "")
 			return err
 		}
@@ -472,10 +466,7 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, err)
 		if err != nil {
-			rerr := m.Remove(ctx, sector)
-			if nil != rerr {
-				log.Errorf("cannot remove worker fail sector %v [%v]", sector, rerr)
-			}
+			m.removeFailSectors(context.TODO(), 0)
 			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTPreCommit2), "")
 			return err
 		}
