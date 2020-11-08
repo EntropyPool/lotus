@@ -376,6 +376,9 @@ func (sh *edispatcher) checkStorageUpdate() {
 			}
 		}
 
+		stat.notified = true
+		sh.storage.storeIDs[id] = stat
+
 		log.Infof("<%s> add storage %v to watcher", eschedTag, id)
 		sh.dumpStorageInfo(stor)
 		sh.storeNotify(id, sh.storage.storeIDs[id], eschedAdd)
