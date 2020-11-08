@@ -123,6 +123,7 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 	failSectors := m.localStore.MayFailSectors
 	for failSector, failInfo := range failSectors {
 		sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
+		log.Infof("add fail sector %v by miner fail", sectorID)
 		m.failSectors[sectorID] = struct{}{}
 	}
 
