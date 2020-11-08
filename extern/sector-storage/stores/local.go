@@ -287,11 +287,19 @@ func (st *Local) createFailSectorsFile() {
 		st.failSectorsPath = cfg.StoragePaths[0].Path
 		fb, err := ioutil.ReadFile(filepath.Join(st.failSectorsPath, FailSectorsFile))
 		if nil == err {
-			json.Unmarshal(fb, &st.FailSectors)
+			if err = json.Unmarshal(fb, &st.FailSectors); nil != err {
+				log.Errorf("cannot parse json from %s", filepath.Join(st.failSectorsPath, FailSectorsFile))
+			}
+		} else {
+			log.Errorf("cannot read file %s", filepath.Join(st.failSectorsPath, FailSectorsFile))
 		}
 		mfb, err := ioutil.ReadFile(filepath.Join(st.failSectorsPath, MayFailSectorsFile))
 		if nil == err {
-			json.Unmarshal(mfb, &st.MayFailSectors)
+			if err = json.Unmarshal(mfb, &st.MayFailSectors); nil != err {
+				log.Errorf("cannot parse json from %s", filepath.Join(st.failSectorsPath, MayFailSectorsFile))
+			}
+		} else {
+			log.Errorf("cannot read file %s", filepath.Join(st.failSectorsPath, MayFailSectorsFile))
 		}
 	}
 }
