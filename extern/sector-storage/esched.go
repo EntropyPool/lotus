@@ -993,7 +993,9 @@ func (bucket *eWorkerBucket) onTaskClean(clean *eWorkerTaskCleaning) {
 		}
 		for idx, task := range worker.cleaningTasks {
 			if clean.taskType == task.taskType && task.sector.Number == clean.sector.Number {
-				log.Infof("<%s> clean task %v / %v from %s", eschedTag, clean.sector, clean.taskType, worker.info.Address)
+				log.Infof("<%s> clean task %v / %v [byCacheMove %v] from %s [bigCache %v]",
+					eschedTag, clean.sector, clean.taskType, clean.byCacheMove,
+					worker.info.Address, worker.info.BigCache)
 				worker.cleaningTasks = append(worker.cleaningTasks[:idx], worker.cleaningTasks[idx+1:]...)
 				go func() { bucket.notifier <- struct{}{} }()
 				return
