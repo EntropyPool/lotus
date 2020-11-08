@@ -257,6 +257,11 @@ var eschedTaskCleanMap = map[sealtasks.TaskType]*eWorkerCleanerAttr{
 	},
 }
 
+var eschedTaskSingle = map[sealtasks.TaskType]struct{}{
+	sealtasks.TTPreCommit2: struct{}{},
+	sealtasks.TTCommit2:    struct{}{},
+}
+
 const eschedWorkerJobs = "worker_jobs"
 const eschedWorkerStats = "worker_stats"
 
@@ -727,11 +732,25 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 	}
 }
 
+func (w *eWorkerHandle) singleRunning(taskType sealtasks.TaskType) bool {
+	if _, ok := eschedTaskSingle[taskType]; !ok {
+		return false
+	}
+	for _, task := range w.runningTasks {
+		if task.taskType == taskType {
+			return true
+		}
+	}
+	return false
+}
+
 func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 	idleCpus := int(worker.info.Resources.CPUs * 4 / 100)
 	if 0 == idleCpus {
 		idleCpus = 1
 	}
+
+	remainReqs := make([]*eWorkerRequest, 0)
 
 	for {
 		worker.preparedTasks.mutex.Lock()
@@ -743,6 +762,14 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		worker.preparedTasks.mutex.Unlock()
 
 		taskType := task.taskType
+
+		if worker.singleRunning(taskType) {
+			remainReqs = append(remainReqs, task)
+			worker.preparedTasks.mutex.Lock()
+			worker.preparedTasks.queue = worker.preparedTasks.queue[1:]
+			worker.preparedTasks.mutex.Unlock()
+		}
+
 		res := findTaskResource(bucket.spt, taskType)
 
 		needCPUs := res.CPUs
@@ -789,6 +816,10 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		worker.runningTasks = append(worker.runningTasks, task)
 		go bucket.runTypedTask(worker, task)
 	}
+
+	worker.preparedTasks.mutex.Lock()
+	worker.preparedTasks.queue = append(remainReqs, worker.preparedTasks.queue[0:]...)
+	worker.preparedTasks.mutex.Unlock()
 }
 
 func (bucket *eWorkerBucket) scheduleBucketTask() {
