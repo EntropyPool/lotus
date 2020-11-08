@@ -208,13 +208,18 @@ type eWorkerAction struct {
 	act     string
 }
 
+const eschedStartInterval = 5 * time.Second
+const eschedEndInterval = 600 * time.Second
+
 type EStorage struct {
-	ctx            context.Context
-	index          stores.SectorIndex
-	indexInstance  *stores.Index
-	storeIDs       map[stores.ID]eStoreStat
-	workerNotifier chan eWorkerAction
-	ls             *stores.Local
+	ctx                 context.Context
+	index               stores.SectorIndex
+	indexInstance       *stores.Index
+	storeIDs            map[stores.ID]eStoreStat
+	workerNotifier      chan eWorkerAction
+	ls                  *stores.Local
+	storageChecker      *time.Ticker
+	lastCheckerInterval time.Duration
 }
 
 type eStoreAction struct {
@@ -417,9 +422,21 @@ func (sh *edispatcher) onWorkerNotifyToStorage(act eWorkerAction) {
 	}
 }
 
+func (sh *edispatcher) updateStorageChecker() {
+	if eschedEndInterval <= sh.storage.lastCheckerInterval {
+		return
+	}
+	sh.storage.lastCheckerInterval *= 2
+	sh.storage.storageChecker.Stop()
+	sh.storage.storageChecker = time.NewTicker(sh.storage.lastCheckerInterval)
+}
+
 func (sh *edispatcher) storageWatcher() {
 	for {
 		select {
+		case <-sh.storage.storageChecker.C:
+			sh.checkStorageUpdate()
+			sh.updateStorageChecker()
 		case <-sh.storage.indexInstance.StorageNotifier:
 			sh.checkStorageUpdate()
 		case act := <-sh.storage.workerNotifier:
@@ -435,6 +452,8 @@ func (sh *edispatcher) SetStorage(storage *EStorage) {
 
 	value := reflect.ValueOf(sh.storage.index)
 	sh.storage.indexInstance = value.Interface().(*stores.Index)
+	sh.storage.storageChecker = time.NewTicker(eschedStartInterval)
+	sh.storage.lastCheckerInterval = eschedStartInterval
 
 	sh.checkStorageUpdate()
 	go sh.storageWatcher()
