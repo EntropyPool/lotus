@@ -650,14 +650,14 @@ func (bucket *eWorkerBucket) addCleaningTask(wid WorkerID, task *eWorkerRequest)
 	}
 
 	for taskType, attr := range eschedTaskCleanMap {
-		if task.taskType == taskType {
+		if task.taskType == attr.taskType {
 			log.Infof("<%s> add task %v / %v to [%v] cleaning list of %s",
 				eschedTag, task.sector,
 				task.taskType, attr.taskType,
 				worker.info.Address)
 			worker.cleaningTasks = append(worker.cleaningTasks, &eWorkerTaskCleaning{
 				sector:   task.sector,
-				taskType: attr.taskType,
+				taskType: task.taskType,
 			})
 		}
 	}
@@ -1600,5 +1600,6 @@ func (sh *edispatcher) doCleanTask(sector abi.SectorID, taskType sealtasks.TaskT
 }
 
 func (sh *edispatcher) MoveCacheDone(sector abi.SectorID) {
+	log.Infof("<%s> try to clean %v's PC2 by move cache done", eschedTag, sector)
 	sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish)
 }
