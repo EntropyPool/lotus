@@ -241,6 +241,12 @@ type eWorkerCleanerAttr struct {
 }
 
 var eschedTaskCleanMap = map[sealtasks.TaskType]*eWorkerCleanerAttr{
+	/**
+	 taskTypeToRunClean: &attr {
+		 cleanStage: prepare or finish,
+		 cleanedTaskType
+	 }
+	*/
 	sealtasks.TTPreCommit2: &eWorkerCleanerAttr{
 		stage:    eschedWorkerCleanAtPrepare,
 		taskType: sealtasks.TTPreCommit1,
@@ -350,9 +356,9 @@ func (sh *edispatcher) checkStorageUpdate() {
 		var lastSpace int64 = 0
 		stat, ok := sh.storage.storeIDs[id]
 		if ok {
-		    if stat.notified {
-			    continue
-		    }
+			if stat.notified {
+				continue
+			}
 			lastSpace = stat.space
 		}
 
@@ -643,12 +649,12 @@ func (bucket *eWorkerBucket) addCleaningTask(wid WorkerID, task *eWorkerRequest)
 		return
 	}
 
-	for _, attr := range eschedTaskCleanMap {
-		if task.taskType == attr.taskType {
+	for taskType, attr := range eschedTaskCleanMap {
+		if task.taskType == taskType {
 			log.Infof("<%s> add task %v / %v to cleaning list of %s", eschedTag, task.sector, task.taskType, worker.info.Address)
 			worker.cleaningTasks = append(worker.cleaningTasks, &eWorkerTaskCleaning{
 				sector:   task.sector,
-				taskType: task.taskType,
+				taskType: attr.taskType,
 			})
 		}
 	}
