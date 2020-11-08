@@ -325,11 +325,14 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 		memSwap = 0
 	}
 
-    env := os.Getenv("LOTUS_CACHE_HDD")
-    hdd := strings.Split(env, ";")
 	bigCache := false
-	if 0 < len(hdd) {
-		bigCache = true
+	env := os.Getenv("LOTUS_CACHE_HDD")
+
+	if 0 < len(env) {
+		hdd := strings.Split(env, ";")
+		if 0 < len(hdd) {
+			bigCache = true
+		}
 	}
 
 	return storiface.WorkerInfo{
