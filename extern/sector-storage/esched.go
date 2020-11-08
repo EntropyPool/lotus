@@ -649,7 +649,7 @@ func (bucket *eWorkerBucket) addCleaningTask(wid WorkerID, task *eWorkerRequest)
 		return
 	}
 
-	for taskType, attr := range eschedTaskCleanMap {
+	for _, attr := range eschedTaskCleanMap {
 		if task.taskType == attr.taskType {
 			log.Infof("<%s> add task %v / %v to [%v] cleaning list of %s",
 				eschedTag, task.sector,
