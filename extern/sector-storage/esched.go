@@ -208,8 +208,8 @@ type eWorkerAction struct {
 	act     string
 }
 
-const eschedStartInterval = 5 * time.Second
-const eschedEndInterval = 600 * time.Second
+const eschedStartInterval = 100 * time.Second
+const eschedEndInterval = 800 * time.Second
 
 type EStorage struct {
 	ctx                 context.Context
