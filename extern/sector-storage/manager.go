@@ -408,7 +408,7 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 
 	for sid, _ := range m.failSectors {
 		if sid.Number == sector.Number {
-			return nil, xerrors.Errorf("sector removed by miner fail")
+			return nil, xerrors.Errorf("sector %v removed by miner fail", sector)
 		}
 	}
 
@@ -451,7 +451,7 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 
 	for sid, _ := range m.failSectors {
 		if sid.Number == sector.Number {
-			return storage.SectorCids{}, xerrors.Errorf("sector removed by miner fail")
+			return storage.SectorCids{}, xerrors.Errorf("sector %v removed by miner fail", sector)
 		}
 	}
 
