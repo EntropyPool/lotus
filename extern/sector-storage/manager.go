@@ -388,8 +388,8 @@ func (m *Manager) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTAddPiece, sector, start, end, err)
 		if err != nil {
-			m.removeFailSectors(context.TODO(), 0)
 			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTAddPiece), "")
+			m.removeFailSectors(context.TODO(), 0)
 			return err
 		}
 		out = p
@@ -428,8 +428,8 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, err)
 		if err != nil {
-			m.removeFailSectors(context.TODO(), 0)
 			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTPreCommit1), "")
+			m.removeFailSectors(context.TODO(), 0)
 			return err
 		}
 		out = p
@@ -466,8 +466,8 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, err)
 		if err != nil {
-			m.removeFailSectors(context.TODO(), 0)
 			m.localStore.AddFailSector(ctx, sector, string(sealtasks.TTPreCommit2), "")
+			m.removeFailSectors(context.TODO(), 0)
 			return err
 		}
 		out = p
