@@ -76,7 +76,7 @@ type Manager struct {
 
 	storage.Prover
 
-	failSectors map[abi.SectorID]struct{}
+	failSectors map[abi.SectorNumber]*stores.FailSector
 }
 
 type SealerConfig struct {
@@ -117,15 +117,12 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, cfg
 		sched: newScheduler(cfg.SealProofType),
 
 		Prover:      prover,
-		failSectors: make(map[abi.SectorID]struct{}),
+		failSectors: make(map[abi.SectorNumber]*stores.FailSector),
 	}
 
 	failSectors := m.localStore.MayFailSectors
-	log.Infof("construct fail sector map [%d] by miner fail", len(m.localStore.MayFailSectors))
 	for failSector, failInfo := range failSectors {
-		sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
-		log.Infof("add fail sector %v by miner fail", sectorID)
-		m.failSectors[sectorID] = struct{}{}
+		m.failSectors[failSector] = failInfo
 	}
 
 	m.sched.SetStorage(&EStorage{
@@ -185,6 +182,16 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 	return nil
 }
 
+func (m *Manager) failedSector(ctx context.Context, sector abi.SectorID) bool {
+	if _, ok := m.localStore.FailSectors[sector.Number]; ok {
+		return true
+	}
+	if _, ok := m.failSectors[sector.Number]; ok {
+		return true
+	}
+	return false
+}
+
 func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
 	timer := time.NewTimer(delay * time.Second)
 	go func() {
@@ -193,22 +200,19 @@ func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
 		defer timer.Stop()
 		select {
 		case <-timer.C:
-			failSectors := m.localStore.FailSectors
-			for failSector, failInfo := range failSectors {
+			for failSector, failInfo := range m.localStore.FailSectors {
 				sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
 				err := m.Remove(ctx, sectorID)
 				if nil != err {
 					log.Errorf("cannot remove worker fail sector %v [%v]", sectorID, err)
 				}
-				// m.localStore.DropFailSector(ctx, sectorID)
 			}
-			for sectorID, _ := range m.failSectors {
+			for failSector, failInfo := range m.failSectors {
+				sectorID := abi.SectorID{Miner: failInfo.Miner, Number: failSector}
 				err := m.Remove(ctx, sectorID)
 				if nil != err {
 					log.Errorf("cannot remove worker fail sector %v [%v]", sectorID, err)
 				}
-				// m.localStore.DropMayFailSector(ctx, sectorID)
-				// delete(m.failSectors, sectorID)
 			}
 		}
 	}()
@@ -405,10 +409,8 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector abi.SectorID, ticke
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for sid, _ := range m.failSectors {
-		if sid.Number == sector.Number {
-			return nil, xerrors.Errorf("sector %v removed by miner fail", sector)
-		}
+	if m.failedSector(ctx, sector) {
+		return nil, xerrors.Errorf("sector %v removed by miner fail", sector)
 	}
 
 	if err := m.index.StorageLock(ctx, sector, stores.FTUnsealed, stores.FTSealed|stores.FTCache); err != nil {
@@ -445,10 +447,8 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector abi.SectorID, phase
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for sid, _ := range m.failSectors {
-		if sid.Number == sector.Number {
-			return storage.SectorCids{}, xerrors.Errorf("sector %v removed by miner fail", sector)
-		}
+	if m.failedSector(ctx, sector) {
+		return storage.SectorCids{}, xerrors.Errorf("sector %v removed by miner fail", sector)
 	}
 
 	if err := m.index.StorageLock(ctx, sector, stores.FTSealed, stores.FTCache); err != nil {
