@@ -85,6 +85,7 @@ type eWorkerRequest struct {
 	startTime       int64
 	preparedTime    int64
 	preparedTimeRaw time.Time
+	deadTime        int64
 	endTime         int64
 	sel             WorkerSelector
 }
@@ -99,6 +100,15 @@ var eTaskPriority = map[sealtasks.TaskType]int{
 	sealtasks.TTAddPiece:     7,
 	sealtasks.TTReadUnsealed: 8,
 	sealtasks.TTUnseal:       9,
+}
+
+var eTaskTimeout = map[sealtasks.TaskType]int64{
+	sealtasks.TTFinalize:     5 * 60 * 60 * 1000000000,
+	sealtasks.TTFetch:        5 * 60 * 60 * 1000000000,
+	sealtasks.TTCommit1:      1 * 60 * 60 * 1000000000,
+	sealtasks.TTCommit2:      2 * 60 * 60 * 1000000000,
+	sealtasks.TTReadUnsealed: 10 * 60 * 1000000000,
+	sealtasks.TTUnseal:       10 * 60 * 1000000000,
 }
 
 type eWorkerReqTypedList struct {
@@ -595,6 +605,26 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 	return peekReqs
 }
 
+func (bucket *eWorkerBucket) removeObseleteTask() {
+	bucket.reqQueue.mutex.Lock()
+	for taskType, reqs := range bucket.reqQueue.reqs {
+		if _, ok := eTaskTimeout[taskType]; !ok {
+			continue
+		}
+		now := time.Now().UnixNano()
+		remainReqs := make([]*eWorkerRequest, 0)
+		for _, req := range reqs {
+			if req.deadTime <= now {
+				req.ret <- workerResponse{err: xerrors.Errorf("cannot find any good worker")}
+				continue
+			}
+			remainReqs = append(remainReqs, req)
+		}
+		bucket.reqQueue.reqs[taskType] = remainReqs
+	}
+	bucket.reqQueue.mutex.Unlock()
+}
+
 func (bucket *eWorkerBucket) tryPeekRequest() {
 	log.Debugf("<%s> try peek schedule request from %d workers of bucket [%d]", eschedTag, len(bucket.workers), bucket.id)
 
@@ -617,6 +647,8 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	if 0 < peekReqs {
 		go func() { bucket.schedulerWaker <- struct{}{} }()
 	}
+
+	bucket.removeObseleteTask()
 }
 
 func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
@@ -1438,6 +1470,7 @@ func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
 	req.id = sh.nextRequest
 	sh.nextRequest += 1
 	req.requestTime = time.Now().UnixNano()
+	req.deadTime = req.requestTime + eTaskTimeout[req.taskType]
 	req.requestTimeRaw = time.Now()
 
 	sh.reqQueue.mutex.Lock()
