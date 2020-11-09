@@ -171,7 +171,6 @@ func NewLocal(ctx context.Context, ls LocalStorage, index SectorIndex, urls []st
 
 func (st *Local) AddMayFailSector(ctx context.Context, sector abi.SectorID, stage string, address string) {
 	st.localLk.Lock()
-	defer st.localLk.Unlock()
 
 	log.Warnf("add may fail sector %v / %s / %s to %s", sector, stage, address, st.failSectorsPath)
 
@@ -196,6 +195,8 @@ func (st *Local) AddMayFailSector(ctx context.Context, sector abi.SectorID, stag
 			ioutil.WriteFile(filepath.Join(st.failSectorsPath, MayFailSectorsFile), jsonStr, 0644)
 		}
 	}
+
+	st.localLk.Unlock()
 
 	st.DropFailSector(ctx, sector)
 }
@@ -226,7 +227,6 @@ func (st *Local) DropMayFailSector(ctx context.Context, sector abi.SectorID) {
 
 func (st *Local) AddFailSector(ctx context.Context, sector abi.SectorID, stage string, address string) {
 	st.localLk.Lock()
-	defer st.localLk.Unlock()
 
 	log.Warnf("add fail sector %v / %s / %s to %s", sector, stage, address, st.failSectorsPath)
 	_, ok := st.FailSectors[sector.Number]
@@ -250,6 +250,8 @@ func (st *Local) AddFailSector(ctx context.Context, sector abi.SectorID, stage s
 			ioutil.WriteFile(filepath.Join(st.failSectorsPath, FailSectorsFile), jsonStr, 0644)
 		}
 	}
+
+	st.localLk.Unlock()
 
 	st.DropMayFailSector(ctx, sector)
 }
