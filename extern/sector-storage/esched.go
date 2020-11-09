@@ -797,6 +797,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			worker.preparedTasks.mutex.Lock()
 			worker.preparedTasks.queue, remainReqs = safeRemoveWorkerRequest(worker.preparedTasks.queue, remainReqs)
 			worker.preparedTasks.mutex.Unlock()
+			continue
 		}
 
 		res := findTaskResource(bucket.spt, taskType)
