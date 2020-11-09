@@ -493,6 +493,21 @@ func (w *eWorkerHandle) releaseRequestResource(req *eWorkerRequest, resType stri
 	}
 }
 
+func safeRemoveWorkerRequest(slice []*eWorkerRequest, accepter []*eWorkerRequest) ([]*eWorkerRequest, []*eWorkerRequest) {
+	if 0 == len(slice) {
+		return slice, accepter
+	}
+	if nil != accepter {
+		accepter = append(accepter, slice[0])
+	}
+	if 1 == len(slice) {
+		slice = slice[0:0]
+	} else {
+		slice = slice[1:]
+	}
+	return slice, accepter
+}
+
 func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, tasksQueue *eWorkerReqTypedList, reqQueue *eRequestQueue) int {
 	if 0 == worker.diskConcurrentLimit {
 		return 0
@@ -533,8 +548,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			log.Debugf("<%s> worker %s's %v tasks queue is full %d / %d",
 				eschedTag, worker.info.Address, req.taskType,
 				taskCount, worker.maxConcurrent[req.taskType])
-			remainReqs = append(remainReqs, req)
-			reqs = reqs[1:]
+			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs)
 			continue
 		}
 
@@ -543,8 +557,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		if ok {
 			if address != worker.info.Address {
 				bucket.taskWorkerBinder.mutex.Unlock()
-				remainReqs = append(remainReqs, req)
-				reqs = reqs[1:]
+				reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs)
 				continue
 			}
 		}
@@ -556,16 +569,14 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		if err != nil {
 			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %v",
 				eschedTag, worker.info.Address, req.sector, req.taskType, err)
-			remainReqs = append(remainReqs, req)
-			reqs = reqs[1:]
+			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs)
 			continue
 		}
 
 		if !ok {
 			log.Debugf("<%s> worker %s is not OK for task %v/%v",
 				eschedTag, worker.info.Address, req.sector, req.taskType)
-			remainReqs = append(remainReqs, req)
-			reqs = reqs[1:]
+			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs)
 			continue
 		}
 
@@ -574,7 +585,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		worker.acquireRequestResource(req, eschedResStagePrepare)
 
 		peekReqs += 1
-		reqs = reqs[1:]
+		reqs, _ = safeRemoveWorkerRequest(reqs, nil)
 		tasksQueue.tasks = append(tasksQueue.tasks, req)
 		taskCount += 1
 	}
@@ -739,7 +750,7 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 				}
 				task := tasks[0]
 				go bucket.prepareTypedTask(worker, task)
-				tasks = tasks[1:]
+				tasks, _ = safeRemoveWorkerRequest(tasks, nil)
 				scheduled = true
 			}
 			typedTasks.tasks = tasks
@@ -783,9 +794,8 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		taskType := task.taskType
 
 		if worker.singleRunning(taskType) {
-			remainReqs = append(remainReqs, task)
 			worker.preparedTasks.mutex.Lock()
-			worker.preparedTasks.queue = worker.preparedTasks.queue[1:]
+			worker.preparedTasks.queue, remainReqs = safeRemoveWorkerRequest(worker.preparedTasks.queue, remainReqs)
 			worker.preparedTasks.mutex.Unlock()
 		}
 
@@ -829,7 +839,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		worker.acquireRequestResource(task, eschedResStageRuntime)
 
 		worker.preparedTasks.mutex.Lock()
-		worker.preparedTasks.queue = worker.preparedTasks.queue[1:]
+		worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil)
 		worker.preparedTasks.mutex.Unlock()
 
 		worker.runningTasks = append(worker.runningTasks, task)
@@ -919,7 +929,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid WorkerID) {
 					}
 					task := tq.tasks[0]
 					log.Infof("<%s> return typed task %v/%v to reqQueue", task.sector, task.taskType)
-					tq.tasks = tq.tasks[1:]
+					tq.tasks, _ = safeRemoveWorkerRequest(tq.tasks, nil)
 					go func() { bucket.retRequest <- task }()
 				}
 			}
@@ -932,7 +942,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid WorkerID) {
 			}
 			task := worker.preparedTasks.queue[0]
 			log.Infof("<%s> finish task %v/%v", eschedTag, task.sector, task.taskType)
-			worker.preparedTasks.queue = worker.preparedTasks.queue[1:]
+			worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil)
 			worker.preparedTasks.mutex.Unlock()
 
 			bucket.reqFinisher <- &eRequestFinisher{
