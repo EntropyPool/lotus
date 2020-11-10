@@ -197,8 +197,6 @@ func (st *Local) AddMayFailSector(ctx context.Context, sector abi.SectorID, stag
 	}
 
 	st.localLk.Unlock()
-
-	st.DropFailSector(ctx, sector)
 }
 
 func (st *Local) DropMayFailSector(ctx context.Context, sector abi.SectorID) {
@@ -252,8 +250,6 @@ func (st *Local) AddFailSector(ctx context.Context, sector abi.SectorID, stage s
 	}
 
 	st.localLk.Unlock()
-
-	st.DropMayFailSector(ctx, sector)
 }
 
 func (st *Local) DropFailSector(ctx context.Context, sector abi.SectorID) {
