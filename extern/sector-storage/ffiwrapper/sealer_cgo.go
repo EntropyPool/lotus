@@ -12,6 +12,8 @@ import (
 	"math/bits"
 	"os"
 	"runtime"
+	"sync"
+	"time"
 
 	ffi "github.com/filecoin-project/filecoin-ffi"
 	rlepluslazy "github.com/filecoin-project/go-bitfield/rle"
@@ -110,18 +112,24 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 	pr := io.TeeReader(io.LimitReader(file, int64(pieceSize)), pw)
 
 	chunk := abi.PaddedPieceSize(4 << 20)
-
+	///////////////////////////////////////////////////////////////////////
+	start := time.Now().UnixNano()
 	buf := make([]byte, chunk.Unpadded())
-	var pieceCids []abi.PieceInfo
-
+	wait := sync.WaitGroup{}
+	paral := make(chan struct{}, 1024)
+	defer close(paral)
+	counts := int(pieceSize) / len(buf)
+	var pieceCids = make([]abi.PieceInfo,counts,counts)
+	index := 0
 	for {
 		var read int
 		for rbuf := buf; len(rbuf) > 0; {
 			n, err := pr.Read(rbuf)
 			if err != nil && err != io.EOF {
+				log.Errorw("pr read","index", index,"error",err)
+				wait.Wait()
 				return abi.PieceInfo{}, xerrors.Errorf("pr read error: %w", err)
 			}
-
 			rbuf = rbuf[n:]
 			read += n
 
@@ -133,15 +141,30 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector abi.SectorID, existingPie
 			break
 		}
 
-		c, err := sb.pieceCid(buf[:read])
-		if err != nil {
-			return abi.PieceInfo{}, xerrors.Errorf("pieceCid error: %w", err)
-		}
-		pieceCids = append(pieceCids, abi.PieceInfo{
-			Size:     abi.UnpaddedPieceSize(len(buf[:read])).Padded(),
-			PieceCID: c,
-		})
+		bufCid := make([]byte, len(buf[:read]))
+		copy(bufCid, buf[:read])
+		log.Warnw("add piece", "index",index,"read",read,"bufCid-len",len(bufCid))
+		paral <- struct{}{}
+		go func(idx int) {
+			log.Warnw("add piece start goroutine","index", idx)
+			wait.Add(1)
+			defer wait.Done()
+			c, err := sb.pieceCid(bufCid)
+			if err != nil {
+				log.Errorw("piece cid","index", idx)
+			}
+			pieceCids[idx] = abi.PieceInfo{
+				Size:     abi.UnpaddedPieceSize(len(bufCid)).Padded(),
+				PieceCID: c,
+			}
+			<- paral
+		}(index)
+		index ++
 	}
+	end := time.Now().UnixNano()
+	log.Warnw("======AddPiece>>>>>>","time",end-start)
+	wait.Wait()
+	///////////////////////////////////////////////////////////////////////
 
 	if err := pw.Close(); err != nil {
 		return abi.PieceInfo{}, xerrors.Errorf("closing padded writer: %w", err)
