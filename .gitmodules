@@ -1,6 +1,16 @@
+[submodule "extern/filecoin-ffi"]
+	path = extern/filecoin-ffi
+	url = https://github.com/EntropyPool/filecoin-ffi.git
+	branch = entropypool-f640612a
 [submodule "extern/serialization-vectors"]
 	path = extern/serialization-vectors
 	url = https://github.com/filecoin-project/serialization-vectors
 [submodule "extern/blst"]
 	path = extern/blst
 	url = https://github.com/supranational/blst.git
+[submodule "extern/oni"]
+	path = extern/oni
+	url = https://github.com/filecoin-project/oni
+[submodule "extern/test-vectors"]
+	path = extern/test-vectors
+	url = https://github.com/filecoin-project/test-vectors.git
