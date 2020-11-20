@@ -206,6 +206,11 @@ func (mgr *SectorMgr) SealPreCommit2(ctx context.Context, sid storage.SectorRef,
 	}, nil
 }
 
+func (mgr *SectorMgr) MovingCache(ctx context.Context, sector abi.SectorRef) error {
+	log.Warnw("sector manager moving.")
+	return nil
+}
+
 func (mgr *SectorMgr) SealCommit1(ctx context.Context, sid storage.SectorRef, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (output storage.Commit1Out, err error) {
 	mgr.lk.Lock()
 	ss, ok := mgr.sectors[sid.ID]

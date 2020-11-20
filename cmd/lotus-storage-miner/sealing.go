@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -82,6 +83,35 @@ var sealingWorkersCmd = &cli.Command{
 			}
 
 			fmt.Printf("Worker %s, host %s%s\n", stat.id, color.MagentaString(stat.Info.Hostname), disabled)
+
+			addressStr := stat.Info.Address
+			if 0 == len(addressStr) {
+				addressStr = "localhost"
+			}
+			fmt.Printf("Worker %d, host %s/%s[%s]\n", stat.id, color.MagentaString(stat.Info.Hostname),
+				color.MagentaString(addressStr), color.MagentaString(stat.Info.GroupName))
+
+			taskTypes := ""
+			sort.Slice(stat.Info.SupportTasks, func(i, j int) bool {
+				return strings.Compare(string(stat.Info.SupportTasks[i]), string(stat.Info.SupportTasks[j])) < 0
+			})
+
+			for _, taskType := range stat.Info.SupportTasks {
+				if 0 < len(taskTypes) {
+					taskTypes += " | "
+				}
+				taskTypes += taskType.Short() +
+					"(" +
+					strconv.Itoa(stat.Tasks[taskType].Running) +
+					"/" +
+					strconv.Itoa(stat.Tasks[taskType].Prepared) +
+					"/" +
+					strconv.Itoa(stat.Tasks[taskType].Waiting) +
+					"/" +
+					strconv.Itoa(stat.Tasks[taskType].MaxConcurrent) +
+					")"
+			}
+			fmt.Printf("\tTSK: %s\n", taskTypes)
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)
@@ -184,7 +214,7 @@ var sealingJobsCmd = &cli.Command{
 		}
 
 		for wid, st := range wst {
-			workerHostnames[wid] = st.Info.Hostname
+			workerHostnames[wid] = st.Info.Address
 		}
 
 		tw := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)

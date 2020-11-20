@@ -17,9 +17,12 @@ import (
 )
 
 type WorkerInfo struct {
-	Hostname string
-
-	Resources WorkerResources
+	Hostname     string
+	GroupName    string
+	Address      string
+	BigCache     bool
+	SupportTasks []sealtasks.TaskType
+	Resources    WorkerResources
 }
 
 type WorkerResources struct {
@@ -32,6 +35,13 @@ type WorkerResources struct {
 	GPUs []string
 }
 
+type TasksInfo struct {
+	Running       int
+	Prepared      int
+	Waiting       int
+	MaxConcurrent int
+}
+
 type WorkerStats struct {
 	Info    WorkerInfo
 	Enabled bool
@@ -40,6 +50,7 @@ type WorkerStats struct {
 	MemUsedMax uint64
 	GpuUsed    bool   // nolint
 	CpuUse     uint64 // nolint
+	Tasks      map[sealtasks.TaskType]TasksInfo
 }
 
 const (

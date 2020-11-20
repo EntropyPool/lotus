@@ -21,6 +21,7 @@ type Store interface {
 
 	// move sectors into storage
 	MoveStorage(ctx context.Context, s storage.SectorRef, types storiface.SectorFileType) error
+	MoveCache(ctx context.Context, s abi.SectorRef, types SectorFileType, force bool) error
 
 	FsStat(ctx context.Context, id ID) (fsutil.FsStat, error)
 }

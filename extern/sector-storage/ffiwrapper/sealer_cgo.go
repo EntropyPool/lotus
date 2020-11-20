@@ -6,13 +6,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"github.com/ipfs/go-cid"
+	"golang.org/x/xerrors"
 	"io"
 	"math/bits"
 	"os"
 	"runtime"
-
-	"github.com/ipfs/go-cid"
-	"golang.org/x/xerrors"
+	"sync"
+	"time"
 
 	ffi "github.com/filecoin-project/filecoin-ffi"
 	rlepluslazy "github.com/filecoin-project/go-bitfield/rle"
@@ -108,18 +109,24 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 	pr := io.TeeReader(io.LimitReader(file, int64(pieceSize)), pw)
 
 	chunk := abi.PaddedPieceSize(4 << 20)
-
+	///////////////////////////////////////////////////////////////////////
+	start := time.Now().UnixNano()
 	buf := make([]byte, chunk.Unpadded())
-	var pieceCids []abi.PieceInfo
-
+	wait := sync.WaitGroup{}
+	paral := make(chan struct{}, 1024)
+	defer close(paral)
+	counts := int(pieceSize) / len(buf)
+	var pieceCids = make([]abi.PieceInfo, counts, counts)
+	index := 0
 	for {
 		var read int
 		for rbuf := buf; len(rbuf) > 0; {
 			n, err := pr.Read(rbuf)
 			if err != nil && err != io.EOF {
+				log.Errorw("pr read", "index", index, "error", err)
+				wait.Wait()
 				return abi.PieceInfo{}, xerrors.Errorf("pr read error: %w", err)
 			}
-
 			rbuf = rbuf[n:]
 			read += n
 
@@ -131,15 +138,28 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 			break
 		}
 
-		c, err := sb.pieceCid(sector.ProofType, buf[:read])
-		if err != nil {
-			return abi.PieceInfo{}, xerrors.Errorf("pieceCid error: %w", err)
-		}
-		pieceCids = append(pieceCids, abi.PieceInfo{
-			Size:     abi.UnpaddedPieceSize(len(buf[:read])).Padded(),
-			PieceCID: c,
-		})
+		bufCid := make([]byte, len(buf[:read]))
+		copy(bufCid, buf[:read])
+
+		paral <- struct{}{}
+		go func(idx int) {
+			wait.Add(1)
+			defer wait.Done()
+			c, err := sb.pieceCid(bufCid)
+			if err != nil {
+				log.Errorw("piece cid", "index", idx)
+				return
+			}
+			pieceCids[idx] = abi.PieceInfo{
+				Size:     abi.UnpaddedPieceSize(len(bufCid)).Padded(),
+				PieceCID: c,
+			}
+			<-paral
+		}(index)
+		index++
 	}
+	end := time.Now().UnixNano()
+	wait.Wait()
 
 	if err := pw.Close(); err != nil {
 		return abi.PieceInfo{}, xerrors.Errorf("closing padded writer: %w", err)
@@ -491,6 +511,11 @@ func (sb *Sealer) SealPreCommit2(ctx context.Context, sector storage.SectorRef, 
 	}, nil
 }
 
+func (sb *Sealer) MovingCache(ctx context.Context, sector abi.SectorID) error {
+	log.Warnw("sealer moving.")
+	return nil
+}
+
 func (sb *Sealer) SealCommit1(ctx context.Context, sector storage.SectorRef, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (storage.Commit1Out, error) {
 	paths, done, err := sb.sectors.AcquireSector(ctx, sector, storiface.FTSealed|storiface.FTCache, 0, storiface.PathSealing)
 	if err != nil {
@@ -549,6 +574,7 @@ func (sb *Sealer) FinalizeSector(ctx context.Context, sector storage.SectorRef, 
 
 		paths, done, err := sb.sectors.AcquireSector(ctx, sector, storiface.FTUnsealed, 0, storiface.PathStorage)
 		if err != nil {
+			log.Errorf("fail finalize sector %v [%v]", sector.Number, err)
 			return xerrors.Errorf("acquiring sector cache path: %w", err)
 		}
 		defer done()
@@ -589,11 +615,18 @@ func (sb *Sealer) FinalizeSector(ctx context.Context, sector storage.SectorRef, 
 
 	paths, done, err := sb.sectors.AcquireSector(ctx, sector, storiface.FTCache, 0, storiface.PathStorage)
 	if err != nil {
+		log.Errorf("fail finalize sector %v [%v]", sector.Number, err)
 		return xerrors.Errorf("acquiring sector cache path: %w", err)
 	}
 	defer done()
 
-	return ffi.ClearCache(uint64(ssize), paths.Cache)
+	err = ffi.ClearCache(uint64(sb.ssize), paths.Cache)
+	if nil != err {
+		return &ErrCacheInconsistent{xerrors.Errorf("fail finalize sector %v(%v) [%v]", sector.Number, paths.Cache, err)}
+	} else {
+		log.Infof("success finalize sector %v(%v)", sector.Number, paths.Cache)
+	}
+	return err
 }
 
 func (sb *Sealer) ReleaseUnsealed(ctx context.Context, sector storage.SectorRef, safeToFree []storage.Range) error {

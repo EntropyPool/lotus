@@ -46,7 +46,7 @@ const mib = 1 << 20
 type WorkerAction func(ctx context.Context, w Worker) error
 
 type WorkerSelector interface {
-	Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, a *workerHandle) (bool, error) // true if worker is acceptable for performing a task
+	Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, a interface{}) (bool, error) // true if worker is acceptable for performing a task
 
 	Cmp(ctx context.Context, task sealtasks.TaskType, a, b *workerHandle) (bool, error) // true if a is preferred over b
 }
@@ -71,6 +71,9 @@ type scheduler struct {
 	closing  chan struct{}
 	closed   chan struct{}
 	testSync chan struct{} // used for testing
+
+	useExtSched bool
+	esched      *edispatcher
 }
 
 type workerHandle struct {
@@ -162,10 +165,33 @@ func newScheduler() *scheduler {
 
 		closing: make(chan struct{}),
 		closed:  make(chan struct{}),
+
+		useExtSched: true,
+		esched:      newExtScheduler(spt),
+	}
+}
+
+func (sh *scheduler) useExtScheduler() bool {
+	return sh.useExtSched
+}
+
+func (sh *scheduler) SetStorage(storage *EStorage) {
+	if sh.useExtScheduler() {
+		sh.esched.SetStorage(storage)
+	}
+}
+
+func (sh *scheduler) MoveCacheDone(sector abi.SectorID) {
+	if sh.useExtScheduler() {
+		sh.esched.MoveCacheDone(sector)
 	}
 }
 
 func (sh *scheduler) Schedule(ctx context.Context, sector storage.SectorRef, taskType sealtasks.TaskType, sel WorkerSelector, prepare WorkerAction, work WorkerAction) error {
+	if sh.useExtScheduler() {
+		return sh.esched.Schedule(ctx, sector, taskType, sel, prepare, work)
+	}
+
 	ret := make(chan workerResponse)
 
 	select {
@@ -218,9 +244,31 @@ type SchedDiagInfo struct {
 	OpenWindows []string
 }
 
+func (sh *scheduler) runESched() {
+	go sh.esched.runSched()
+	for {
+		select {
+		case w := <-sh.newWorkers:
+			worker := &eWorkerHandle{
+				w:    w.w,
+				info: w.info,
+				wt:   w.wt,
+				priv: w,
+			}
+			sh.esched.NewWorker(worker)
+		}
+	}
+}
+
 func (sh *scheduler) runSched() {
 	defer close(sh.closed)
 
+	if sh.useExtScheduler() {
+		sh.runESched()
+		return
+	}
+
+	go sh.runWorkerWatcher()
 	iw := time.After(InitWait)
 	var initialised bool
 
@@ -496,6 +544,18 @@ func (sh *scheduler) trySched() {
 	if scheduled == 0 {
 		return
 	}
+	////////////////////////////////////////
+	// Rearrange the todos list of worker
+	n := len(windows)
+	for i := 0; i < n; i++ {
+		for j := i + 1; j < n; j++ {
+			if sh.openWindows[i].worker == sh.openWindows[j].worker && len(windows[j].todo) > 0 {
+				windows[i].todo = append(windows[i].todo, windows[j].todo...)
+				windows[j].todo = windows[j].todo[0:0]
+			}
+		}
+	}
+	////////////////////////////////////////
 
 	scheduledWindows := map[int]struct{}{}
 	for wnd, window := range windows {
@@ -539,6 +599,9 @@ func (sh *scheduler) schedClose() {
 }
 
 func (sh *scheduler) Info(ctx context.Context) (interface{}, error) {
+	if sh.useExtScheduler() {
+		return sh.esched.Info(ctx)
+	}
 	ch := make(chan interface{}, 1)
 
 	sh.info <- func(res interface{}) {
@@ -554,6 +617,9 @@ func (sh *scheduler) Info(ctx context.Context) (interface{}, error) {
 }
 
 func (sh *scheduler) Close(ctx context.Context) error {
+	if sh.useExtScheduler() {
+		return sh.esched.Close(ctx)
+	}
 	close(sh.closing)
 	select {
 	case <-sh.closed:

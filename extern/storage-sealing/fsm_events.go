@@ -4,6 +4,7 @@ import (
 	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/ipfs/go-cid"
 	"golang.org/x/xerrors"
+	"strings"
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
@@ -150,6 +151,11 @@ func (evt SectorSealPreCommit1Failed) FormatError(xerrors.Printer) (next error) 
 func (evt SectorSealPreCommit1Failed) apply(si *SectorInfo) {
 	si.InvalidProofs = 0 // reset counter
 	si.PreCommit2Fails = 0
+	si.PreCommit1Fails++
+	if !strings.Contains(si.LastErr, "reserving storage space") &&
+		!strings.Contains(si.LastErr, "couldn't find a suitable path for a sector") {
+		si.PreCommit1Fails++
+	}
 }
 
 type SectorSealPreCommit2Failed struct{ error }
