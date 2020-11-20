@@ -1521,7 +1521,7 @@ func (w *WorkerStruct) SealPreCommit1(ctx context.Context, sector storage.Sector
 	return w.Internal.SealPreCommit1(ctx, sector, ticket, pieces)
 }
 
-func (w *WorkerStruct) MovingCache(ctx context.Context, sector abi.SectorRef) error {
+func (w *WorkerStruct) MovingCache(ctx context.Context, sector storage.SectorRef) error {
 	return nil //w.Internal.Moving(ctx, sector)
 }
 

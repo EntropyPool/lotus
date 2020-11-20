@@ -167,7 +167,7 @@ func newScheduler() *scheduler {
 		closed:  make(chan struct{}),
 
 		useExtSched: true,
-		esched:      newExtScheduler(spt),
+		esched:      newExtScheduler(),
 	}
 }
 
@@ -181,7 +181,7 @@ func (sh *scheduler) SetStorage(storage *EStorage) {
 	}
 }
 
-func (sh *scheduler) MoveCacheDone(sector abi.SectorID) {
+func (sh *scheduler) MoveCacheDone(sector storage.SectorRef) {
 	if sh.useExtScheduler() {
 		sh.esched.MoveCacheDone(sector)
 	}
@@ -245,19 +245,7 @@ type SchedDiagInfo struct {
 }
 
 func (sh *scheduler) runESched() {
-	go sh.esched.runSched()
-	for {
-		select {
-		case w := <-sh.newWorkers:
-			worker := &eWorkerHandle{
-				w:    w.w,
-				info: w.info,
-				wt:   w.wt,
-				priv: w,
-			}
-			sh.esched.NewWorker(worker)
-		}
-	}
+	sh.esched.runSched()
 }
 
 func (sh *scheduler) runSched() {
@@ -268,7 +256,6 @@ func (sh *scheduler) runSched() {
 		return
 	}
 
-	go sh.runWorkerWatcher()
 	iw := time.After(InitWait)
 	var initialised bool
 

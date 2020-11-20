@@ -32,11 +32,11 @@ func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt 
 	var w Worker
 	switch wi.(type) {
 	case *workerHandle:
-		w = wi.(*workerHandle).w
+		w = wi.(*workerHandle).workerRpc
 	case *eWorkerHandle:
 		w = wi.(*eWorkerHandle).w
 	}
-	tasks, err := whnd.workerRpc.TaskTypes(ctx)
+	tasks, err := w.TaskTypes(ctx)
 	if err != nil {
 		return false, xerrors.Errorf("getting supported worker task types: %w", err)
 	}
@@ -44,7 +44,7 @@ func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt 
 		return false, nil
 	}
 
-	paths, err := whnd.workerRpc.Paths(ctx)
+	paths, err := w.Paths(ctx)
 	if err != nil {
 		return false, xerrors.Errorf("getting worker paths: %w", err)
 	}

@@ -137,7 +137,7 @@ func (handler *FetchHandler) remoteListSector(w http.ResponseWriter, r *http.Req
 		log.Infow("SERVE LIST VARS", "Key", k, "Val", v)
 	}
 
-	id, err := ParseSectorID(vars["id"])
+	id, err := storiface.ParseSectorID(vars["id"])
 	if err != nil {
 		log.Error("%+v", err)
 		w.WriteHeader(500)
@@ -151,7 +151,12 @@ func (handler *FetchHandler) remoteListSector(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	paths, _, err := handler.Local.AcquireSector(r.Context(), id, 0, ft, FTNone, PathStorage, AcquireMove)
+	si := storage.SectorRef{
+		ID:        id,
+		ProofType: 0,
+	}
+
+	paths, _, err := handler.Local.AcquireSector(r.Context(), si, ft, storiface.FTNone, storiface.PathStorage, storiface.AcquireMove)
 	if err != nil {
 		log.Error("%+v", err)
 		w.WriteHeader(500)
@@ -159,7 +164,7 @@ func (handler *FetchHandler) remoteListSector(w http.ResponseWriter, r *http.Req
 	}
 
 	// TODO: reserve local storage here
-	path := PathByType(paths, ft)
+	path := storiface.PathByType(paths, ft)
 	if path == "" {
 		log.Error("acquired path was empty")
 		w.WriteHeader(500)
@@ -208,7 +213,7 @@ func (handler *FetchHandler) remoteGetFile(w http.ResponseWriter, r *http.Reques
 	vars := mux.Vars(r)
 	log.Infow("SERVE GET FILE", "vars", vars)
 
-	id, err := ParseSectorID(vars["id"])
+	id, err := storiface.ParseSectorID(vars["id"])
 	if err != nil {
 		log.Error("%+v", err)
 		w.WriteHeader(500)
@@ -222,10 +227,15 @@ func (handler *FetchHandler) remoteGetFile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	si := storage.SectorRef{
+		ID:        id,
+		ProofType: 0,
+	}
+
 	// The caller has a lock on this sector already, no need to get one here
 
 	// passing 0 spt because we don't allocate anything
-	paths, _, err := handler.Local.AcquireSector(r.Context(), id, 0, ft, FTNone, PathStorage, AcquireMove)
+	paths, _, err := handler.Local.AcquireSector(r.Context(), si, ft, storiface.FTNone, storiface.PathStorage, storiface.AcquireMove)
 	if err != nil {
 		log.Error("%+v", err)
 		w.WriteHeader(500)
@@ -234,7 +244,7 @@ func (handler *FetchHandler) remoteGetFile(w http.ResponseWriter, r *http.Reques
 
 	// TODO: reserve local storage here
 
-	path := PathByType(paths, ft)
+	path := storiface.PathByType(paths, ft)
 	if path == "" {
 		log.Error("acquired path was empty")
 		w.WriteHeader(500)
@@ -295,7 +305,7 @@ func (handler *FetchHandler) remoteMoveCacheSector(w http.ResponseWriter, r *htt
 	vars := mux.Vars(r)
 	log.Infof("SERVE MOVE %s [%v]", r.URL, vars)
 
-	id, err := ParseSectorID(vars["id"])
+	id, err := storiface.ParseSectorID(vars["id"])
 	if err != nil {
 		log.Error("%+v", err)
 		w.WriteHeader(500)
@@ -309,7 +319,12 @@ func (handler *FetchHandler) remoteMoveCacheSector(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if err := handler.MoveCache(r.Context(), id, ft, false); err != nil {
+	si := storage.SectorRef{
+		ID:        id,
+		ProofType: 0,
+	}
+
+	if err := handler.MoveCache(r.Context(), si, ft, false); err != nil {
 		log.Errorf("%+v", err)
 		w.WriteHeader(500)
 		return

@@ -76,7 +76,7 @@ const MetaFile = "sectorstore.json"
 const FailSectorsFile = "failsectors.json"
 const MayFailSectorsFile = "mayfailsectors.json"
 
-var PathTypes = []SectorFileType{FTUnsealed, FTSealed, FTCache}
+var PathTypes = []storiface.SectorFileType{storiface.FTUnsealed, storiface.FTSealed, storiface.FTCache}
 
 type FailInfo struct {
 	Address string `json:"fail_address"`
@@ -353,6 +353,24 @@ func (st *Local) OpenPath(ctx context.Context, p string) error {
 	return nil
 }
 
+func (st *Local) open(ctx context.Context) error {
+	cfg, err := st.localStorage.GetStorage()
+	if err != nil {
+		return xerrors.Errorf("getting local storage config: %w", err)
+	}
+
+	for _, path := range cfg.StoragePaths {
+		err := st.OpenPath(ctx, path.Path)
+		if err != nil {
+			return xerrors.Errorf("opening path %s: %w", path.Path, err)
+		}
+	}
+
+	go st.reportHealth(ctx)
+
+	return nil
+}
+
 func (st *Local) Redeclare(ctx context.Context) error {
 	st.localLk.Lock()
 	defer st.localLk.Unlock()
@@ -430,28 +448,6 @@ func (st *Local) declareSectors(ctx context.Context, p string, id ID, primary bo
 			}
 		}
 	}
-
-	st.paths[meta.ID] = out
-
-	return nil
-}
-
-func (st *Local) open(ctx context.Context) error {
-	cfg, err := st.localStorage.GetStorage()
-	if err != nil {
-		return xerrors.Errorf("getting local storage config: %w", err)
-	}
-
-	for _, path := range cfg.StoragePaths {
-		err := st.OpenPath(ctx, path.Path)
-		if err != nil {
-			return xerrors.Errorf("opening path %s: %w", path.Path, err)
-		}
-	}
-
-	st.createFailSectorsFile()
-
-	go st.reportHealth(ctx)
 
 	return nil
 }
@@ -648,7 +644,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 				continue
 			}
 
-			spath := p.sectorPath(sid, fileType)
+			spath := p.sectorPath(sid.ID, fileType)
 			if !st.checkPathIntegrity(ctx, spath, ssize) {
 				continue
 			}
@@ -761,9 +757,8 @@ func (st *Local) Remove(ctx context.Context, sid abi.SectorID, typ storiface.Sec
 	return nil
 }
 
-func (st *Local) MoveCache(ctx context.Context, sid abi.SectorID, typ SectorFileType, force bool) error {
-
-	si, err := st.index.StorageFindSector(ctx, sid, typ, 0, false)
+func (st *Local) MoveCache(ctx context.Context, sid storage.SectorRef, typ storiface.SectorFileType, force bool) error {
+	si, err := st.index.StorageFindSector(ctx, sid.ID, typ, 0, false)
 	if err != nil {
 		return xerrors.Errorf("finding existing sector %d(t:%d) failed: %w", sid, typ, err)
 	}
@@ -773,7 +768,7 @@ func (st *Local) MoveCache(ctx context.Context, sid abi.SectorID, typ SectorFile
 	}
 
 	for _, info := range si {
-		if err := st.moveCacheSector(ctx, sid, typ, info.ID); err != nil {
+		if err := st.moveCacheSector(ctx, sid.ID, typ, info.ID); err != nil {
 			return err
 		}
 	}
@@ -781,7 +776,7 @@ func (st *Local) MoveCache(ctx context.Context, sid abi.SectorID, typ SectorFile
 	return nil
 }
 
-func (st *Local) moveCacheSector(ctx context.Context, sid abi.SectorID, fileType SectorFileType, storage ID) error {
+func (st *Local) moveCacheSector(ctx context.Context, sid abi.SectorID, fileType storiface.SectorFileType, storage ID) error {
 	p, ok := st.paths[storage]
 	if !ok {
 		return nil
@@ -808,8 +803,8 @@ func (st *Local) moveCacheSector(ctx context.Context, sid abi.SectorID, fileType
 	return nil
 }
 
-func (r *Remote) MoveCache(ctx context.Context, sid abi.SectorID, typ SectorFileType, force bool) error {
-	si, err := r.index.StorageFindSector(ctx, sid, typ, 0, false)
+func (r *Remote) MoveCache(ctx context.Context, sid storage.SectorRef, typ storiface.SectorFileType, force bool) error {
+	si, err := r.index.StorageFindSector(ctx, sid.ID, typ, 0, false)
 	if err != nil {
 		return xerrors.Errorf("finding existing sector %d(t:%d) failed: %w", sid, typ, err)
 	}
@@ -1148,7 +1143,7 @@ func (st *Local) removeSector(ctx context.Context, sid abi.SectorID, typ storifa
 
 	st.reportStorage(ctx) // report freed space
 
-	if typ == FTCache {
+	if typ == storiface.FTCache {
 		env_hdd := os.Getenv("LOTUS_CACHE_HDD")
 		if env_hdd == "" {
 			return nil

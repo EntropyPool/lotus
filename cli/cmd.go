@@ -252,7 +252,7 @@ func GetBackNodeAPI(ctx *cli.Context) (api.FullNode, jsonrpc.ClientCloser, conte
 	return nil, nil, nil, xerrors.Errorf("could not get useful back node")
 }
 
-func GetStorageMinerAPI(ctx *cli.Context, opts ...jsonrpc.Option) (api.StorageMiner, jsonrpc.ClientCloser, error) {
+func GetStorageMinerAPI(ctx *cli.Context, opts ...GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {
 	var options GetStorageMinerOptions
 	for _, opt := range opts {
 		opt(&options)

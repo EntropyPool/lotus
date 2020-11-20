@@ -33,6 +33,8 @@ var pathTypes = []storiface.SectorFileType{storiface.FTUnsealed, storiface.FTSea
 type WorkerConfig struct {
 	TaskTypes []sealtasks.TaskType
 	NoSwap    bool
+	Address   string
+	GroupName string
 }
 
 // used do provide custom proofs impl (mostly used in testing)
