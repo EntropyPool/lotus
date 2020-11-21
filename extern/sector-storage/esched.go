@@ -183,6 +183,7 @@ type eTaskWorkerBinder struct {
 }
 
 type eWorkerBucket struct {
+	spt                abi.RegisteredSealProof
 	id                 int
 	newWorker          chan *eWorkerHandle
 	workers            []*eWorkerHandle
@@ -590,6 +591,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 
 		req := reqs[0]
+		bucket.spt = req.sector.ProofType
 
 		if 0 == worker.diskConcurrentLimit[req.sector.ProofType] {
 			log.Debugf("<%s> worker %s's disk concurrent limit is not set", eschedTag, worker.info.Address)
@@ -1172,7 +1174,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				Waiting:       0,
 				Running:       0,
 				Prepared:      0,
-				MaxConcurrent: worker.maxConcurrent[abi.RegisteredSealProof_StackedDrg32GiBV1][taskType],
+				MaxConcurrent: worker.maxConcurrent[bucket.spt][taskType],
 			}
 		}
 		for _, pq := range worker.priorityTasksQueue {
@@ -1337,6 +1339,7 @@ func newExtScheduler() *edispatcher {
 
 	for i := range dispatcher.buckets {
 		dispatcher.buckets[i] = &eWorkerBucket{
+			spt:                abi.RegisteredSealProof_StackedDrg32GiBV1,
 			id:                 i,
 			newWorker:          make(chan *eWorkerHandle),
 			workers:            make([]*eWorkerHandle, 0),
