@@ -738,8 +738,23 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	task.preparedTime = time.Now().UnixNano()
 	task.preparedTimeRaw = time.Now()
 
+	priority := eTaskPriority[task.taskType]
+
 	worker.preparedTasks.mutex.Lock()
+	pos := 0
+	for idx, req := range worker.preparedTasks.queue {
+		lPriority := eTaskPriority[req.taskType]
+		if lPriority <= priority {
+			continue
+		}
+		pos = idx
+		break
+	}
+
+	worker.preparedTasks.queue = append(worker.preparedTasks.queue, worker.preparedTasks.queue[:pos]...)
 	worker.preparedTasks.queue = append(worker.preparedTasks.queue, task)
+	worker.preparedTasks.queue = append(worker.preparedTasks.queue, worker.preparedTasks.queue[pos:]...)
+
 	worker.preparedTasks.mutex.Unlock()
 	bucket.schedulerRunner <- struct{}{}
 
