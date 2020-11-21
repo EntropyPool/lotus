@@ -321,7 +321,7 @@ type edispatcher struct {
 
 const eschedWorkerBuckets = 10
 
-var eschedUnassignedWorker = uuid.Must(uuid.Parse("entropy-pool-external-scheduler"))
+var eschedUnassignedWorker = uuid.Must(uuid.Parse("11111111-2222-3333-4444-111111111111"))
 
 func (sh *edispatcher) dumpStorageInfo(store *stores.StorageEntry) {
 	log.Infof("Storage %v", store.Info().ID)
