@@ -1596,7 +1596,7 @@ func (sh *edispatcher) watchWorkerClosing(w *eWorkerHandle) {
 			sh.dropWorker <- w.wid
 			return
 		}
-		time.Sleep(300 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 }
 
