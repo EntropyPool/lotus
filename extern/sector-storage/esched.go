@@ -1500,7 +1500,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 
 		cur[sealtasks.TTCommit2] = len(w.info.Resources.GPUs)
 		var limit int = int((w.info.Resources.MemPhysical + w.info.Resources.MemSwap) / eResourceTable[sealtasks.TTCommit2][spt].Memory)
-		if limit < cur[sealtasks.TTCommit2] {
+		if limit < cur[sealtasks.TTCommit2] || 0 == cur[sealtasks.TTCommit2] {
 			cur[sealtasks.TTCommit2] = limit
 		}
 		log.Infof("<%s> max concurrent for %v = %v [%s]",
