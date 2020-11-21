@@ -82,20 +82,19 @@ var sealingWorkersCmd = &cli.Command{
 				disabled = color.RedString(" (disabled)")
 			}
 
-			fmt.Printf("Worker %s, host %s%s\n", stat.id, color.MagentaString(stat.Info.Hostname), disabled)
-
 			addressStr := stat.Info.Address
 			if 0 == len(addressStr) {
 				addressStr = "localhost"
 			}
-			fmt.Printf("Worker %d, host %s/%s[%s]\n", stat.id, color.MagentaString(stat.Info.Hostname),
-				color.MagentaString(addressStr), color.MagentaString(stat.Info.GroupName))
+			fmt.Printf("Worker %s, host %s/%s%s\n", stat.id, color.MagentaString(stat.Info.Hostname),
+				color.MagentaString(addressStr), disabled)
 
 			taskTypes := ""
 			sort.Slice(stat.Info.SupportTasks, func(i, j int) bool {
 				return strings.Compare(string(stat.Info.SupportTasks[i]), string(stat.Info.SupportTasks[j])) < 0
 			})
 
+			fmt.Printf("\tGRP: %s\n", color.MagentaString(stat.Info.GroupName))
 			for _, taskType := range stat.Info.SupportTasks {
 				if 0 < len(taskTypes) {
 					taskTypes += " | "

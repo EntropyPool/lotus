@@ -165,8 +165,8 @@ type eWorkerHandle struct {
 	runningTasks          []*eWorkerRequest
 	cleaningTasks         []*eWorkerTaskCleaning
 	maxConcurrent         map[abi.RegisteredSealProof]map[sealtasks.TaskType]int
-	memoryConcurrentLimit int
-	diskConcurrentLimit   int
+	memoryConcurrentLimit map[abi.RegisteredSealProof]int
+	diskConcurrentLimit   map[abi.RegisteredSealProof]int
 }
 
 const eschedTag = "esched"
@@ -529,10 +529,6 @@ func safeRemoveWorkerRequest(slice []*eWorkerRequest, accepter []*eWorkerRequest
 }
 
 func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, tasksQueue *eWorkerReqTypedList, reqQueue *eRequestQueue) int {
-	if 0 == worker.diskConcurrentLimit {
-		return 0
-	}
-
 	log.Debugf("<%s> %d %v tasks waiting for run [%s]", eschedTag, len(reqQueue.reqs[taskType]), taskType, worker.info.Address)
 
 	peekReqs := 0
@@ -564,6 +560,11 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 
 		req := reqs[0]
+
+		if 0 == worker.diskConcurrentLimit[req.sector.ProofType] {
+			log.Debugf("<%s> worker %s's disk concurrent limit is not set", eschedTag, worker.info.Address)
+			return 0
+		}
 
 		curConcurrentLimit := worker.maxConcurrent[req.sector.ProofType]
 		if curConcurrentLimit[req.taskType] <= taskCount {
@@ -1043,14 +1044,14 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 
 	for _, spt := range eSealProofType {
 		var limit int = int(act.stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
-		w.diskConcurrentLimit += limit
+		w.diskConcurrentLimit[spt] += limit
 
 		cur := w.maxConcurrent[spt]
 
-		if w.diskConcurrentLimit < w.memoryConcurrentLimit {
-			cur[sealtasks.TTPreCommit1] = w.diskConcurrentLimit
-			cur[sealtasks.TTAddPiece] = w.diskConcurrentLimit
-			cur[sealtasks.TTPreCommit2] = w.diskConcurrentLimit
+		if w.diskConcurrentLimit[spt] < w.memoryConcurrentLimit[spt] {
+			cur[sealtasks.TTPreCommit1] = w.diskConcurrentLimit[spt]
+			cur[sealtasks.TTAddPiece] = w.diskConcurrentLimit[spt]
+			cur[sealtasks.TTPreCommit2] = w.diskConcurrentLimit[spt]
 
 			log.Infof("<%s> update max concurrent for %v = %v [%s]",
 				eschedTag,
@@ -1058,9 +1059,9 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 				cur[sealtasks.TTPreCommit1],
 				w.info.Address)
 		} else {
-			cur[sealtasks.TTPreCommit1] = w.memoryConcurrentLimit
-			cur[sealtasks.TTAddPiece] = w.memoryConcurrentLimit
-			cur[sealtasks.TTPreCommit2] = w.memoryConcurrentLimit
+			cur[sealtasks.TTPreCommit1] = w.memoryConcurrentLimit[spt]
+			cur[sealtasks.TTAddPiece] = w.memoryConcurrentLimit[spt]
+			cur[sealtasks.TTPreCommit2] = w.memoryConcurrentLimit[spt]
 			log.Infof("<%s> update max concurrent for %v = %v [%s]",
 				eschedTag,
 				sealtasks.TTPreCommit1,
@@ -1421,6 +1422,8 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	}
 	w.cleaningTasks = make([]*eWorkerTaskCleaning, 0)
 
+	w.diskConcurrentLimit = make(map[abi.RegisteredSealProof]int)
+	w.memoryConcurrentLimit = make(map[abi.RegisteredSealProof]int)
 	w.maxConcurrent = make(map[abi.RegisteredSealProof]map[sealtasks.TaskType]int)
 
 	for _, spt := range eSealProofType {
@@ -1428,7 +1431,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 
 		var limit1 int = int(w.info.Resources.MemPhysical * 90 / eResourceTable[sealtasks.TTPreCommit1][spt].Memory / 100)
 		var limit2 int = int(w.info.Resources.CPUs * 90 / 100)
-		w.memoryConcurrentLimit = limit1
+		w.memoryConcurrentLimit[spt] = limit1
 		cur[sealtasks.TTPreCommit1] = limit1
 		if limit2 < cur[sealtasks.TTPreCommit1] {
 			cur[sealtasks.TTPreCommit1] = limit2
