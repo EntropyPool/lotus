@@ -145,7 +145,7 @@ type eWorkerTaskCleaning struct {
 
 type eWorkerSyncTaskList struct {
 	mutex sync.Mutex
-	queue []*eWorkerRequest
+	queue []*eWorkerRequest // may better to be priority queue
 }
 
 type eWorkerHandle struct {
@@ -280,6 +280,11 @@ var eschedTaskCleanMap = map[sealtasks.TaskType]*eWorkerCleanerAttr{
 		stage:    eschedWorkerCleanAtFinish,
 		taskType: sealtasks.TTPreCommit2,
 	},
+}
+
+var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
+	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTPreCommit2},
+	sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTPreCommit1},
 }
 
 var eschedTaskSingle = map[sealtasks.TaskType]struct{}{
@@ -528,28 +533,53 @@ func safeRemoveWorkerRequest(slice []*eWorkerRequest, accepter []*eWorkerRequest
 	return slice, accepter
 }
 
+func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType) int {
+	taskCount := 0
+	worker.preparingTasks.mutex.Lock()
+	for _, task := range worker.preparingTasks.queue {
+		if task.taskType == taskType {
+			taskCount += 1
+		}
+	}
+	worker.preparingTasks.mutex.Unlock()
+
+	worker.preparedTasks.mutex.Lock()
+	for _, task := range worker.preparedTasks.queue {
+		if task.taskType == taskType {
+			taskCount += 1
+		}
+	}
+	worker.preparedTasks.mutex.Unlock()
+
+	for _, task := range worker.runningTasks {
+		if task.taskType == taskType {
+			taskCount += 1
+		}
+	}
+
+	for _, task := range worker.cleaningTasks {
+		if task.taskType == taskType {
+			taskCount += 1
+		}
+	}
+
+	for _, pq := range worker.priorityTasksQueue {
+		for _, tq := range pq.typedTasksQueue {
+			for _, task := range tq.tasks {
+				if task.taskType == taskType {
+					taskCount += 1
+				}
+			}
+		}
+	}
+
+	return taskCount
+}
+
 func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, tasksQueue *eWorkerReqTypedList, reqQueue *eRequestQueue) int {
 	log.Debugf("<%s> %d %v tasks waiting for run [%s]", eschedTag, len(reqQueue.reqs[taskType]), taskType, worker.info.Address)
 
 	peekReqs := 0
-
-	taskCount := 0
-	worker.preparingTasks.mutex.Lock()
-	taskCount += len(worker.preparingTasks.queue)
-	worker.preparingTasks.mutex.Unlock()
-
-	worker.preparedTasks.mutex.Lock()
-	taskCount += len(worker.preparedTasks.queue)
-	worker.preparedTasks.mutex.Unlock()
-
-	taskCount += len(worker.runningTasks)
-	taskCount += len(worker.cleaningTasks)
-
-	for _, pq := range worker.priorityTasksQueue {
-		for _, tq := range pq.typedTasksQueue {
-			taskCount += len(tq.tasks)
-		}
-	}
 
 	reqs := reqQueue.reqs[taskType]
 	remainReqs := make([]*eWorkerRequest, 0)
@@ -564,6 +594,13 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		if 0 == worker.diskConcurrentLimit[req.sector.ProofType] {
 			log.Debugf("<%s> worker %s's disk concurrent limit is not set", eschedTag, worker.info.Address)
 			return 0
+		}
+
+		taskCount := worker.typedTaskCount(req.taskType)
+		if taskTypes, ok := eschedTaskLimitMerge[req.taskType]; ok {
+			for _, lTaskType := range taskTypes {
+				taskCount += worker.typedTaskCount(lTaskType)
+			}
 		}
 
 		curConcurrentLimit := worker.maxConcurrent[req.sector.ProofType]
