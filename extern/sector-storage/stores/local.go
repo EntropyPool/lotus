@@ -546,7 +546,7 @@ func (st *Local) Reserve(ctx context.Context, sid storage.SectorRef, ft storifac
 }
 
 func (st *Local) checkPathIntegrity(ctx context.Context, path string, ssize abi.SectorSize) bool {
-	if int(ssize) == -1 || int(ssize) == 0 {
+	if int(ssize) == -1 || int(ssize) == 0 || int(ssize) == 2048 {
 		log.Infof("%s: hack spt from stupid case, just ignore", path)
 		return true
 	}
