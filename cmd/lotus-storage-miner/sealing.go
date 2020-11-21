@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -96,21 +95,16 @@ var sealingWorkersCmd = &cli.Command{
 
 			fmt.Printf("\tGRP: %s\n", color.MagentaString(stat.Info.GroupName))
 			for _, taskType := range stat.Info.SupportTasks {
-				if 0 < len(taskTypes) {
-					taskTypes += " | "
-				}
-				taskTypes += taskType.Short() +
-					"(" +
-					strconv.Itoa(stat.Tasks[taskType].Running) +
-					"/" +
-					strconv.Itoa(stat.Tasks[taskType].Prepared) +
-					"/" +
-					strconv.Itoa(stat.Tasks[taskType].Waiting) +
-					"/" +
-					strconv.Itoa(stat.Tasks[taskType].MaxConcurrent) +
-					")"
+				taskTypes = fmt.Sprintf("%s\n\t     ", taskTypes)
+				maxConcurrent := stat.Tasks[taskType].MaxConcurrent
+				taskTypes = fmt.Sprintf("%s| %4s | %7d | %7d | %8d | %13d |",
+					taskTypes, taskType.Short(),
+					stat.Tasks[taskType].Running, stat.Tasks[taskType].Prepared,
+					stat.Tasks[taskType].Waiting, maxConcurrent)
 			}
-			fmt.Printf("\tTSK: %s\n", taskTypes)
+			fmt.Printf("\t     -------------------------------------------------------\n")
+			fmt.Printf("\tTSK: | Type | Running | Waiting | Prepared | MaxConcurrent |%s\n", taskTypes)
+			fmt.Printf("\t     -------------------------------------------------------\n")
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)

@@ -1592,6 +1592,7 @@ func (sh *edispatcher) watchWorkerClosing(w *eWorkerHandle) {
 		_, err := w.w.Session(ctx)
 		cancel()
 		if nil != err {
+			log.Warnf("drop worker %v by [%v]", w.wid, err)
 			sh.dropWorker <- w.wid
 			return
 		}
