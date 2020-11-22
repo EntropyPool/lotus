@@ -751,9 +751,10 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 		break
 	}
 
-	worker.preparedTasks.queue = append(worker.preparedTasks.queue, worker.preparedTasks.queue[:pos]...)
-	worker.preparedTasks.queue = append(worker.preparedTasks.queue, task)
-	worker.preparedTasks.queue = append(worker.preparedTasks.queue, worker.preparedTasks.queue[pos:]...)
+	queue := append(worker.preparedTasks.queue, worker.preparedTasks.queue[:pos]...)
+	queue = append(queue, task)
+	queue = append(queue, worker.preparedTasks.queue[pos:]...)
+	worker.preparedTasks.queue = queue
 
 	worker.preparedTasks.mutex.Unlock()
 	bucket.schedulerRunner <- struct{}{}
