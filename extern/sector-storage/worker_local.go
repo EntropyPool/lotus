@@ -52,6 +52,9 @@ type LocalWorker struct {
 	acceptTasks map[sealtasks.TaskType]struct{}
 	running     sync.WaitGroup
 
+	Address     string
+	GroupName   string
+
 	session     uuid.UUID
 	testDisable int64
 	closing     chan struct{}
@@ -75,6 +78,8 @@ func newLocalWorker(executor ExecutorFunc, wcfg WorkerConfig, store stores.Store
 		acceptTasks: acceptTasks,
 		executor:    executor,
 		noSwap:      wcfg.NoSwap,
+		Address:     wcfg.Address,
+		GroupName:   wcfg.GroupName,
 
 		session: uuid.New(),
 		closing: make(chan struct{}),
@@ -492,8 +497,16 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 		memSwap = 0
 	}
 
+	var supportTasks = make([]sealtasks.TaskType, 0)
+	for taskType, _ := range l.acceptTasks {
+		supportTasks = append(supportTasks, taskType)
+	}
+
 	return storiface.WorkerInfo{
 		Hostname: hostname,
+		Address: l.Address,
+		GroupName: l.GroupName,
+		SupportTasks: supportTasks,
 		Resources: storiface.WorkerResources{
 			MemPhysical: mem.Total,
 			MemSwap:     memSwap,

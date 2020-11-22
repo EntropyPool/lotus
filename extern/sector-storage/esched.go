@@ -62,7 +62,7 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 	sealtasks.TTCommit2: {
 		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 580 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
 		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 290 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 128 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 16 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
 		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 32 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 32 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
 	},
@@ -145,7 +145,7 @@ type eWorkerTaskCleaning struct {
 
 type eWorkerSyncTaskList struct {
 	mutex sync.Mutex
-	queue []*eWorkerRequest
+	queue []*eWorkerRequest // may better to be priority queue
 }
 
 type eWorkerHandle struct {
@@ -165,8 +165,8 @@ type eWorkerHandle struct {
 	runningTasks          []*eWorkerRequest
 	cleaningTasks         []*eWorkerTaskCleaning
 	maxConcurrent         map[abi.RegisteredSealProof]map[sealtasks.TaskType]int
-	memoryConcurrentLimit int
-	diskConcurrentLimit   int
+	memoryConcurrentLimit map[abi.RegisteredSealProof]int
+	diskConcurrentLimit   map[abi.RegisteredSealProof]int
 }
 
 const eschedTag = "esched"
@@ -183,6 +183,7 @@ type eTaskWorkerBinder struct {
 }
 
 type eWorkerBucket struct {
+	spt                abi.RegisteredSealProof
 	id                 int
 	newWorker          chan *eWorkerHandle
 	workers            []*eWorkerHandle
@@ -282,6 +283,11 @@ var eschedTaskCleanMap = map[sealtasks.TaskType]*eWorkerCleanerAttr{
 	},
 }
 
+var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
+	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTPreCommit2},
+	sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTPreCommit1},
+}
+
 var eschedTaskSingle = map[sealtasks.TaskType]struct{}{
 	sealtasks.TTPreCommit2: struct{}{},
 	sealtasks.TTCommit2:    struct{}{},
@@ -321,7 +327,7 @@ type edispatcher struct {
 
 const eschedWorkerBuckets = 10
 
-var eschedUnassignedWorker = uuid.Must(uuid.Parse("entropy-pool-external-scheduler"))
+var eschedUnassignedWorker = uuid.Must(uuid.Parse("11111111-2222-3333-4444-111111111111"))
 
 func (sh *edispatcher) dumpStorageInfo(store *stores.StorageEntry) {
 	log.Infof("Storage %v", store.Info().ID)
@@ -528,32 +534,53 @@ func safeRemoveWorkerRequest(slice []*eWorkerRequest, accepter []*eWorkerRequest
 	return slice, accepter
 }
 
-func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, tasksQueue *eWorkerReqTypedList, reqQueue *eRequestQueue) int {
-	if 0 == worker.diskConcurrentLimit {
-		return 0
-	}
-
-	log.Debugf("<%s> %d %v tasks waiting for run [%s]", eschedTag, len(reqQueue.reqs[taskType]), taskType, worker.info.Address)
-
-	peekReqs := 0
-
+func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType) int {
 	taskCount := 0
 	worker.preparingTasks.mutex.Lock()
-	taskCount += len(worker.preparingTasks.queue)
+	for _, task := range worker.preparingTasks.queue {
+		if task.taskType == taskType {
+			taskCount += 1
+		}
+	}
 	worker.preparingTasks.mutex.Unlock()
 
 	worker.preparedTasks.mutex.Lock()
-	taskCount += len(worker.preparedTasks.queue)
+	for _, task := range worker.preparedTasks.queue {
+		if task.taskType == taskType {
+			taskCount += 1
+		}
+	}
 	worker.preparedTasks.mutex.Unlock()
 
-	taskCount += len(worker.runningTasks)
-	taskCount += len(worker.cleaningTasks)
+	for _, task := range worker.runningTasks {
+		if task.taskType == taskType {
+			taskCount += 1
+		}
+	}
+
+	for _, task := range worker.cleaningTasks {
+		if task.taskType == taskType {
+			taskCount += 1
+		}
+	}
 
 	for _, pq := range worker.priorityTasksQueue {
 		for _, tq := range pq.typedTasksQueue {
-			taskCount += len(tq.tasks)
+			for _, task := range tq.tasks {
+				if task.taskType == taskType {
+					taskCount += 1
+				}
+			}
 		}
 	}
+
+	return taskCount
+}
+
+func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskType sealtasks.TaskType, tasksQueue *eWorkerReqTypedList, reqQueue *eRequestQueue) int {
+	log.Debugf("<%s> %d %v tasks waiting for run [%s]", eschedTag, len(reqQueue.reqs[taskType]), taskType, worker.info.Address)
+
+	peekReqs := 0
 
 	reqs := reqQueue.reqs[taskType]
 	remainReqs := make([]*eWorkerRequest, 0)
@@ -564,6 +591,19 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 
 		req := reqs[0]
+		bucket.spt = req.sector.ProofType
+
+		if 0 == worker.diskConcurrentLimit[req.sector.ProofType] {
+			log.Debugf("<%s> worker %s's disk concurrent limit is not set", eschedTag, worker.info.Address)
+			return 0
+		}
+
+		taskCount := worker.typedTaskCount(req.taskType)
+		if taskTypes, ok := eschedTaskLimitMerge[req.taskType]; ok {
+			for _, lTaskType := range taskTypes {
+				taskCount += worker.typedTaskCount(lTaskType)
+			}
+		}
 
 		curConcurrentLimit := worker.maxConcurrent[req.sector.ProofType]
 		if curConcurrentLimit[req.taskType] <= taskCount {
@@ -589,7 +629,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		ok, err := req.sel.Ok(rpcCtx, req.taskType, req.sector.ProofType, worker)
 		cancel()
 		if err != nil {
-			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %v",
+			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %w",
 				eschedTag, worker.info.Address, req.sector.ID, req.taskType, err)
 			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs)
 			continue
@@ -698,8 +738,25 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	task.preparedTime = time.Now().UnixNano()
 	task.preparedTimeRaw = time.Now()
 
+	priority := eTaskPriority[task.taskType]
+
 	worker.preparedTasks.mutex.Lock()
-	worker.preparedTasks.queue = append(worker.preparedTasks.queue, task)
+	pos := 0
+	for idx, req := range worker.preparedTasks.queue {
+		lPriority := eTaskPriority[req.taskType]
+		if lPriority <= priority {
+			continue
+		}
+		pos = idx
+		break
+	}
+
+	queue := make([]*eWorkerRequest, 0)
+	queue = append(queue, worker.preparedTasks.queue[:pos]...)
+	queue = append(queue, task)
+	queue = append(queue, worker.preparedTasks.queue[pos:]...)
+	worker.preparedTasks.queue = queue
+
 	worker.preparedTasks.mutex.Unlock()
 	bucket.schedulerRunner <- struct{}{}
 
@@ -1043,14 +1100,14 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 
 	for _, spt := range eSealProofType {
 		var limit int = int(act.stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
-		w.diskConcurrentLimit += limit
+		w.diskConcurrentLimit[spt] += limit
 
 		cur := w.maxConcurrent[spt]
 
-		if w.diskConcurrentLimit < w.memoryConcurrentLimit {
-			cur[sealtasks.TTPreCommit1] = w.diskConcurrentLimit
-			cur[sealtasks.TTAddPiece] = w.diskConcurrentLimit
-			cur[sealtasks.TTPreCommit2] = w.diskConcurrentLimit
+		if w.diskConcurrentLimit[spt] < w.memoryConcurrentLimit[spt] {
+			cur[sealtasks.TTPreCommit1] = w.diskConcurrentLimit[spt]
+			cur[sealtasks.TTAddPiece] = w.diskConcurrentLimit[spt]
+			cur[sealtasks.TTPreCommit2] = w.diskConcurrentLimit[spt]
 
 			log.Infof("<%s> update max concurrent for %v = %v [%s]",
 				eschedTag,
@@ -1058,9 +1115,9 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 				cur[sealtasks.TTPreCommit1],
 				w.info.Address)
 		} else {
-			cur[sealtasks.TTPreCommit1] = w.memoryConcurrentLimit
-			cur[sealtasks.TTAddPiece] = w.memoryConcurrentLimit
-			cur[sealtasks.TTPreCommit2] = w.memoryConcurrentLimit
+			cur[sealtasks.TTPreCommit1] = w.memoryConcurrentLimit[spt]
+			cur[sealtasks.TTAddPiece] = w.memoryConcurrentLimit[spt]
+			cur[sealtasks.TTPreCommit2] = w.memoryConcurrentLimit[spt]
 			log.Infof("<%s> update max concurrent for %v = %v [%s]",
 				eschedTag,
 				sealtasks.TTPreCommit1,
@@ -1134,7 +1191,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				Waiting:       0,
 				Running:       0,
 				Prepared:      0,
-				MaxConcurrent: worker.maxConcurrent[abi.RegisteredSealProof_StackedDrg32GiBV1][taskType],
+				MaxConcurrent: worker.maxConcurrent[bucket.spt][taskType],
 			}
 		}
 		for _, pq := range worker.priorityTasksQueue {
@@ -1299,6 +1356,7 @@ func newExtScheduler() *edispatcher {
 
 	for i := range dispatcher.buckets {
 		dispatcher.buckets[i] = &eWorkerBucket{
+			spt:                abi.RegisteredSealProof_StackedDrg32GiBV1,
 			id:                 i,
 			newWorker:          make(chan *eWorkerHandle),
 			workers:            make([]*eWorkerHandle, 0),
@@ -1421,6 +1479,8 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	}
 	w.cleaningTasks = make([]*eWorkerTaskCleaning, 0)
 
+	w.diskConcurrentLimit = make(map[abi.RegisteredSealProof]int)
+	w.memoryConcurrentLimit = make(map[abi.RegisteredSealProof]int)
 	w.maxConcurrent = make(map[abi.RegisteredSealProof]map[sealtasks.TaskType]int)
 
 	for _, spt := range eSealProofType {
@@ -1428,7 +1488,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 
 		var limit1 int = int(w.info.Resources.MemPhysical * 90 / eResourceTable[sealtasks.TTPreCommit1][spt].Memory / 100)
 		var limit2 int = int(w.info.Resources.CPUs * 90 / 100)
-		w.memoryConcurrentLimit = limit1
+		w.memoryConcurrentLimit[spt] = limit1
 		cur[sealtasks.TTPreCommit1] = limit1
 		if limit2 < cur[sealtasks.TTPreCommit1] {
 			cur[sealtasks.TTPreCommit1] = limit2
@@ -1460,7 +1520,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 
 		cur[sealtasks.TTCommit2] = len(w.info.Resources.GPUs)
 		var limit int = int((w.info.Resources.MemPhysical + w.info.Resources.MemSwap) / eResourceTable[sealtasks.TTCommit2][spt].Memory)
-		if limit < cur[sealtasks.TTCommit2] {
+		if limit < cur[sealtasks.TTCommit2] || 0 == cur[sealtasks.TTCommit2] {
 			cur[sealtasks.TTCommit2] = limit
 		}
 		log.Infof("<%s> max concurrent for %v = %v [%s]",
@@ -1552,10 +1612,11 @@ func (sh *edispatcher) watchWorkerClosing(w *eWorkerHandle) {
 		_, err := w.w.Session(ctx)
 		cancel()
 		if nil != err {
+			log.Warnf("drop worker %v by [%v]", w.wid, err)
 			sh.dropWorker <- w.wid
 			return
 		}
-		time.Sleep(300 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 }
 

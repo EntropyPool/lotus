@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -82,36 +81,30 @@ var sealingWorkersCmd = &cli.Command{
 				disabled = color.RedString(" (disabled)")
 			}
 
-			fmt.Printf("Worker %s, host %s%s\n", stat.id, color.MagentaString(stat.Info.Hostname), disabled)
-
 			addressStr := stat.Info.Address
 			if 0 == len(addressStr) {
 				addressStr = "localhost"
 			}
-			fmt.Printf("Worker %d, host %s/%s[%s]\n", stat.id, color.MagentaString(stat.Info.Hostname),
-				color.MagentaString(addressStr), color.MagentaString(stat.Info.GroupName))
+			fmt.Printf("Worker %s, host %s/%s%s\n", stat.id, color.MagentaString(stat.Info.Hostname),
+				color.MagentaString(addressStr), disabled)
 
 			taskTypes := ""
 			sort.Slice(stat.Info.SupportTasks, func(i, j int) bool {
 				return strings.Compare(string(stat.Info.SupportTasks[i]), string(stat.Info.SupportTasks[j])) < 0
 			})
 
+			fmt.Printf("\tGRP: %s\n", color.MagentaString(stat.Info.GroupName))
 			for _, taskType := range stat.Info.SupportTasks {
-				if 0 < len(taskTypes) {
-					taskTypes += " | "
-				}
-				taskTypes += taskType.Short() +
-					"(" +
-					strconv.Itoa(stat.Tasks[taskType].Running) +
-					"/" +
-					strconv.Itoa(stat.Tasks[taskType].Prepared) +
-					"/" +
-					strconv.Itoa(stat.Tasks[taskType].Waiting) +
-					"/" +
-					strconv.Itoa(stat.Tasks[taskType].MaxConcurrent) +
-					")"
+				taskTypes = fmt.Sprintf("%s\n\t     ", taskTypes)
+				maxConcurrent := stat.Tasks[taskType].MaxConcurrent
+				taskTypes = fmt.Sprintf("%s| %4s | %7d | %7d | %8d | %13d |",
+					taskTypes, taskType.Short(),
+					stat.Tasks[taskType].Running, stat.Tasks[taskType].Prepared,
+					stat.Tasks[taskType].Waiting, maxConcurrent)
 			}
-			fmt.Printf("\tTSK: %s\n", taskTypes)
+			fmt.Printf("\t     -------------------------------------------------------\n")
+			fmt.Printf("\tTSK: | Type | Running | Waiting | Prepared | MaxConcurrent |%s\n", taskTypes)
+			fmt.Printf("\t     -------------------------------------------------------\n")
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)

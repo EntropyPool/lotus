@@ -174,7 +174,7 @@ func NewLocal(ctx context.Context, ls LocalStorage, index SectorIndex, urls []st
 func (st *Local) AddMayFailSector(ctx context.Context, sector abi.SectorID, stage string, address string) {
 	st.localLk.Lock()
 
-	log.Warnf("add may fail sector %v / %s / %s to %s", sector, stage, address, st.failSectorsPath)
+	log.Warnf("add may fail sector %v / %s / %s to %s", sector, stage, address, filepath.Join(st.failSectorsPath, MayFailSectorsFile))
 
 	_, ok := st.MayFailSectors[sector.Number]
 	if !ok {
@@ -210,7 +210,7 @@ func (st *Local) DropMayFailSector(ctx context.Context, sector abi.SectorID) {
 		return
 	}
 
-	log.Warnf("remove may fail sector %v from %s", sector, st.failSectorsPath)
+	log.Warnf("remove may fail sector %v from %s", sector, filepath.Join(st.failSectorsPath, MayFailSectorsFile))
 	delete(st.MayFailSectors, sector.Number)
 
 	if _, ok := st.MayFailSectors[sector.Number]; ok {
@@ -228,7 +228,7 @@ func (st *Local) DropMayFailSector(ctx context.Context, sector abi.SectorID) {
 func (st *Local) AddFailSector(ctx context.Context, sector abi.SectorID, stage string, address string) {
 	st.localLk.Lock()
 
-	log.Warnf("add fail sector %v / %s / %s to %s", sector, stage, address, st.failSectorsPath)
+	log.Warnf("add fail sector %v / %s / %s to %s", sector, stage, address, filepath.Join(st.failSectorsPath, FailSectorsFile))
 	_, ok := st.FailSectors[sector.Number]
 	if !ok {
 		st.FailSectors[sector.Number] = &FailSector{
@@ -258,7 +258,7 @@ func (st *Local) DropFailSector(ctx context.Context, sector abi.SectorID) {
 	st.localLk.Lock()
 	defer st.localLk.Unlock()
 
-	log.Warnf("remove fail sector %v from %s", sector, st.failSectorsPath)
+	log.Warnf("remove fail sector %v from %s", sector, filepath.Join(st.failSectorsPath, FailSectorsFile))
 	_, ok := st.FailSectors[sector.Number]
 	if !ok {
 		return
@@ -349,6 +349,7 @@ func (st *Local) OpenPath(ctx context.Context, p string) error {
 	}
 
 	st.paths[meta.ID] = out
+	st.createFailSectorsFile()
 
 	return nil
 }
@@ -546,7 +547,7 @@ func (st *Local) Reserve(ctx context.Context, sid storage.SectorRef, ft storifac
 }
 
 func (st *Local) checkPathIntegrity(ctx context.Context, path string, ssize abi.SectorSize) bool {
-	if int(ssize) == -1 || int(ssize) == 0 {
+	if int(ssize) == -1 || int(ssize) == 0 || int(ssize) == 2048 {
 		log.Infof("%s: hack spt from stupid case, just ignore", path)
 		return true
 	}

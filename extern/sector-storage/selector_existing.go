@@ -72,7 +72,7 @@ func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt 
 	}
 
 	if 0 == len(best) {
-		return false, xerrors.Errorf("find best storage: %w", err)
+		return false, xerrors.Errorf("cannot find best storage")
 	}
 
 	for _, info := range best {
