@@ -225,10 +225,12 @@ func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
 						Number: failSector,
 					},
 				}
-				err := m.Remove(ctx, sector)
-				if nil != err {
-					log.Errorf("cannot remove worker fail sector %v [%v]", sector.ID, err)
-				}
+				go func() {
+					err := m.Remove(ctx, sector)
+					if nil != err {
+						log.Errorf("cannot remove worker fail sector %v [%v]", sector.ID, err)
+					}
+				}()
 			}
 			m.lsFailSectorsMutex.Unlock()
 			for failSector, failInfo := range m.failSectors {
