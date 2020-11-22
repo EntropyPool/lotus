@@ -629,7 +629,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		ok, err := req.sel.Ok(rpcCtx, req.taskType, req.sector.ProofType, worker)
 		cancel()
 		if err != nil {
-			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %v",
+			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %w",
 				eschedTag, worker.info.Address, req.sector.ID, req.taskType, err)
 			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs)
 			continue

@@ -349,6 +349,7 @@ func (st *Local) OpenPath(ctx context.Context, p string) error {
 	}
 
 	st.paths[meta.ID] = out
+	st.createFailSectorsFile()
 
 	return nil
 }
