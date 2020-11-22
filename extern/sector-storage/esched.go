@@ -751,7 +751,8 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 		break
 	}
 
-	queue := append(worker.preparedTasks.queue, worker.preparedTasks.queue[:pos]...)
+	queue := make([]*eWorkerRequest, 0)
+	queue = append(queue, worker.preparedTasks.queue[:pos]...)
 	queue = append(queue, task)
 	queue = append(queue, worker.preparedTasks.queue[pos:]...)
 	worker.preparedTasks.queue = queue
