@@ -212,8 +212,6 @@ func (m *Manager) failedSector(ctx context.Context, sector abi.SectorID) bool {
 func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
 	timer := time.NewTimer(delay * time.Second)
 	go func() {
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
 		defer timer.Stop()
 		select {
 		case <-timer.C:
@@ -226,6 +224,8 @@ func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
 					},
 				}
 				go func() {
+					ctx, cancel := context.WithCancel(ctx)
+					defer cancel()
 					err := m.Remove(ctx, sector)
 					if nil != err {
 						log.Errorf("cannot remove worker fail sector %v [%v]", sector.ID, err)
