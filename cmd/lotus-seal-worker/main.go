@@ -523,6 +523,8 @@ var runCmd = &cli.Command{
 				}
 
 				log.Errorf("LOTUS-MINER CONNECTION LOST")
+				srv.Shutdown(context.TODO())
+				os.Exit(1)
 
 				redeclareStorage = true
 			}
