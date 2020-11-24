@@ -900,6 +900,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		taskType := task.taskType
 
 		if worker.singleRunning(taskType) {
+			log.Debugf("<%s> single running enable for %v, schedule next type for %s", eschedTag, taskType, worker.info.Address)
 			worker.preparedTasks.mutex.Lock()
 			worker.preparedTasks.queue, remainReqs = safeRemoveWorkerRequest(worker.preparedTasks.queue, remainReqs)
 			worker.preparedTasks.mutex.Unlock()
