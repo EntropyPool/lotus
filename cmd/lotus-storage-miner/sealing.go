@@ -93,7 +93,7 @@ var sealingWorkersCmd = &cli.Command{
 				return strings.Compare(string(stat.Info.SupportTasks[i]), string(stat.Info.SupportTasks[j])) < 0
 			})
 
-			fmt.Printf("\tGRP: %s\n", color.MagentaString(stat.Info.GroupName))
+			fmt.Printf("\tGRP:  %s\n", color.MagentaString(stat.Info.GroupName))
 			for _, taskType := range stat.Info.SupportTasks {
 				taskTypes = fmt.Sprintf("%s\n\t     ", taskTypes)
 				maxConcurrent := stat.Tasks[taskType].MaxConcurrent
@@ -102,9 +102,9 @@ var sealingWorkersCmd = &cli.Command{
 					stat.Tasks[taskType].Running, stat.Tasks[taskType].Prepared,
 					stat.Tasks[taskType].Waiting, maxConcurrent)
 			}
-			fmt.Printf("\t     -------------------------------------------------------\n")
-			fmt.Printf("\tTSK: | Type | Running | Waiting | Prepared | MaxConcurrent |%s\n", taskTypes)
-			fmt.Printf("\t     -------------------------------------------------------\n")
+			fmt.Printf("\t      -------------------------------------------------------\n")
+			fmt.Printf("\tTSK:  | Type | Running | Waiting | Prepared | MaxConcurrent |%s\n", taskTypes)
+			fmt.Printf("\t      -------------------------------------------------------\n")
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)
