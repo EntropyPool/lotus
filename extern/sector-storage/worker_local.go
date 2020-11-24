@@ -52,8 +52,8 @@ type LocalWorker struct {
 	acceptTasks map[sealtasks.TaskType]struct{}
 	running     sync.WaitGroup
 
-	Address     string
-	GroupName   string
+	Address   string
+	GroupName string
 
 	session     uuid.UUID
 	testDisable int64
@@ -502,11 +502,22 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 		supportTasks = append(supportTasks, taskType)
 	}
 
+	bigCache := false
+	env := os.Getenv("LOTUS_CACHE_HDD")
+
+	if 0 < len(env) {
+		hdd := strings.Split(env, ";")
+		if 0 < len(hdd) {
+			bigCache = true
+		}
+	}
+
 	return storiface.WorkerInfo{
-		Hostname: hostname,
-		Address: l.Address,
-		GroupName: l.GroupName,
+		Hostname:     hostname,
+		Address:      l.Address,
+		GroupName:    l.GroupName,
 		SupportTasks: supportTasks,
+		BigCache:     bigCache,
 		Resources: storiface.WorkerResources{
 			MemPhysical: mem.Total,
 			MemSwap:     memSwap,
