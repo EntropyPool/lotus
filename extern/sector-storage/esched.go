@@ -106,6 +106,11 @@ var eTaskPriority = map[sealtasks.TaskType]int{
 }
 
 var eSealProofType = []abi.RegisteredSealProof{
+	abi.RegisteredSealProof_StackedDrg64GiBV1_1,
+	abi.RegisteredSealProof_StackedDrg32GiBV1_1,
+	abi.RegisteredSealProof_StackedDrg512MiBV1_1,
+	abi.RegisteredSealProof_StackedDrg8MiBV1_1,
+	abi.RegisteredSealProof_StackedDrg2KiBV1_1,
 	abi.RegisteredSealProof_StackedDrg64GiBV1,
 	abi.RegisteredSealProof_StackedDrg32GiBV1,
 	abi.RegisteredSealProof_StackedDrg512MiBV1,
@@ -1161,6 +1166,7 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 func (bucket *eWorkerBucket) onTaskClean(clean *eWorkerTaskCleaning) {
 	for _, worker := range bucket.workers {
 		if !worker.info.BigCache && clean.byCacheMove {
+			log.Debugf("<%s> task %v / %v cannot removed by move cache done from worker %s", clean.sector, clean.taskType, worker.info.Address)
 			continue
 		}
 		for idx, task := range worker.cleaningTasks {
@@ -1385,6 +1391,14 @@ func newExtScheduler() *edispatcher {
 	eResourceTable[sealtasks.TTFinalize] = eResourceTable[sealtasks.TTCommit1]
 	eResourceTable[sealtasks.TTFetch] = eResourceTable[sealtasks.TTCommit1]
 	eResourceTable[sealtasks.TTReadUnsealed] = eResourceTable[sealtasks.TTCommit1]
+
+	for _, m := range eResourceTable {
+		m[abi.RegisteredSealProof_StackedDrg2KiBV1_1] = m[abi.RegisteredSealProof_StackedDrg2KiBV1]
+		m[abi.RegisteredSealProof_StackedDrg8MiBV1_1] = m[abi.RegisteredSealProof_StackedDrg8MiBV1]
+		m[abi.RegisteredSealProof_StackedDrg512MiBV1_1] = m[abi.RegisteredSealProof_StackedDrg512MiBV1]
+		m[abi.RegisteredSealProof_StackedDrg32GiBV1_1] = m[abi.RegisteredSealProof_StackedDrg32GiBV1]
+		m[abi.RegisteredSealProof_StackedDrg64GiBV1_1] = m[abi.RegisteredSealProof_StackedDrg64GiBV1]
+	}
 
 	return dispatcher
 }
