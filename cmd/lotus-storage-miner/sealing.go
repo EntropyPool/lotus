@@ -103,7 +103,7 @@ var sealingWorkersCmd = &cli.Command{
 					stat.Tasks[taskType].Waiting, maxConcurrent)
 			}
 			fmt.Printf("\t      -------------------------------------------------------\n")
-			fmt.Printf("\tTSK:  | Type | Running | Waiting | Prepared | MaxConcurrent |%s\n", taskTypes)
+			fmt.Printf("\tTSK:  | Type | Running | Prepared | Waiting | MaxConcurrent |%s\n", taskTypes)
 			fmt.Printf("\t      -------------------------------------------------------\n")
 
 			var barCols = uint64(64)
