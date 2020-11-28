@@ -97,13 +97,13 @@ var sealingWorkersCmd = &cli.Command{
 			for _, taskType := range stat.Info.SupportTasks {
 				taskTypes = fmt.Sprintf("%s\n\t      ", taskTypes)
 				maxConcurrent := stat.Tasks[taskType].MaxConcurrent
-				taskTypes = fmt.Sprintf("%s| %4s | %7d | %7d | %8d | %13d |",
+				taskTypes = fmt.Sprintf("%s| %4s | %7d | %8d | %7d | %13d |",
 					taskTypes, taskType.Short(),
 					stat.Tasks[taskType].Running, stat.Tasks[taskType].Prepared,
 					stat.Tasks[taskType].Waiting, maxConcurrent)
 			}
 			fmt.Printf("\t      -------------------------------------------------------\n")
-			fmt.Printf("\tTSK:  | Type | Running | Waiting | Prepared | MaxConcurrent |%s\n", taskTypes)
+			fmt.Printf("\tTSK:  | Type | Running | Prepared | Waiting | MaxConcurrent |%s\n", taskTypes)
 			fmt.Printf("\t      -------------------------------------------------------\n")
 
 			var barCols = uint64(64)
