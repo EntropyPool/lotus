@@ -1111,19 +1111,22 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 		cur := w.maxConcurrent[spt]
 
 		if w.diskConcurrentLimit[spt] < w.memoryConcurrentLimit[spt] {
-			cur[sealtasks.TTPreCommit1] = w.diskConcurrentLimit[spt]
-			cur[sealtasks.TTAddPiece] = w.diskConcurrentLimit[spt]
-			cur[sealtasks.TTPreCommit2] = w.diskConcurrentLimit[spt]
-
+			if w.diskConcurrentLimit[spt] < cur[sealtasks.TTPreCommit1] {
+				cur[sealtasks.TTPreCommit1] = w.diskConcurrentLimit[spt]
+				cur[sealtasks.TTAddPiece] = w.diskConcurrentLimit[spt]
+				cur[sealtasks.TTPreCommit2] = w.diskConcurrentLimit[spt]
+			}
 			log.Infof("<%s> update max concurrent for %v = %v [%s]",
 				eschedTag,
 				sealtasks.TTPreCommit1,
 				cur[sealtasks.TTPreCommit1],
 				w.info.Address)
 		} else {
-			cur[sealtasks.TTPreCommit1] = w.memoryConcurrentLimit[spt]
-			cur[sealtasks.TTAddPiece] = w.memoryConcurrentLimit[spt]
-			cur[sealtasks.TTPreCommit2] = w.memoryConcurrentLimit[spt]
+			if w.memoryConcurrentLimit[spt] < cur[sealtasks.TTPreCommit1] {
+				cur[sealtasks.TTPreCommit1] = w.memoryConcurrentLimit[spt]
+				cur[sealtasks.TTAddPiece] = w.memoryConcurrentLimit[spt]
+				cur[sealtasks.TTPreCommit2] = w.memoryConcurrentLimit[spt]
+			}
 			log.Infof("<%s> update max concurrent for %v = %v [%s]",
 				eschedTag,
 				sealtasks.TTPreCommit1,
