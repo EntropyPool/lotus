@@ -539,7 +539,7 @@ func safeRemoveWorkerRequest(slice []*eWorkerRequest, accepter []*eWorkerRequest
 	return slice, accepter
 }
 
-func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType) int {
+func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType, includeCleaning bool) int {
 	taskCount := 0
 	worker.preparingTasks.mutex.Lock()
 	for _, task := range worker.preparingTasks.queue {
@@ -563,9 +563,11 @@ func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType) int {
 		}
 	}
 
-	for _, task := range worker.cleaningTasks {
-		if task.taskType == taskType {
-			taskCount += 1
+	if includeCleaning {
+		for _, task := range worker.cleaningTasks {
+			if task.taskType == taskType {
+				taskCount += 1
+			}
 		}
 	}
 
@@ -603,10 +605,10 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			return 0
 		}
 
-		taskCount := worker.typedTaskCount(req.taskType)
+		taskCount := worker.typedTaskCount(req.taskType, true)
 		if taskTypes, ok := eschedTaskLimitMerge[req.taskType]; ok {
 			for _, lTaskType := range taskTypes {
-				taskCount += worker.typedTaskCount(lTaskType)
+				taskCount += worker.typedTaskCount(lTaskType, false)
 			}
 		}
 
@@ -1521,10 +1523,11 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 			cur[sealtasks.TTPreCommit1],
 			w.info.Address)
 
-		cur[sealtasks.TTPreCommit2] = 4 * len(w.info.Resources.GPUs)
-		if cur[sealtasks.TTPreCommit2] < 8 {
-			cur[sealtasks.TTPreCommit2] = 8
-		}
+		cur[sealtasks.TTPreCommit2] = cur[sealtasks.TTPreCommit1]
+		// cur[sealtasks.TTPreCommit2] = 4 * len(w.info.Resources.GPUs)
+		// if cur[sealtasks.TTPreCommit2] < 8 {
+		// cur[sealtasks.TTPreCommit2] = 8
+		// }
 		log.Infof("<%s> max concurrent for %v = %v [%s]",
 			eschedTag,
 			sealtasks.TTPreCommit2,
