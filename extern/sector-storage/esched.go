@@ -153,6 +153,9 @@ type eWorkerSyncTaskList struct {
 	queue []*eWorkerRequest // may better to be priority queue
 }
 
+const eschedWorkerStateWaving = "waving"
+const eschedWorkerStateReady = "ready"
+
 type eWorkerHandle struct {
 	wid                   uuid.UUID
 	wIndex                uint64
@@ -164,6 +167,7 @@ type eWorkerHandle struct {
 	gpuUsed               int
 	diskUsed              int64
 	diskTotal             int64
+	state                 string
 	priorityTasksQueue    []*eWorkerReqPriorityList
 	preparedTasks         *eWorkerSyncTaskList
 	preparingTasks        *eWorkerSyncTaskList
@@ -1138,6 +1142,8 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 
 		w.maxConcurrent[spt] = cur
 	}
+
+	w.state = eschedWorkerStateReady
 }
 
 func (bucket *eWorkerBucket) onDropStore(w *eWorkerHandle, act eStoreAction) {
@@ -1197,6 +1203,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			GpuUsed: 0 < worker.gpuUsed,
 			CpuUse:  uint64(worker.cpuUsed),
 			Tasks:   make(map[sealtasks.TaskType]storiface.TasksInfo),
+			State:   worker.state,
 		}
 		for _, taskType := range worker.info.SupportTasks {
 			out[worker.wid].Tasks[taskType] = storiface.TasksInfo{
@@ -1552,6 +1559,8 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 
 		w.maxConcurrent[spt] = cur
 	}
+
+	w.state = eschedWorkerStateWaving
 
 	workerBucketIndex := w.wIndex % eschedWorkerBuckets
 	bucket := sh.buckets[workerBucketIndex]

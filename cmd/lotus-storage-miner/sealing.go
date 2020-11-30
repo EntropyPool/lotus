@@ -85,7 +85,8 @@ var sealingWorkersCmd = &cli.Command{
 			if 0 == len(addressStr) {
 				addressStr = "localhost"
 			}
-			fmt.Printf("Worker %s, host %s/%s%s\n", stat.id, color.MagentaString(stat.Info.Hostname),
+			fmt.Printf("Worker %s (%s), host %s/%s%s\n", stat.id, stat.State,
+				color.MagentaString(stat.Info.Hostname),
 				color.MagentaString(addressStr), disabled)
 
 			taskTypes := ""

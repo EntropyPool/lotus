@@ -51,6 +51,7 @@ type WorkerStats struct {
 	GpuUsed    bool   // nolint
 	CpuUse     uint64 // nolint
 	Tasks      map[sealtasks.TaskType]TasksInfo
+	State      string
 }
 
 const (
