@@ -9,6 +9,7 @@ import (
 	"github.com/filecoin-project/specs-storage/storage"
 	"github.com/google/uuid"
 	"golang.org/x/xerrors"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -337,6 +338,7 @@ type edispatcher struct {
 const eschedWorkerBuckets = 10
 
 var eschedUnassignedWorker = uuid.Must(uuid.Parse("11111111-2222-3333-4444-111111111111"))
+var eschedDebug = false
 
 func (sh *edispatcher) dumpStorageInfo(store *stores.StorageEntry) {
 	log.Infof("Storage %v", store.Info().ID)
@@ -354,11 +356,13 @@ func (sh *edispatcher) dumpStorageInfo(store *stores.StorageEntry) {
 }
 
 func (sh *edispatcher) storeNotify(id stores.ID, stat eStoreStat, act string) {
-	sh.storageNotifier <- eStoreAction{
-		id:   id,
-		act:  act,
-		stat: stat,
-	}
+	go func() {
+		sh.storageNotifier <- eStoreAction{
+			id:   id,
+			act:  act,
+			stat: stat,
+		}
+	}()
 }
 
 func (sh *edispatcher) isLocalStorage(id stores.ID) bool {
@@ -482,8 +486,8 @@ func (sh *edispatcher) storageWatcher() {
 
 func (sh *edispatcher) SetStorage(storage *EStorage) {
 	sh.storage = storage
-	sh.storage.storeIDs = make(map[stores.ID]eStoreStat)
-	sh.storage.workerNotifier = make(chan eWorkerAction)
+	sh.storage.storeIDs = make(map[stores.ID]eStoreStat, 1000)
+	sh.storage.workerNotifier = make(chan eWorkerAction, 1000)
 
 	value := reflect.ValueOf(sh.storage.index)
 	sh.storage.indexInstance = value.Interface().(*stores.Index)
@@ -678,7 +682,7 @@ func (bucket *eWorkerBucket) removeObseleteTask() {
 		remainReqs := make([]*eWorkerRequest, 0)
 		for _, req := range reqs {
 			if req.deadTime <= now {
-				req.ret <- workerResponse{err: xerrors.Errorf("cannot find any good worker")}
+				go func() { req.ret <- workerResponse{err: xerrors.Errorf("cannot find any good worker")} }()
 				continue
 			}
 			remainReqs = append(remainReqs, req)
@@ -737,11 +741,13 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 
 	if nil != err {
 		log.Errorf("<%s> cannot prepare typed task %v/%v/%s[%v]", eschedTag, task.sector.ID, task.taskType, worker.info.Address, err)
-		bucket.reqFinisher <- &eRequestFinisher{
-			req:  task,
-			resp: &workerResponse{err: err},
-			wid:  worker.wid,
-		}
+		go func() {
+			bucket.reqFinisher <- &eRequestFinisher{
+				req:  task,
+				resp: &workerResponse{err: err},
+				wid:  worker.wid,
+			}
+		}()
 		return
 	}
 
@@ -769,7 +775,7 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	worker.preparedTasks.queue = queue
 
 	worker.preparedTasks.mutex.Unlock()
-	bucket.schedulerRunner <- struct{}{}
+	go func() { bucket.schedulerRunner <- struct{}{} }()
 
 	canBindTaskType := false
 	nextTaskType, ok := eschedTaskBindWorker[task.taskType]
@@ -823,10 +829,12 @@ func (bucket *eWorkerBucket) doCleanTask(task *eWorkerRequest, stage string) {
 		return
 	}
 
-	bucket.taskCleaner <- &eWorkerTaskCleaning{
-		sector:   task.sector,
-		taskType: clean.taskType,
-	}
+	go func() {
+		bucket.taskCleaner <- &eWorkerTaskCleaning{
+			sector:   task.sector,
+			taskType: clean.taskType,
+		}
+	}()
 }
 
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
@@ -840,13 +848,15 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		(task.endTime-task.preparedTime)/1000000.0,
 		worker.info.Address, err)
 
-	bucket.reqFinisher <- &eRequestFinisher{
-		req:  task,
-		resp: &workerResponse{err: err},
-		wid:  worker.wid,
-	}
+	go func() {
+		bucket.reqFinisher <- &eRequestFinisher{
+			req:  task,
+			resp: &workerResponse{err: err},
+			wid:  worker.wid,
+		}
+	}()
 
-	if nil == err {
+	if !eschedDebug || nil == err {
 		bucket.doCleanTask(task, eschedWorkerCleanAtFinish)
 	}
 }
@@ -1009,8 +1019,6 @@ func (bucket *eWorkerBucket) findBucketWorkerIndexByID(wid uuid.UUID) int {
 func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 	w := bucket.findBucketWorkerByID(finisher.wid)
 	if nil != w {
-		w.releaseRequestResource(finisher.req, eschedResStageRuntime)
-
 		idx := -1
 		for id, task := range w.runningTasks {
 			if task.id == finisher.req.id {
@@ -1021,11 +1029,19 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 
 		if 0 <= idx {
 			w.runningTasks = append(w.runningTasks[:idx], w.runningTasks[idx+1:]...)
-			bucket.addCleaningTask(finisher.wid, finisher.req)
+			w.releaseRequestResource(finisher.req, eschedResStageRuntime)
+
+			if !eschedDebug || finisher.resp.err == nil {
+				bucket.addCleaningTask(finisher.wid, finisher.req)
+			}
 		}
 	}
 
-	go func() { finisher.req.ret <- *finisher.resp }()
+	if !eschedDebug || finisher.resp.err == nil {
+		go func() { finisher.req.ret <- *finisher.resp }()
+	} else {
+		go func() { bucket.retRequest <- finisher.req }()
+	}
 	go func() { bucket.notifier <- struct{}{} }()
 	go func() { bucket.schedulerWaker <- struct{}{} }()
 	go func() { bucket.schedulerRunner <- struct{}{} }()
@@ -1059,18 +1075,20 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 			worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil)
 			worker.preparedTasks.mutex.Unlock()
 
-			bucket.reqFinisher <- &eRequestFinisher{
-				req:  task,
-				resp: &workerResponse{err: xerrors.Errorf("worker dropped unexpected")},
-				wid:  worker.wid,
-			}
+			go func() {
+				bucket.reqFinisher <- &eRequestFinisher{
+					req:  task,
+					resp: &workerResponse{err: xerrors.Errorf("worker dropped unexpected")},
+					wid:  worker.wid,
+				}
+			}()
 		}
 	}
 
 	index := bucket.findBucketWorkerIndexByID(wid)
 	if 0 <= index {
 		bucket.workers = append(bucket.workers[:index], bucket.workers[index+1:]...)
-		bucket.droppedWorker <- worker.info.Address
+		go func() { bucket.droppedWorker <- worker.info.Address }()
 		log.Infof("<%s> drop worker %v from bucket %d", eschedTag, worker.info.Address, bucket.id)
 	}
 }
@@ -1213,6 +1231,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				MaxConcurrent: worker.maxConcurrent[bucket.spt][taskType],
 			}
 		}
+		log.Infof("<%s> collect status of priority tasks for %s", eschedTag, worker.info.Address)
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
 				info := out[worker.wid].Tasks[taskType]
@@ -1220,6 +1239,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				out[worker.wid].Tasks[taskType] = info
 			}
 		}
+		log.Infof("<%s> collect status of preparing tasks for %s", eschedTag, worker.info.Address)
 		worker.preparingTasks.mutex.Lock()
 		for _, task := range worker.preparingTasks.queue {
 			info := out[worker.wid].Tasks[task.taskType]
@@ -1227,6 +1247,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			out[worker.wid].Tasks[task.taskType] = info
 		}
 		worker.preparingTasks.mutex.Unlock()
+		log.Infof("<%s> collect status of prepared tasks for %s", eschedTag, worker.info.Address)
 		worker.preparedTasks.mutex.Lock()
 		for _, task := range worker.preparedTasks.queue {
 			info := out[worker.wid].Tasks[task.taskType]
@@ -1234,6 +1255,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			out[worker.wid].Tasks[task.taskType] = info
 		}
 		worker.preparedTasks.mutex.Unlock()
+		log.Infof("<%s> collect status of running tasks for %s", eschedTag, worker.info.Address)
 		for _, task := range worker.runningTasks {
 			info := out[worker.wid].Tasks[task.taskType]
 			info.Running += 1
@@ -1241,6 +1263,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 		}
 	}
 
+	log.Infof("<%s> collected all worker status", eschedTag)
 	go func() { param.resp <- out }()
 }
 
@@ -1248,6 +1271,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 	out := map[uuid.UUID][]storiface.WorkerJob{}
 
 	for _, worker := range bucket.workers {
+		log.Infof("<%s> collect running tasks for %s", eschedTag, worker.info.Address)
 		for _, task := range worker.runningTasks {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
 				ID:     storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
@@ -1258,6 +1282,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		}
 
 		wi := 0
+		log.Infof("<%s> collect prepared tasks for %s", eschedTag, worker.info.Address)
 		worker.preparedTasks.mutex.Lock()
 		for _, task := range worker.preparedTasks.queue {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
@@ -1271,6 +1296,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		}
 		worker.preparedTasks.mutex.Unlock()
 
+		log.Infof("<%s> collect preparing tasks for %s", eschedTag, worker.info.Address)
 		worker.preparingTasks.mutex.Lock()
 		for _, task := range worker.preparingTasks.queue {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
@@ -1285,6 +1311,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		worker.preparingTasks.mutex.Unlock()
 
 		wi += 100000
+		log.Infof("<%s> collect priority tasks for %s", eschedTag, worker.info.Address)
 		for _, pq := range worker.priorityTasksQueue {
 			for _, tq := range pq.typedTasksQueue {
 				for _, task := range tq.tasks {
@@ -1398,6 +1425,12 @@ func newExtScheduler() *edispatcher {
 			ticker:             time.NewTicker(3 * 60 * time.Second),
 		}
 		go dispatcher.buckets[i].scheduler()
+	}
+
+	debugEnable := os.Getenv("MINER_ESCHED_DEBUG")
+	if "true" == debugEnable {
+		log.Infof("<%s> enable debug for miner esched", eschedTag)
+		eschedDebug = true
 	}
 
 	eResourceTable[sealtasks.TTUnseal] = eResourceTable[sealtasks.TTPreCommit1]
@@ -1760,14 +1793,14 @@ func (sh *edispatcher) Info(ctx context.Context) (interface{}, error) {
 }
 
 func (sh *edispatcher) Close(ctx context.Context) error {
-	sh.closing <- struct{}{}
+	go func() { sh.closing <- struct{}{} }()
 	return nil
 }
 
 func (sh *edispatcher) NewWorker(w *eWorkerHandle) {
 	w.wIndex = sh.nextWorker
 	sh.nextWorker += 1
-	sh.newWorker <- w
+	go func() { sh.newWorker <- w }()
 }
 
 func (sh *edispatcher) WorkerStats() map[uuid.UUID]storiface.WorkerStats {
@@ -1776,9 +1809,11 @@ func (sh *edispatcher) WorkerStats() map[uuid.UUID]storiface.WorkerStats {
 		command: eschedWorkerStats,
 		resp:    resp,
 	}
-	sh.workerStatsQuery <- param
+	log.Infof("<%s> try to get worker status", eschedTag)
+	go func() { sh.workerStatsQuery <- param }()
 	select {
 	case out := <-resp:
+		log.Infof("<%s> got worker status", eschedTag)
 		return out
 	}
 }
@@ -1789,9 +1824,11 @@ func (sh *edispatcher) WorkerJobs() map[uuid.UUID][]storiface.WorkerJob {
 		command: eschedWorkerJobs,
 		resp:    resp,
 	}
-	sh.workerJobsQuery <- param
+	log.Infof("<%s> try to get worker jobs", eschedTag)
+	go func() { sh.workerJobsQuery <- param }()
 	select {
 	case out := <-resp:
+		log.Infof("<%s> got worker jobs", eschedTag)
 		return out
 	}
 }
@@ -1815,5 +1852,9 @@ func (sh *edispatcher) doCleanTask(sector storage.SectorRef, taskType sealtasks.
 
 func (sh *edispatcher) MoveCacheDone(sector storage.SectorRef) {
 	log.Infof("<%s> try to clean %v's PC2 by move cache done", eschedTag, sector)
-	sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish)
+	go sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish)
+}
+
+func (sh *edispatcher) Debugging() bool {
+	return eschedDebug
 }
