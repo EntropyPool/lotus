@@ -9,6 +9,7 @@ import (
 	"github.com/filecoin-project/specs-storage/storage"
 	"github.com/google/uuid"
 	"golang.org/x/xerrors"
+	"math/rand"
 	"os"
 	"reflect"
 	"strings"
@@ -337,6 +338,7 @@ type edispatcher struct {
 }
 
 const eschedWorkerBuckets = 10
+
 var eschedUnassignedWorker = uuid.Must(uuid.Parse("11111111-2222-3333-4444-111111111111"))
 var eschedDebug = false
 
@@ -1661,7 +1663,9 @@ func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
 	sh.reqQueue.mutex.Unlock()
 
 	go func() {
-		for _, bucket := range sh.buckets {
+		start := rand.Intn(len(sh.buckets))
+		for i := 0; i < len(sh.buckets); i++ {
+			bucket := sh.buckets[(i+start)%len(sh.buckets)]
 			bucket.notifier <- struct{}{}
 		}
 	}()
