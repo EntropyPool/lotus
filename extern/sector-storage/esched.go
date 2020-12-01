@@ -32,15 +32,15 @@ const eGiB = 1024 * eMiB
 var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResources{
 	sealtasks.TTAddPiece: {
 		/* Here we keep the same constraint as PC1 */
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 128 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 64 * eGiB * 11 / 10, DisableSwap: true},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 64 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 32 * eGiB * 11 / 10, DisableSwap: true},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 128 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 64 * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 64 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: 32 * eGiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: 512 * eMiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eKiB * 11 / 10},
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 8 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 8 * eMiB * 11 / 10},
 	},
 	sealtasks.TTPreCommit1: {
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 128 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: (64*14 + 1) * eGiB},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 64 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: (32*14 + 1) * eGiB},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 128 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: (64*14 + 1) * eGiB, DisableSwap: true},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 64 * eGiB, CPUs: 1, GPUs: 0, DiskSpace: (32*14 + 1) * eGiB, DisableSwap: true},
 		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 1, GPUs: 0, DiskSpace: (512*14 + 512) * eMiB},
 		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: (2*14 + 2) * eKiB},
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: (8*14 + 8) * eMiB},
@@ -168,6 +168,8 @@ type eWorkerHandle struct {
 	gpuUsed               int
 	diskUsed              int64
 	diskTotal             int64
+	hugePageBytes         uint64
+	hugePageUsed          uint64
 	state                 string
 	priorityTasksQueue    []*eWorkerReqPriorityList
 	preparedTasks         *eWorkerSyncTaskList
@@ -293,14 +295,13 @@ var eschedTaskCleanMap = map[sealtasks.TaskType]*eWorkerCleanerAttr{
 	},
 }
 
+var eschedTaskHugePage = map[sealtasks.TaskType]bool{
+	sealtasks.TTPreCommit1: true,
+}
+
 var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
 	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTPreCommit2},
 	sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTPreCommit1},
-}
-
-var eschedTaskSingle = map[sealtasks.TaskType]struct{}{
-	sealtasks.TTPreCommit2: struct{}{},
-	sealtasks.TTCommit2:    struct{}{},
 }
 
 const eschedWorkerJobs = "worker_jobs"
@@ -517,7 +518,12 @@ func (w *eWorkerHandle) acquireRequestResource(req *eWorkerRequest, resType stri
 	case eschedResStageRuntime:
 		w.cpuUsed += req.cpuUsed
 		w.gpuUsed += req.gpuUsed
-		w.memUsed += req.memUsed
+		hugepage, ok := eschedTaskHugePage[req.taskType]
+		if ok && hugepage && 0 < w.hugePageBytes {
+			w.hugePageUsed += req.memUsed
+		} else {
+			w.memUsed += req.memUsed
+		}
 	}
 }
 
@@ -528,7 +534,12 @@ func (w *eWorkerHandle) releaseRequestResource(req *eWorkerRequest, resType stri
 	case eschedResStageRuntime:
 		w.cpuUsed -= req.cpuUsed
 		w.gpuUsed -= req.gpuUsed
-		w.memUsed -= req.memUsed
+		hugepage, ok := eschedTaskHugePage[req.taskType]
+		if ok && hugepage && 0 < w.hugePageBytes {
+			w.hugePageUsed -= req.memUsed
+		} else {
+			w.memUsed -= req.memUsed
+		}
 	}
 }
 
@@ -884,18 +895,6 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 	}
 }
 
-func (w *eWorkerHandle) singleRunning(taskType sealtasks.TaskType) bool {
-	if _, ok := eschedTaskSingle[taskType]; !ok {
-		return false
-	}
-	for _, task := range w.runningTasks {
-		if task.taskType == taskType {
-			return true
-		}
-	}
-	return false
-}
-
 func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 	idleCpus := int(worker.info.Resources.CPUs * 4 / 100)
 	if 0 == idleCpus {
@@ -914,15 +913,6 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		worker.preparedTasks.mutex.Unlock()
 
 		taskType := task.taskType
-
-		if worker.singleRunning(taskType) {
-			log.Debugf("<%s> single running enable for %v, schedule next type for %s", eschedTag, taskType, worker.info.Address)
-			worker.preparedTasks.mutex.Lock()
-			worker.preparedTasks.queue, remainReqs = safeRemoveWorkerRequest(worker.preparedTasks.queue, remainReqs)
-			worker.preparedTasks.mutex.Unlock()
-			continue
-		}
-
 		res := findTaskResource(task.sector.ProofType, taskType)
 
 		needCPUs := res.CPUs
@@ -944,15 +934,25 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 				int(worker.info.Resources.CPUs)-idleCpus, taskType)
 			break
 		}
-		var extraMem uint64 = 0
-		if !res.DisableSwap {
-			extraMem = worker.info.Resources.MemSwap
-		}
-		if worker.info.Resources.MemPhysical+extraMem < res.Memory+worker.memUsed {
-			log.Debugf("<%s> need %d = %d + %d memory but only %d available [%v]",
-				eschedTag, res.Memory+worker.memUsed, res.Memory, worker.memUsed,
-				worker.info.Resources.MemPhysical+extraMem, taskType)
-			break
+		hugepage, ok := eschedTaskHugePage[taskType]
+		if ok && hugepage && 0 < worker.hugePageBytes {
+			if worker.hugePageBytes < res.Memory+worker.hugePageUsed {
+				log.Debugf("<%s> need %d = %d + %d hugepage but only %d available [%v]",
+					eschedTag, res.Memory+worker.hugePageUsed, res.Memory, worker.hugePageUsed,
+					worker.hugePageBytes, taskType)
+				break
+			}
+		} else {
+			var extraMem uint64 = 0
+			if !res.DisableSwap {
+				extraMem = worker.info.Resources.MemSwap
+			}
+			if worker.info.Resources.MemPhysical+extraMem < res.Memory+worker.memUsed {
+				log.Debugf("<%s> need %d = %d + %d memory but only %d available [%v]",
+					eschedTag, res.Memory+worker.memUsed, res.Memory, worker.memUsed,
+					worker.info.Resources.MemPhysical+extraMem, taskType)
+				break
+			}
 		}
 
 		task.cpuUsed = needCPUs
@@ -1134,29 +1134,21 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 
 		cur := w.maxConcurrent[spt]
 
-		if w.diskConcurrentLimit[spt] < w.memoryConcurrentLimit[spt] {
+		if w.supportTaskType(sealtasks.TTPreCommit1) {
 			if w.diskConcurrentLimit[spt] < cur[sealtasks.TTPreCommit1] {
 				cur[sealtasks.TTPreCommit1] = w.diskConcurrentLimit[spt]
 				cur[sealtasks.TTAddPiece] = w.diskConcurrentLimit[spt]
-				cur[sealtasks.TTPreCommit2] = w.diskConcurrentLimit[spt]
 			}
-			log.Infof("<%s> update max concurrent for %v = %v [%s]",
-				eschedTag,
-				sealtasks.TTPreCommit1,
-				cur[sealtasks.TTPreCommit1],
-				w.info.Address)
-		} else {
-			if w.memoryConcurrentLimit[spt] < cur[sealtasks.TTPreCommit1] {
-				cur[sealtasks.TTPreCommit1] = w.memoryConcurrentLimit[spt]
-				cur[sealtasks.TTAddPiece] = w.memoryConcurrentLimit[spt]
-				cur[sealtasks.TTPreCommit2] = w.memoryConcurrentLimit[spt]
-			}
-			log.Infof("<%s> update max concurrent for %v = %v [%s]",
-				eschedTag,
-				sealtasks.TTPreCommit1,
-				cur[sealtasks.TTPreCommit1],
-				w.info.Address)
 		}
+		if w.supportTaskType(sealtasks.TTPreCommit2) {
+			cur[sealtasks.TTPreCommit2] = w.diskConcurrentLimit[spt]
+		}
+
+		log.Infof("<%s> update max concurrent for %v = %v [%s]",
+			eschedTag,
+			sealtasks.TTPreCommit1,
+			cur[sealtasks.TTPreCommit1],
+			w.info.Address)
 
 		w.maxConcurrent[spt] = cur
 	}
@@ -1508,6 +1500,15 @@ func getTaskPriority(taskType sealtasks.TaskType) int {
 	return priority
 }
 
+func (w *eWorkerHandle) supportTaskType(taskType sealtasks.TaskType) bool {
+	for _, lTaskType := range w.info.SupportTasks {
+		if taskType == lTaskType {
+			return true
+		}
+	}
+	return false
+}
+
 func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	w.patchLocalhost()
 
@@ -1543,52 +1544,86 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	w.memoryConcurrentLimit = make(map[abi.RegisteredSealProof]int)
 	w.maxConcurrent = make(map[abi.RegisteredSealProof]map[sealtasks.TaskType]int)
 
+	w.hugePageBytes = uint64(w.info.Resources.HugePages) * w.info.Resources.HugePageSize
+	w.memUsed = w.hugePageBytes
+
 	for _, spt := range eSealProofType {
 		cur := make(map[sealtasks.TaskType]int)
 
-		var limit1 int = int(w.info.Resources.MemPhysical * 90 / eResourceTable[sealtasks.TTPreCommit1][spt].Memory / 100)
-		var limit2 int = int(w.info.Resources.CPUs * 90 / 100)
-		w.memoryConcurrentLimit[spt] = limit1
-		cur[sealtasks.TTPreCommit1] = limit1
-		if limit2 < cur[sealtasks.TTPreCommit1] {
-			cur[sealtasks.TTPreCommit1] = limit2
+		if w.supportTaskType(sealtasks.TTPreCommit1) {
+			pc1Memory := w.info.Resources.MemPhysical
+			if 0 < w.hugePageBytes {
+				pc1Memory = w.hugePageBytes
+			} else {
+				if w.supportTaskType(sealtasks.TTPreCommit2) {
+					pc1Memory -= eResourceTable[sealtasks.TTPreCommit2][spt].Memory
+				}
+				if w.supportTaskType(sealtasks.TTCommit2) {
+					pc1Memory -= eResourceTable[sealtasks.TTCommit1][spt].Memory
+				}
+			}
+
+			var limit1 int = int(pc1Memory / eResourceTable[sealtasks.TTPreCommit1][spt].Memory)
+			var limit2 int = int(w.info.Resources.CPUs * 90 / 100)
+
+			w.memoryConcurrentLimit[spt] = limit1
+			cur[sealtasks.TTPreCommit1] = limit1
+			if limit2 < cur[sealtasks.TTPreCommit1] {
+				cur[sealtasks.TTPreCommit1] = limit2
+			}
+
+			cur[sealtasks.TTAddPiece] = cur[sealtasks.TTPreCommit1]
+			cur[sealtasks.TTUnseal] = cur[sealtasks.TTPreCommit1]
+
+			log.Infof("<%s> max concurrent for %v = %v [%s]",
+				eschedTag,
+				sealtasks.TTPreCommit1,
+				cur[sealtasks.TTPreCommit1],
+				w.info.Address)
 		}
 
-		cur[sealtasks.TTAddPiece] = cur[sealtasks.TTPreCommit1]
-		cur[sealtasks.TTUnseal] = cur[sealtasks.TTPreCommit1]
-
-		log.Infof("<%s> max concurrent for %v = %v [%s]",
-			eschedTag,
-			sealtasks.TTPreCommit1,
-			cur[sealtasks.TTPreCommit1],
-			w.info.Address)
-
-		cur[sealtasks.TTPreCommit2] = cur[sealtasks.TTPreCommit1]
-		// cur[sealtasks.TTPreCommit2] = 4 * len(w.info.Resources.GPUs)
-		// if cur[sealtasks.TTPreCommit2] < 8 {
-		// cur[sealtasks.TTPreCommit2] = 8
-		// }
-		log.Infof("<%s> max concurrent for %v = %v [%s]",
-			eschedTag,
-			sealtasks.TTPreCommit2,
-			cur[sealtasks.TTPreCommit2],
-			w.info.Address)
-
-		cur[sealtasks.TTCommit1] = 1280
-		cur[sealtasks.TTFinalize] = 1280
-		cur[sealtasks.TTFetch] = 1280
-		cur[sealtasks.TTReadUnsealed] = 1280
-
-		cur[sealtasks.TTCommit2] = len(w.info.Resources.GPUs)
-		var limit int = int((w.info.Resources.MemPhysical + w.info.Resources.MemSwap) / eResourceTable[sealtasks.TTCommit2][spt].Memory)
-		if limit < cur[sealtasks.TTCommit2] || 0 == cur[sealtasks.TTCommit2] {
-			cur[sealtasks.TTCommit2] = limit
+		if w.supportTaskType(sealtasks.TTPreCommit2) {
+			if w.supportTaskType(sealtasks.TTPreCommit1) {
+				cur[sealtasks.TTPreCommit2] = cur[sealtasks.TTPreCommit1]
+			} else {
+				cur[sealtasks.TTPreCommit2] = 1280
+			}
+			log.Infof("<%s> max concurrent for %v = %v [%s]",
+				eschedTag,
+				sealtasks.TTPreCommit2,
+				cur[sealtasks.TTPreCommit2],
+				w.info.Address)
 		}
-		log.Infof("<%s> max concurrent for %v = %v [%s]",
-			eschedTag,
-			sealtasks.TTCommit2,
-			cur[sealtasks.TTCommit2],
-			w.info.Address)
+
+		if w.supportTaskType(sealtasks.TTCommit1) {
+			cur[sealtasks.TTCommit1] = 1280
+		}
+		if w.supportTaskType(sealtasks.TTFinalize) {
+			cur[sealtasks.TTFinalize] = 1280
+		}
+		if w.supportTaskType(sealtasks.TTFetch) {
+			cur[sealtasks.TTFetch] = 1280
+		}
+		if w.supportTaskType(sealtasks.TTReadUnsealed) {
+			cur[sealtasks.TTReadUnsealed] = 1280
+		}
+
+		if w.supportTaskType(sealtasks.TTCommit2) {
+			cur[sealtasks.TTCommit2] = len(w.info.Resources.GPUs)
+
+			c2Memory := w.info.Resources.MemPhysical + w.info.Resources.MemSwap
+			c2Memory -= w.memUsed
+
+			var limit int = int(c2Memory / eResourceTable[sealtasks.TTCommit2][spt].Memory)
+			if limit < cur[sealtasks.TTCommit2] || 0 == cur[sealtasks.TTCommit2] {
+				cur[sealtasks.TTCommit2] = limit
+			}
+			log.Infof("<%s> max concurrent for %v = %v [%s]",
+				eschedTag,
+				sealtasks.TTCommit2,
+				cur[sealtasks.TTCommit2],
+				w.info.Address)
+		}
 
 		w.maxConcurrent[spt] = cur
 	}
