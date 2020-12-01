@@ -337,7 +337,6 @@ type edispatcher struct {
 }
 
 const eschedWorkerBuckets = 10
-
 var eschedUnassignedWorker = uuid.Must(uuid.Parse("11111111-2222-3333-4444-111111111111"))
 var eschedDebug = false
 
@@ -1320,6 +1319,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		}
 	}
 
+	log.Debugf("<%s> collect jobs done", eschedTag)
 	go func() { param.resp <- out }()
 }
 
@@ -1368,7 +1368,7 @@ func (bucket *eWorkerBucket) addNewWorker(w *eWorkerHandle) {
 			return
 		}
 	}
-	bucket.newWorker <- w
+	go func() { bucket.newWorker <- w }()
 }
 
 func newExtScheduler() *edispatcher {
@@ -1665,6 +1665,7 @@ func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
 			bucket.notifier <- struct{}{}
 		}
 	}()
+	log.Infof("<%s> added new request %v/%v to request queue", eschedTag, req.sector, req.taskType)
 }
 
 func (sh *edispatcher) dropWorkerFromBucket(wid uuid.UUID) {
@@ -1674,6 +1675,7 @@ func (sh *edispatcher) dropWorkerFromBucket(wid uuid.UUID) {
 			bucket.dropWorker <- wid
 		}
 	}()
+	log.Infof("<%s> dropped worker %v from all bucket", eschedTag, wid)
 }
 
 func (sh *edispatcher) onStorageNotify(act eStoreAction) {
