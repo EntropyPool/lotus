@@ -26,13 +26,13 @@ type WorkerInfo struct {
 }
 
 type WorkerResources struct {
-	MemPhysical uint64
-	MemSwap     uint64
-
-	MemReserved uint64 // Used by system / other processes
-
-	CPUs uint64 // Logical cores
-	GPUs []string
+	MemPhysical  uint64
+	MemSwap      uint64
+	HugePages    int
+	HugePageSize uint64
+	MemReserved  uint64 // Used by system / other processes
+	CPUs         uint64 // Logical cores
+	GPUs         []string
 }
 
 type TasksInfo struct {

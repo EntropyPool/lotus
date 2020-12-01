@@ -3,11 +3,11 @@ package sectorstorage
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"io"
 	"os"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/go-cid"
+	"github.com/shirou/gopsutil/v3/cpu"
 	"golang.org/x/xerrors"
 
 	ffi "github.com/filecoin-project/filecoin-ffi"
@@ -513,6 +514,11 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 		}
 	}
 
+	cpus, err := cpu.Counts(false)
+	if nil != err {
+		cpus = runtime.NumCPU()
+	}
+
 	return storiface.WorkerInfo{
 		Hostname:     hostname,
 		Address:      l.Address,
@@ -520,11 +526,13 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 		SupportTasks: supportTasks,
 		BigCache:     bigCache,
 		Resources: storiface.WorkerResources{
-			MemPhysical: mem.Total,
-			MemSwap:     memSwap,
-			MemReserved: mem.VirtualUsed + mem.Total - mem.Available, // TODO: sub this process
-			CPUs:        uint64(runtime.NumCPU()),
-			GPUs:        gpus,
+			MemPhysical:  mem.Total,
+			MemSwap:      memSwap,
+			MemReserved:  mem.VirtualUsed + mem.Total - mem.Available, // TODO: sub this process
+			CPUs:         uint64(cpus),
+			GPUs:         gpus,
+			HugePageSize: mem.Metrics["Hugepagesize"],
+			HugePages:    int(mem.Metrics["HugePages_Total"]),
 		},
 	}, nil
 }
