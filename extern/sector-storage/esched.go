@@ -1231,7 +1231,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				MaxConcurrent: worker.maxConcurrent[bucket.spt][taskType],
 			}
 		}
-		log.Infof("<%s> collect status of priority tasks for %s", eschedTag, worker.info.Address)
+		log.Debugf("<%s> collect status of priority tasks for %s", eschedTag, worker.info.Address)
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
 				info := out[worker.wid].Tasks[taskType]
@@ -1239,7 +1239,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				out[worker.wid].Tasks[taskType] = info
 			}
 		}
-		log.Infof("<%s> collect status of preparing tasks for %s", eschedTag, worker.info.Address)
+		log.Debugf("<%s> collect status of preparing tasks for %s", eschedTag, worker.info.Address)
 		worker.preparingTasks.mutex.Lock()
 		for _, task := range worker.preparingTasks.queue {
 			info := out[worker.wid].Tasks[task.taskType]
@@ -1247,7 +1247,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			out[worker.wid].Tasks[task.taskType] = info
 		}
 		worker.preparingTasks.mutex.Unlock()
-		log.Infof("<%s> collect status of prepared tasks for %s", eschedTag, worker.info.Address)
+		log.Debugf("<%s> collect status of prepared tasks for %s", eschedTag, worker.info.Address)
 		worker.preparedTasks.mutex.Lock()
 		for _, task := range worker.preparedTasks.queue {
 			info := out[worker.wid].Tasks[task.taskType]
@@ -1255,7 +1255,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			out[worker.wid].Tasks[task.taskType] = info
 		}
 		worker.preparedTasks.mutex.Unlock()
-		log.Infof("<%s> collect status of running tasks for %s", eschedTag, worker.info.Address)
+		log.Debugf("<%s> collect status of running tasks for %s", eschedTag, worker.info.Address)
 		for _, task := range worker.runningTasks {
 			info := out[worker.wid].Tasks[task.taskType]
 			info.Running += 1
@@ -1263,7 +1263,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 		}
 	}
 
-	log.Infof("<%s> collected all worker status", eschedTag)
+	log.Debugf("<%s> collected all worker status", eschedTag)
 	go func() { param.resp <- out }()
 }
 
@@ -1271,7 +1271,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 	out := map[uuid.UUID][]storiface.WorkerJob{}
 
 	for _, worker := range bucket.workers {
-		log.Infof("<%s> collect running tasks for %s", eschedTag, worker.info.Address)
+		log.Debugf("<%s> collect running tasks for %s", eschedTag, worker.info.Address)
 		for _, task := range worker.runningTasks {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
 				ID:     storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
@@ -1282,7 +1282,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		}
 
 		wi := 0
-		log.Infof("<%s> collect prepared tasks for %s", eschedTag, worker.info.Address)
+		log.Debugf("<%s> collect prepared tasks for %s", eschedTag, worker.info.Address)
 		worker.preparedTasks.mutex.Lock()
 		for _, task := range worker.preparedTasks.queue {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
@@ -1296,7 +1296,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		}
 		worker.preparedTasks.mutex.Unlock()
 
-		log.Infof("<%s> collect preparing tasks for %s", eschedTag, worker.info.Address)
+		log.Debugf("<%s> collect preparing tasks for %s", eschedTag, worker.info.Address)
 		worker.preparingTasks.mutex.Lock()
 		for _, task := range worker.preparingTasks.queue {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
@@ -1311,7 +1311,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		worker.preparingTasks.mutex.Unlock()
 
 		wi += 100000
-		log.Infof("<%s> collect priority tasks for %s", eschedTag, worker.info.Address)
+		log.Debugf("<%s> collect priority tasks for %s", eschedTag, worker.info.Address)
 		for _, pq := range worker.priorityTasksQueue {
 			for _, tq := range pq.typedTasksQueue {
 				for _, task := range tq.tasks {
