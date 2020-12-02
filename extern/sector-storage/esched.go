@@ -309,6 +309,7 @@ var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
 }
 
 var eschedTaskStableRunning = map[sealtasks.TaskType]struct{}{
+	sealtasks.TTAddPiece:   struct{}{},
 	sealtasks.TTPreCommit1: struct{}{},
 	sealtasks.TTPreCommit2: struct{}{},
 }
