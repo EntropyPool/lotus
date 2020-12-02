@@ -544,18 +544,28 @@ func (w *eWorkerHandle) releaseRequestResource(req *eWorkerRequest, resType stri
 	}
 }
 
-func safeRemoveWorkerRequest(slice []*eWorkerRequest, accepter []*eWorkerRequest) ([]*eWorkerRequest, []*eWorkerRequest) {
+func safeRemoveWorkerRequest(slice []*eWorkerRequest, accepter []*eWorkerRequest, req *eWorkerRequest) ([]*eWorkerRequest, []*eWorkerRequest) {
 	if 0 == len(slice) {
 		return slice, accepter
 	}
 	if nil != accepter {
-		accepter = append(accepter, slice[0])
+		accepter = append(accepter, req)
 	}
-	if 1 == len(slice) {
-		slice = slice[0:0]
-	} else {
-		slice = slice[1:]
+
+	pos := -1
+	for i, task := range slice {
+		if req == task {
+			pos = i
+			break
+		}
 	}
+
+	if 0 <= pos {
+		queue := make([]*eWorkerRequest, 0)
+		queue = append(queue, slice[0:pos]...)
+		queue = append(queue, slice[pos+1:]...)
+	}
+
 	return slice, accepter
 }
 
@@ -637,7 +647,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			log.Debugf("<%s> worker %s's %v tasks queue is full %d / %d",
 				eschedTag, worker.info.Address, req.taskType,
 				taskCount, curConcurrentLimit[req.taskType])
-			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs)
+			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
 			continue
 		}
 
@@ -646,7 +656,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		if ok {
 			if address != worker.info.Address {
 				bucket.taskWorkerBinder.mutex.Unlock()
-				reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs)
+				reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
 				continue
 			}
 		}
@@ -658,14 +668,14 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		if err != nil {
 			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %w",
 				eschedTag, worker.info.Address, req.sector.ID, req.taskType, err)
-			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs)
+			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
 			continue
 		}
 
 		if !ok {
 			log.Debugf("<%s> worker %s is not OK for task %v/%v",
 				eschedTag, worker.info.Address, req.sector.ID, req.taskType)
-			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs)
+			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
 			continue
 		}
 
@@ -674,7 +684,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		worker.acquireRequestResource(req, eschedResStagePrepare)
 
 		peekReqs += 1
-		reqs, _ = safeRemoveWorkerRequest(reqs, nil)
+		reqs, _ = safeRemoveWorkerRequest(reqs, nil, req)
 		tasksQueue.tasks = append(tasksQueue.tasks, req)
 		taskCount += 1
 	}
@@ -884,7 +894,7 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 				}
 				task := tasks[0]
 				go bucket.prepareTypedTask(worker, task)
-				tasks, _ = safeRemoveWorkerRequest(tasks, nil)
+				tasks, _ = safeRemoveWorkerRequest(tasks, nil, task)
 				scheduled = true
 			}
 			typedTasks.tasks = tasks
@@ -964,7 +974,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		worker.acquireRequestResource(task, eschedResStageRuntime)
 
 		worker.preparedTasks.mutex.Lock()
-		worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil)
+		worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
 		worker.preparedTasks.mutex.Unlock()
 
 		worker.runningTasks = append(worker.runningTasks, task)
@@ -1060,7 +1070,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 					}
 					task := tq.tasks[0]
 					log.Infof("<%s> return typed task %v/%v to reqQueue", task.sector.ID, task.taskType)
-					tq.tasks, _ = safeRemoveWorkerRequest(tq.tasks, nil)
+					tq.tasks, _ = safeRemoveWorkerRequest(tq.tasks, nil, task)
 					go func() { bucket.retRequest <- task }()
 				}
 			}
@@ -1073,7 +1083,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 			}
 			task := worker.preparedTasks.queue[0]
 			log.Infof("<%s> finish task %v/%v", eschedTag, task.sector.ID, task.taskType)
-			worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil)
+			worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
 			worker.preparedTasks.mutex.Unlock()
 
 			go func() {
