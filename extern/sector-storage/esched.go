@@ -230,11 +230,14 @@ const eschedDrop = "drop"
 const eschedResStagePrepare = "prepare"
 const eschedResStageRuntime = "runtime"
 
+const eschedLeastWaveKeep = 60 * 10 * time.Second
+
 type eStoreStat struct {
 	space    int64
 	URLs     []string
 	local    bool
 	notified bool
+	LastWave int64
 }
 
 type eWorkerAction struct {
@@ -305,6 +308,11 @@ var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
 	sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTPreCommit1},
 }
 
+var eschedTaskStableRunning = map[sealtasks.TaskType]struct{}{
+	sealtasks.TTPreCommit1: struct{}{},
+	sealtasks.TTPreCommit2: struct{}{},
+}
+
 const eschedWorkerJobs = "worker_jobs"
 const eschedWorkerStats = "worker_stats"
 
@@ -359,6 +367,7 @@ func (sh *edispatcher) dumpStorageInfo(store *stores.StorageEntry) {
 
 func (sh *edispatcher) storeNotify(id stores.ID, stat eStoreStat, act string) {
 	go func() {
+		time.Sleep(eschedLeastWaveKeep)
 		sh.storageNotifier <- eStoreAction{
 			id:   id,
 			act:  act,
@@ -554,7 +563,7 @@ func safeRemoveWorkerRequest(slice []*eWorkerRequest, accepter []*eWorkerRequest
 
 	pos := -1
 	for i, task := range slice {
-		if req == task {
+		if req == task && req.taskType == task.taskType && req.sector.ID.Number == task.sector.ID.Number {
 			pos = i
 			break
 		}
@@ -630,9 +639,11 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 
 		req := reqs[0]
 		bucket.spt = req.sector.ProofType
+		_, ok := eschedTaskStableRunning[taskType]
 
-		if 0 == worker.diskConcurrentLimit[req.sector.ProofType] {
-			log.Debugf("<%s> worker %s's disk concurrent limit is not set", eschedTag, worker.info.Address)
+		if 0 == worker.diskConcurrentLimit[req.sector.ProofType] && ok {
+			log.Debugf("<%s> worker %s's disk concurrent limit is not set, %v need to run at stable state",
+				eschedTag, worker.info.Address, taskType)
 			return 0
 		}
 
@@ -657,6 +668,8 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		if ok {
 			if address != worker.info.Address {
 				bucket.taskWorkerBinder.mutex.Unlock()
+				log.Debugf("<%s> task %v/%v is binded to %s, skip by %s",
+					eschedTag, req.sector.ID, req.taskType, address, worker.info.Address)
 				reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
 				continue
 			}
@@ -687,6 +700,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		peekReqs += 1
 		reqs, _ = safeRemoveWorkerRequest(reqs, nil, req)
 		tasksQueue.tasks = append(tasksQueue.tasks, req)
+		log.Infof("<%s> worker %s peek task %v/%v", worker.info.Address, req.sector.ID, req.taskType)
 		taskCount += 1
 	}
 
@@ -705,7 +719,9 @@ func (bucket *eWorkerBucket) removeObseleteTask() {
 		remainReqs := make([]*eWorkerRequest, 0)
 		for _, req := range reqs {
 			if req.deadTime <= now {
-				go func() { req.ret <- workerResponse{err: xerrors.Errorf("cannot find any good worker")} }()
+				go func(req *eWorkerRequest) {
+					req.ret <- workerResponse{err: xerrors.Errorf("cannot find any good worker")}
+				}(req)
 				continue
 			}
 			remainReqs = append(remainReqs, req)
@@ -1087,13 +1103,48 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 			worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
 			worker.preparedTasks.mutex.Unlock()
 
-			go func() {
+			go func(worker *eWorkerHandle, task *eWorkerRequest) {
 				bucket.reqFinisher <- &eRequestFinisher{
 					req:  task,
 					resp: &workerResponse{err: xerrors.Errorf("worker dropped unexpected")},
 					wid:  worker.wid,
 				}
-			}()
+			}(worker, task)
+		}
+		for {
+			worker.preparingTasks.mutex.Lock()
+			if 0 == len(worker.preparingTasks.queue) {
+				worker.preparingTasks.mutex.Unlock()
+				break
+			}
+			task := worker.preparingTasks.queue[0]
+			log.Infof("<%s> finish preparing task %v/%v", eschedTag, task.sector.ID, task.taskType)
+			worker.preparingTasks.queue, _ = safeRemoveWorkerRequest(worker.preparingTasks.queue, nil, task)
+			worker.preparingTasks.mutex.Unlock()
+
+			go func(worker *eWorkerHandle, task *eWorkerRequest) {
+				bucket.reqFinisher <- &eRequestFinisher{
+					req:  task,
+					resp: &workerResponse{err: xerrors.Errorf("worker dropped unexpected")},
+					wid:  worker.wid,
+				}
+			}(worker, task)
+		}
+		for {
+			if 0 == len(worker.runningTasks) {
+				break
+			}
+			task := worker.runningTasks[0]
+			log.Infof("<%s> finish running task %v/%v", eschedTag, task.sector.ID, task.taskType)
+			worker.runningTasks, _ = safeRemoveWorkerRequest(worker.runningTasks, nil, task)
+
+			go func(worker *eWorkerHandle, task *eWorkerRequest) {
+				bucket.reqFinisher <- &eRequestFinisher{
+					req:  task,
+					resp: &workerResponse{err: xerrors.Errorf("worker dropped unexpected")},
+					wid:  worker.wid,
+				}
+			}(worker, task)
 		}
 	}
 
@@ -1103,6 +1154,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 		go func() { bucket.droppedWorker <- worker.info.Address }()
 		log.Infof("<%s> drop worker %v from bucket %d", eschedTag, worker.info.Address, bucket.id)
 	}
+	log.Infof("<%s> dropped worker %v from bucket %d", eschedTag, wid, bucket.id)
 }
 
 func (bucket *eWorkerBucket) appendNewWorker(w *eWorkerHandle) {
@@ -1185,6 +1237,7 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 		}
 	}
 	if nil == worker {
+		log.Errorf("<%s> cannot find worker by URL %s", eschedTag, act.stat.URLs)
 		return
 	}
 	log.Infof("<%s> %v store %v [bucket %d / worker %s]", eschedTag, act.act, act.id, bucket.id, worker.info.Address)
@@ -1647,7 +1700,8 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	bucket := sh.buckets[workerBucketIndex]
 
 	bucket.addNewWorker(w)
-	sh.storage.workerNotifier <- eWorkerAction{act: eschedAdd, address: w.info.Address}
+	go func() { sh.storage.workerNotifier <- eWorkerAction{act: eschedAdd, address: w.info.Address} }()
+	log.Infof("<%s> added new worker %s to bucket", eschedTag, w.info.Address)
 }
 
 func (req *eWorkerRequest) dumpWorkerRequest() {
@@ -1673,33 +1727,27 @@ func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
 	sh.reqQueue.reqs[req.taskType] = append(sh.reqQueue.reqs[req.taskType], req)
 	sh.reqQueue.mutex.Unlock()
 
-	go func() {
-		start := rand.Intn(len(sh.buckets))
-		for i := 0; i < len(sh.buckets); i++ {
-			bucket := sh.buckets[(i+start)%len(sh.buckets)]
-			bucket.notifier <- struct{}{}
-		}
-	}()
+	start := rand.Intn(len(sh.buckets))
+	for i := 0; i < len(sh.buckets); i++ {
+		bucket := sh.buckets[(i+start)%len(sh.buckets)]
+		go func(bucket *eWorkerBucket) { bucket.notifier <- struct{}{} }(bucket)
+	}
 	log.Infof("<%s> added new request %v/%v to request queue", eschedTag, req.sector, req.taskType)
 }
 
 func (sh *edispatcher) dropWorkerFromBucket(wid uuid.UUID) {
 	log.Infof("<%s> drop worker %v from all bucket", eschedTag, wid)
-	go func() {
-		for _, bucket := range sh.buckets {
-			bucket.dropWorker <- wid
-		}
-	}()
+	for _, bucket := range sh.buckets {
+		go func(bucket *eWorkerBucket) { bucket.dropWorker <- wid }(bucket)
+	}
 	log.Infof("<%s> dropped worker %v from all bucket", eschedTag, wid)
 }
 
 func (sh *edispatcher) onStorageNotify(act eStoreAction) {
 	log.Infof("<%s> %v store %v", eschedTag, act.act, act.id)
-	go func() {
-		for _, bucket := range sh.buckets {
-			bucket.storageNotifier <- act
-		}
-	}()
+	for _, bucket := range sh.buckets {
+		go func(bucket *eWorkerBucket) { bucket.storageNotifier <- act }(bucket)
+	}
 }
 
 func (sh *edispatcher) onWorkerDropped(address string) {
@@ -1710,15 +1758,13 @@ func (sh *edispatcher) onWorkerDropped(address string) {
 		}
 	}
 	sh.taskWorkerBinder.mutex.Unlock()
-	sh.storage.workerNotifier <- eWorkerAction{act: eschedDrop, address: address}
+	go func() { sh.storage.workerNotifier <- eWorkerAction{act: eschedDrop, address: address} }()
 }
 
 func (sh *edispatcher) closeAllBuckets() {
-	go func() {
-		for _, bucket := range sh.buckets {
-			bucket.closing <- struct{}{}
-		}
-	}()
+	for _, bucket := range sh.buckets {
+		go func(bucket *eWorkerBucket) { bucket.closing <- struct{}{} }(bucket)
+	}
 }
 
 func (sh *edispatcher) watchWorkerClosing(w *eWorkerHandle) {
@@ -1741,11 +1787,9 @@ func (sh *edispatcher) addWorkerClosingWatcher(w *eWorkerHandle) {
 }
 
 func (sh *edispatcher) onTaskClean(clean *eWorkerTaskCleaning) {
-	go func() {
-		for _, bucket := range sh.buckets {
-			bucket.taskCleanerHandler <- clean
-		}
-	}()
+	for _, bucket := range sh.buckets {
+		go func(bucket *eWorkerBucket) { bucket.taskCleanerHandler <- clean }(bucket)
+	}
 }
 
 func (sh *edispatcher) onWorkerJobsQuery(param *eWorkerJobsParam) {
@@ -1757,7 +1801,7 @@ func (sh *edispatcher) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				command: param.command,
 				resp:    resp,
 			}
-			bucket.workerJobsQuery <- queryParam
+			go func(bucket *eWorkerBucket) { bucket.workerJobsQuery <- queryParam }(bucket)
 			select {
 			case r := <-resp:
 				for k, v := range r {
@@ -1796,7 +1840,7 @@ func (sh *edispatcher) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				command: param.command,
 				resp:    resp,
 			}
-			bucket.workerStatsQuery <- queryParam
+			go func(bucket *eWorkerBucket) { bucket.workerStatsQuery <- queryParam }(bucket)
 			select {
 			case r := <-resp:
 				for k, v := range r {
