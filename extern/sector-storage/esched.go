@@ -564,6 +564,7 @@ func safeRemoveWorkerRequest(slice []*eWorkerRequest, accepter []*eWorkerRequest
 		queue := make([]*eWorkerRequest, 0)
 		queue = append(queue, slice[0:pos]...)
 		queue = append(queue, slice[pos+1:]...)
+		slice = queue
 	}
 
 	return slice, accepter
