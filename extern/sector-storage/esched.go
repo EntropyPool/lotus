@@ -643,7 +643,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		peekReqs += 1
 		reqs, _ = safeRemoveWorkerRequest(reqs, nil, req)
 		tasksQueue.tasks = append(tasksQueue.tasks, req)
-		log.Infof("<%s> worker %s peek task %v/%v", worker.info.Address, req.sector.ID, req.taskType)
+		log.Infof("<%s> worker %s peek task %v/%v", esched, worker.info.Address, req.sector.ID, req.taskType)
 		taskCount += 1
 	}
 
