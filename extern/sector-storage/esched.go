@@ -1134,7 +1134,7 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 			limit += int(stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
 		}
 
-		worker.diskConcurrentLimit[spt] += limit
+		worker.diskConcurrentLimit[spt] = limit
 		cur := worker.maxConcurrent[spt]
 
 		if worker.supportTaskType(sealtasks.TTPreCommit1) {
