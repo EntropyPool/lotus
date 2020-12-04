@@ -480,8 +480,8 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit1, selector, m.schedFetch(sector, storiface.FTUnsealed, storiface.PathSealing, storiface.AcquireMove), func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
 		err := m.startWork(ctx, w, wk)(w.SealPreCommit1(ctx, sector, ticket, pieces))
+		m.localStore.DropMayFailSector(ctx, sector.ID)
 		if err != nil {
-			m.localStore.DropMayFailSector(ctx, sector.ID)
 			end := time.Now().Unix()
 			sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, err)
 			m.lsFailSectorsMutex.Lock()
@@ -492,10 +492,17 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, 
 		}
 
 		waitRes()
-		m.localStore.DropMayFailSector(ctx, sector.ID)
 		end := time.Now().Unix()
-		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, waitErr)
-		return waitErr
+		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, waitErr)
+		if waitErr != nil {
+			m.lsFailSectorsMutex.Lock()
+			m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
+			m.lsFailSectorsMutex.Unlock()
+			m.removeFailSectors(context.TODO(), 0)
+			return waitErr
+		}
+
+		return nil
 	})
 
 	if err != nil {
@@ -562,8 +569,8 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector storage.SectorRef, 
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit2, selector, m.schedFetch(sector, storiface.FTCache|storiface.FTSealed, storiface.PathSealing, storiface.AcquireMove), func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
 		err := m.startWork(ctx, w, wk)(w.SealPreCommit2(ctx, sector, phase1Out))
+		m.localStore.DropMayFailSector(ctx, sector.ID)
 		if err != nil {
-			m.localStore.DropMayFailSector(ctx, sector.ID)
 			end := time.Now().Unix()
 			sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, err)
 			m.lsFailSectorsMutex.Lock()
@@ -574,10 +581,17 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector storage.SectorRef, 
 		}
 
 		waitRes()
-		m.localStore.DropMayFailSector(ctx, sector.ID)
 		end := time.Now().Unix()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, waitErr)
-		return waitErr
+		if waitErr != nil {
+			m.lsFailSectorsMutex.Lock()
+			m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
+			m.lsFailSectorsMutex.Unlock()
+			m.removeFailSectors(context.TODO(), 0)
+			return waitErr
+		}
+
+		return nil
 	})
 
 	if err != nil {
@@ -628,13 +642,15 @@ func (m *Manager) SealCommit1(ctx context.Context, sector storage.SectorRef, tic
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTCommit1, selector, m.schedFetch(sector, storiface.FTCache|storiface.FTSealed, storiface.PathSealing, storiface.AcquireMove), func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
 		err := m.startWork(ctx, w, wk)(w.SealCommit1(ctx, sector, ticket, seed, pieces, cids))
-		end := time.Now().Unix()
-		sealingElapseStatistic(ctx, w, sealtasks.TTCommit1, sector, start, end, err)
 		if err != nil {
+			end := time.Now().Unix()
+			sealingElapseStatistic(ctx, w, sealtasks.TTCommit1, sector, start, end, err)
 			return err
 		}
 
 		waitRes()
+		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTCommit1, sector, start, end, waitErr)
 		return nil
 	})
 	if err != nil {
@@ -673,13 +689,15 @@ func (m *Manager) SealCommit2(ctx context.Context, sector storage.SectorRef, pha
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTCommit2, selector, schedNop, func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
 		err := m.startWork(ctx, w, wk)(w.SealCommit2(ctx, sector, phase1Out))
-		end := time.Now().Unix()
-		sealingElapseStatistic(ctx, w, sealtasks.TTCommit2, sector, start, end, err)
 		if err != nil {
+			end := time.Now().Unix()
+			sealingElapseStatistic(ctx, w, sealtasks.TTCommit2, sector, start, end, err)
 			return err
 		}
 
 		waitRes()
+		end := time.Now().Unix()
+		sealingElapseStatistic(ctx, w, sealtasks.TTCommit2, sector, start, end, waitErr)
 		return nil
 	})
 
