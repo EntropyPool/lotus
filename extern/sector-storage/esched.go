@@ -158,6 +158,13 @@ type eWorkerSyncTaskList struct {
 const eschedWorkerStateWaving = "waving"
 const eschedWorkerStateReady = "ready"
 
+type eStoreStat struct {
+	space int64
+	URLs  []string
+	local bool
+	id    stores.ID
+}
+
 type eWorkerHandle struct {
 	wid                   uuid.UUID
 	wIndex                uint64
@@ -168,7 +175,6 @@ type eWorkerHandle struct {
 	cpuUsed               int
 	gpuUsed               int
 	diskUsed              int64
-	diskTotal             int64
 	hugePageBytes         uint64
 	hugePageUsed          uint64
 	state                 string
@@ -180,6 +186,7 @@ type eWorkerHandle struct {
 	maxConcurrent         map[abi.RegisteredSealProof]map[sealtasks.TaskType]int
 	memoryConcurrentLimit map[abi.RegisteredSealProof]int
 	diskConcurrentLimit   map[abi.RegisteredSealProof]int
+	storeIDs              map[stores.ID]eStoreStat
 }
 
 const eschedTag = "esched"
@@ -209,7 +216,6 @@ type eWorkerBucket struct {
 	retRequest         chan *eWorkerRequest
 	storageNotifier    chan eStoreAction
 	droppedWorker      chan string
-	storeIDs           map[stores.ID]struct{}
 	taskWorkerBinder   *eTaskWorkerBinder
 	taskCleaner        chan *eWorkerTaskCleaning
 	taskCleanerHandler chan *eWorkerTaskCleaning
@@ -232,14 +238,6 @@ const eschedResStageRuntime = "runtime"
 
 const eschedLeastWaveKeep = 60 * 10 * time.Second
 
-type eStoreStat struct {
-	space    int64
-	URLs     []string
-	local    bool
-	notified bool
-	LastWave int64
-}
-
 type eWorkerAction struct {
 	address string
 	act     string
@@ -252,8 +250,6 @@ type EStorage struct {
 	ctx                 context.Context
 	index               stores.SectorIndex
 	indexInstance       *stores.Index
-	storeIDs            map[stores.ID]eStoreStat
-	workerNotifier      chan eWorkerAction
 	ls                  *stores.Local
 	storageChecker      *time.Ticker
 	lastCheckerInterval time.Duration
@@ -368,7 +364,6 @@ func (sh *edispatcher) dumpStorageInfo(store *stores.StorageEntry) {
 
 func (sh *edispatcher) storeNotify(id stores.ID, stat eStoreStat, act string) {
 	go func() {
-		time.Sleep(eschedLeastWaveKeep)
 		sh.storageNotifier <- eStoreAction{
 			id:   id,
 			act:  act,
@@ -401,75 +396,26 @@ func (sh *edispatcher) checkStorageUpdate() {
 		if timeout.Before(now) {
 			log.Errorf("<%s> delete storage %v to watcher [lost heartbeat]", eschedTag, id)
 			sh.dumpStorageInfo(stor)
-			sh.storeNotify(id, sh.storage.storeIDs[id], eschedDrop)
-			delete(sh.storage.storeIDs, id)
+			sh.storeNotify(id, eStoreStat{}, eschedDrop)
 			continue
 		}
 
 		if err := stor.HeartbeatError(); nil != err {
 			log.Errorf("<%s> delete storage %v to watcher [%v | %v]", eschedTag, id, timeout, err)
 			sh.dumpStorageInfo(stor)
-			sh.storeNotify(id, sh.storage.storeIDs[id], eschedDrop)
-			delete(sh.storage.storeIDs, id)
+			sh.storeNotify(id, eStoreStat{}, eschedDrop)
 			continue
 		}
 
-		var lastSpace int64 = 0
-		stat, ok := sh.storage.storeIDs[id]
-		if ok {
-			if stat.notified {
-				continue
-			}
-			lastSpace = stat.space
-		}
-
-		stat = eStoreStat{
+		stat := eStoreStat{
 			space: stor.FsStat().Available,
 			URLs:  stor.Info().URLs,
 			local: sh.isLocalStorage(id),
 		}
-		sh.storage.storeIDs[id] = stat
-
-		if !stat.local {
-			if 10*eMiB < stat.space-lastSpace {
-				log.Infof("<%s> storage wave %v too much %v -> %v", eschedTag, id, lastSpace, stat.space)
-				continue
-			}
-		}
-
-		stat.notified = true
-		sh.storage.storeIDs[id] = stat
 
 		log.Infof("<%s> add storage %v to watcher", eschedTag, id)
 		sh.dumpStorageInfo(stor)
-		sh.storeNotify(id, sh.storage.storeIDs[id], eschedAdd)
-	}
-}
-
-func (sh *edispatcher) onNotifyStorageAddWorker(act eWorkerAction) {
-	for id, stat := range sh.storage.storeIDs {
 		sh.storeNotify(id, stat, eschedAdd)
-	}
-}
-
-func (sh *edispatcher) onNotifyStorageDropWorker(act eWorkerAction) {
-	for id, stat := range sh.storage.storeIDs {
-		for _, url := range stat.URLs {
-			if strings.Contains(url, act.address) {
-				log.Infof("<%s> drop store %v by address %s", eschedTag, id, act.address)
-				delete(sh.storage.storeIDs, id)
-				break
-			}
-		}
-	}
-}
-
-func (sh *edispatcher) onWorkerNotifyToStorage(act eWorkerAction) {
-	switch act.act {
-	case eschedAdd:
-		sh.onNotifyStorageAddWorker(act)
-	case eschedDrop:
-		sh.onNotifyStorageDropWorker(act)
 	}
 }
 
@@ -490,16 +436,12 @@ func (sh *edispatcher) storageWatcher() {
 			sh.updateStorageChecker()
 		case <-sh.storage.indexInstance.StorageNotifier:
 			sh.checkStorageUpdate()
-		case act := <-sh.storage.workerNotifier:
-			sh.onWorkerNotifyToStorage(act)
 		}
 	}
 }
 
 func (sh *edispatcher) SetStorage(storage *EStorage) {
 	sh.storage = storage
-	sh.storage.storeIDs = make(map[stores.ID]eStoreStat, 1000)
-	sh.storage.workerNotifier = make(chan eWorkerAction, 1000)
 
 	value := reflect.ValueOf(sh.storage.index)
 	sh.storage.indexInstance = value.Interface().(*stores.Index)
@@ -1185,49 +1127,60 @@ func (bucket *eWorkerBucket) findWorkerByStoreURL(urls []string) *eWorkerHandle 
 	return nil
 }
 
-func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
-	if _, ok := bucket.storeIDs[act.id]; ok {
-		log.Infof("<%s> store %v already added", eschedTag, act.id)
-		return
-	}
-	bucket.storeIDs[act.id] = struct{}{}
-	w.diskTotal += act.stat.space
-
+func (worker *eWorkerHandle) caculateTaskLimit() {
 	for _, spt := range eSealProofType {
-		var limit int = int(act.stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
-		w.diskConcurrentLimit[spt] += limit
+		limit := 0
+		for _, stat := range worker.storeIDs {
+			limit += int(stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
+		}
 
-		cur := w.maxConcurrent[spt]
+		worker.diskConcurrentLimit[spt] += limit
+		cur := worker.maxConcurrent[spt]
 
-		if w.supportTaskType(sealtasks.TTPreCommit1) {
-			if w.diskConcurrentLimit[spt] < cur[sealtasks.TTPreCommit1] {
-				cur[sealtasks.TTPreCommit1] = w.diskConcurrentLimit[spt]
-				cur[sealtasks.TTAddPiece] = w.diskConcurrentLimit[spt]
+		if worker.supportTaskType(sealtasks.TTPreCommit1) {
+			if worker.diskConcurrentLimit[spt] < cur[sealtasks.TTPreCommit1] {
+				cur[sealtasks.TTPreCommit1] = worker.diskConcurrentLimit[spt]
+				cur[sealtasks.TTAddPiece] = worker.diskConcurrentLimit[spt]
 			}
 		}
-		if w.supportTaskType(sealtasks.TTPreCommit2) {
-			cur[sealtasks.TTPreCommit2] = w.diskConcurrentLimit[spt]
+		if worker.supportTaskType(sealtasks.TTPreCommit2) {
+			cur[sealtasks.TTPreCommit2] = worker.diskConcurrentLimit[spt]
 		}
 
 		log.Infof("<%s> update max concurrent for %v = %v [%s]",
 			eschedTag,
 			sealtasks.TTPreCommit1,
 			cur[sealtasks.TTPreCommit1],
-			w.info.Address)
+			worker.info.Address)
 
-		w.maxConcurrent[spt] = cur
+		worker.maxConcurrent[spt] = cur
+	}
+}
+
+func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
+	if _, ok := w.storeIDs[act.id]; ok {
+		stat := w.storeIDs[act.id]
+		if stat.space < act.stat.space {
+			log.Infof("<%s> store %v already update %v -> %v", eschedTag, act.id, stat.space, act.stat.space)
+			w.storeIDs[act.id] = act.stat
+		}
+	} else {
+		log.Infof("<%s> store %v already added", eschedTag, act.id)
+		w.storeIDs[act.id] = act.stat
 	}
 
+	w.caculateTaskLimit()
 	w.state = eschedWorkerStateReady
 }
 
 func (bucket *eWorkerBucket) onDropStore(w *eWorkerHandle, act eStoreAction) {
-	if _, ok := bucket.storeIDs[act.id]; !ok {
+	if _, ok := w.storeIDs[act.id]; !ok {
 		log.Infof("<%s> store %v already dropped", eschedTag, act.id)
 		return
 	}
-	w.diskTotal -= act.stat.space
-	delete(bucket.storeIDs, act.id)
+	log.Infof("<%s> store %v already dropped", eschedTag, act.id)
+	delete(w.storeIDs, act.id)
+	w.caculateTaskLimit()
 }
 
 func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
@@ -1474,7 +1427,6 @@ func newExtScheduler() *edispatcher {
 			retRequest:         dispatcher.newRequest,
 			storageNotifier:    make(chan eStoreAction, 10),
 			droppedWorker:      dispatcher.droppedWorker,
-			storeIDs:           make(map[stores.ID]struct{}),
 			taskWorkerBinder:   dispatcher.taskWorkerBinder,
 			taskCleaner:        dispatcher.taskCleaner,
 			taskCleanerHandler: make(chan *eWorkerTaskCleaning, 10),
@@ -1598,6 +1550,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 		}
 	}
 
+	w.storeIDs = make(map[stores.ID]eStoreStat)
 	w.runningTasks = make([]*eWorkerRequest, 0)
 	w.preparedTasks = &eWorkerSyncTaskList{
 		queue: make([]*eWorkerRequest, 0),
@@ -1701,7 +1654,6 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	bucket := sh.buckets[workerBucketIndex]
 
 	bucket.addNewWorker(w)
-	go func() { sh.storage.workerNotifier <- eWorkerAction{act: eschedAdd, address: w.info.Address} }()
 	log.Infof("<%s> added new worker %s to bucket", eschedTag, w.info.Address)
 }
 
@@ -1759,7 +1711,6 @@ func (sh *edispatcher) onWorkerDropped(address string) {
 		}
 	}
 	sh.taskWorkerBinder.mutex.Unlock()
-	go func() { sh.storage.workerNotifier <- eWorkerAction{act: eschedDrop, address: address} }()
 }
 
 func (sh *edispatcher) closeAllBuckets() {
