@@ -1138,10 +1138,8 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 		cur := worker.maxConcurrent[spt]
 
 		if worker.supportTaskType(sealtasks.TTPreCommit1) {
-			if worker.diskConcurrentLimit[spt] < cur[sealtasks.TTPreCommit1] {
-				cur[sealtasks.TTPreCommit1] = worker.diskConcurrentLimit[spt]
-				cur[sealtasks.TTAddPiece] = worker.diskConcurrentLimit[spt]
-			}
+			cur[sealtasks.TTPreCommit1] = worker.diskConcurrentLimit[spt]
+			cur[sealtasks.TTAddPiece] = worker.diskConcurrentLimit[spt]
 		}
 		if worker.supportTaskType(sealtasks.TTPreCommit2) {
 			cur[sealtasks.TTPreCommit2] = worker.diskConcurrentLimit[spt]
