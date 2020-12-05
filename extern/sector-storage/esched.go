@@ -92,6 +92,7 @@ type eWorkerRequest struct {
 	preparedTimeRaw time.Time
 	deadTime        int64
 	endTime         int64
+	startRunTimeRaw time.Time
 	sel             WorkerSelector
 }
 
@@ -821,6 +822,7 @@ func (bucket *eWorkerBucket) doCleanTask(task *eWorkerRequest, stage string) {
 
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
 	log.Debugf("<%s> executing typed task %v/%v at %s", eschedTag, task.sector.ID, task.taskType, worker.info.Address)
+	task.startRunTimeRaw = time.Now()
 	err := task.work(task.ctx, worker.wt.worker(WorkerID(worker.wid), worker.w))
 	task.endTime = time.Now().UnixNano()
 	log.Infof("<%s> finished typed task %v/%v duration (%dms / %d ms / %d ms) by %s [%v]",
@@ -1286,7 +1288,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				ID:     storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
 				Sector: task.sector.ID,
 				Task:   task.taskType,
-				Start:  task.preparedTimeRaw,
+				Start:  task.startRunTimeRaw,
 			})
 		}
 
