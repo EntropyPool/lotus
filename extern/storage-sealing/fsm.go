@@ -207,9 +207,9 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 	p := fsmPlanners[state.State]
 	if p == nil {
 		log.Errorf("planner for state %s not found", state.State)
-		state.State = Removing
-		m.stats.updateSector(m.minerSectorID(state.SectorNumber), state.State)
-		return m.handleUnknownState, 1, nil
+		// state.State = Removing
+		// m.stats.updateSector(m.minerSectorID(state.SectorNumber), state.State)
+		// return m.handleUnknownState, 1, nil
 	}
 
 	processed, err := p(events, state)
@@ -348,7 +348,7 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 		log.Errorf("sector %d failed unrecoverably", state.SectorNumber)
 	default:
 		log.Errorf("unexpected sector update state: %s", state.State)
-		state.State = Removing
+		// state.State = Removing
 	}
 
 	return nil, processed, nil
