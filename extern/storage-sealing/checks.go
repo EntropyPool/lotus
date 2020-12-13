@@ -36,6 +36,15 @@ type ErrInvalidProof struct{ error }
 type ErrNoPrecommit struct{ error }
 type ErrCommitWaitFailed struct{ error }
 
+func checkDeals(ctx context.Context, si SectorInfo) bool {
+	for _, p := range si.Pieces {
+		if nil != p.DealInfo {
+			return true
+		}
+	}
+	return false
+}
+
 func checkPieces(ctx context.Context, maddr address.Address, si SectorInfo, api SealingAPI) error {
 	tok, height, err := api.ChainHead(ctx)
 	if err != nil {

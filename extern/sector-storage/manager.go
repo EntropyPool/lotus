@@ -472,7 +472,9 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, 
 
 	selector := newAllocSelector(m.index, storiface.FTCache|storiface.FTSealed, storiface.PathSealing)
 
-	m.localStore.AddMayFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit1), "")
+	if !sector.HasDeal {
+		m.localStore.AddMayFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit1), "")
+	}
 	m.lsFailSectorsMutex.Lock()
 	m.localStore.DropFailSector(ctx, sector.ID)
 	m.lsFailSectorsMutex.Unlock()
@@ -485,7 +487,9 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, 
 			end := time.Now().Unix()
 			sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, err)
 			m.lsFailSectorsMutex.Lock()
-			m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit1), "")
+			if !sector.HasDeal {
+				m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit1), "")
+			}
 			m.lsFailSectorsMutex.Unlock()
 			m.removeFailSectors(context.TODO(), 0)
 			return err
@@ -496,7 +500,9 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, 
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, waitErr)
 		if waitErr != nil {
 			m.lsFailSectorsMutex.Lock()
-			m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
+			if !sector.HasDeal {
+				m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
+			}
 			m.lsFailSectorsMutex.Unlock()
 			m.removeFailSectors(context.TODO(), 0)
 			return waitErr
@@ -561,7 +567,9 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector storage.SectorRef, 
 
 	selector := newExistingSelector(m.index, sector.ID, storiface.FTCache|storiface.FTSealed, true)
 
-	m.localStore.AddMayFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
+	if !sector.HasDeal {
+		m.localStore.AddMayFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
+	}
 	m.lsFailSectorsMutex.Lock()
 	m.localStore.DropFailSector(ctx, sector.ID)
 	m.lsFailSectorsMutex.Unlock()
@@ -574,7 +582,9 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector storage.SectorRef, 
 			end := time.Now().Unix()
 			sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, err)
 			m.lsFailSectorsMutex.Lock()
-			m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
+			if !sector.HasDeal {
+				m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
+			}
 			m.lsFailSectorsMutex.Unlock()
 			m.removeFailSectors(context.TODO(), 0)
 			return err
@@ -585,7 +595,9 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector storage.SectorRef, 
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, waitErr)
 		if waitErr != nil {
 			m.lsFailSectorsMutex.Lock()
-			m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
+			if !sector.HasDeal {
+				m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
+			}
 			m.lsFailSectorsMutex.Unlock()
 			m.removeFailSectors(context.TODO(), 0)
 			return waitErr

@@ -154,7 +154,10 @@ func (m *Sealing) handlePreCommit1(ctx statemachine.Context, sector SectorInfo) 
 		//  process has just restarted and the worker had the result ready)
 	}
 
-	pc1o, err := m.sealer.SealPreCommit1(sector.sealingCtx(ctx.Context()), m.minerSector(sector.SectorType, sector.SectorNumber), sector.TicketValue, sector.pieceInfos())
+	sectorRef := m.minerSector(sector.SectorType, sector.SectorNumber)
+	sectorRef.HasDeal = checkDeals(sector.sealingCtx(ctx.Context()), sector)
+
+	pc1o, err := m.sealer.SealPreCommit1(sector.sealingCtx(ctx.Context()), sectorRef, sector.TicketValue, sector.pieceInfos())
 	if err != nil {
 		return ctx.Send(SectorSealPreCommit1Failed{xerrors.Errorf("seal pre commit(1) failed: %w", err)})
 	}
@@ -165,7 +168,10 @@ func (m *Sealing) handlePreCommit1(ctx statemachine.Context, sector SectorInfo) 
 }
 
 func (m *Sealing) handlePreCommit2(ctx statemachine.Context, sector SectorInfo) error {
-	cids, err := m.sealer.SealPreCommit2(sector.sealingCtx(ctx.Context()), m.minerSector(sector.SectorType, sector.SectorNumber), sector.PreCommit1Out)
+	sectorRef := m.minerSector(sector.SectorType, sector.SectorNumber)
+	sectorRef.HasDeal = checkDeals(sector.sealingCtx(ctx.Context()), sector)
+
+	cids, err := m.sealer.SealPreCommit2(sector.sealingCtx(ctx.Context()), sectorRef, sector.PreCommit1Out)
 	if err != nil {
 		return ctx.Send(SectorSealPreCommit2Failed{xerrors.Errorf("seal pre commit(2) failed: %w", err)})
 	}
