@@ -237,6 +237,10 @@ type SectorProving struct{}
 
 func (evt SectorProving) apply(*SectorInfo) {}
 
+type SectorMayProving struct{}
+
+func (evt SectorMayProving) apply(*SectorInfo) {}
+
 type SectorFinalized struct{}
 
 func (evt SectorFinalized) apply(*SectorInfo) {}

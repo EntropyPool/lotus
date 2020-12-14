@@ -88,6 +88,7 @@ var fsmPlanners = map[SectorState]func(events []statemachine.Event, state *Secto
 		on(SectorProving{}, Proving),
 		on(SectorCommitFailed{}, CommitFailed),
 		on(SectorRetrySubmitCommit{}, SubmitCommit),
+		on(SectorMayProving{}, MayProving),
 	),
 
 	FinalizeSector: planOne(
