@@ -890,9 +890,9 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		if 0 < res.GPUs {
 			if 0 < len(worker.info.Resources.GPUs) {
 				if len(worker.info.Resources.GPUs) < res.GPUs+worker.gpuUsed {
-					log.Debugf("<%s> need %d = %d + %d GPUs but only %d available [%v]",
+					log.Infof("<%s> need %d = %d + %d GPUs but only %d available [%v / %v]",
 						eschedTag, res.GPUs+worker.gpuUsed, res.GPUs, worker.gpuUsed,
-						len(worker.info.Resources.GPUs)-worker.gpuUsed, taskType)
+						len(worker.info.Resources.GPUs)-worker.gpuUsed, task.sector.ID, taskType)
 					break
 				}
 			} else {
@@ -900,17 +900,17 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			}
 		}
 		if int(worker.info.Resources.CPUs)-idleCpus < needCPUs+worker.cpuUsed {
-			log.Debugf("<%s> need %d = %d + %d CPUs but only %d available [%v]",
+			log.Infof("<%s> need %d = %d + %d CPUs but only %d available [%v / %v]",
 				eschedTag, needCPUs+worker.cpuUsed, needCPUs, worker.cpuUsed,
-				int(worker.info.Resources.CPUs)-idleCpus, taskType)
+				int(worker.info.Resources.CPUs)-idleCpus, task.sector.ID, taskType)
 			break
 		}
 		hugepage, ok := eschedTaskHugePage[taskType]
 		if ok && hugepage && 0 < worker.hugePageBytes {
 			if worker.hugePageBytes < res.Memory+worker.hugePageUsed {
-				log.Debugf("<%s> need %d = %d + %d hugepage but only %d available [%v]",
+				log.Infof("<%s> need %d = %d + %d hugepage but only %d available [%v / %v]",
 					eschedTag, res.Memory+worker.hugePageUsed, res.Memory, worker.hugePageUsed,
-					worker.hugePageBytes, taskType)
+					worker.hugePageBytes, task.sector.ID, taskType)
 				break
 			}
 		} else {
@@ -919,9 +919,9 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 				extraMem = worker.info.Resources.MemSwap
 			}
 			if worker.info.Resources.MemPhysical+extraMem < res.Memory+worker.memUsed {
-				log.Debugf("<%s> need %d = %d + %d memory but only %d available [%v]",
+				log.Infof("<%s> need %d = %d + %d memory but only %d available [%v / %v]",
 					eschedTag, res.Memory+worker.memUsed, res.Memory, worker.memUsed,
-					worker.info.Resources.MemPhysical+extraMem, taskType)
+					worker.info.Resources.MemPhysical+extraMem, task.sector.ID, taskType)
 				break
 			}
 		}
