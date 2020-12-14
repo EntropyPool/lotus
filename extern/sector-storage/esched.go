@@ -414,8 +414,6 @@ func (sh *edispatcher) checkStorageUpdate() {
 			local: sh.isLocalStorage(id),
 		}
 
-		log.Infof("<%s> add storage %v to watcher", eschedTag, id)
-		sh.dumpStorageInfo(stor)
 		sh.storeNotify(id, stat, eschedAdd)
 	}
 }
@@ -1147,8 +1145,8 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 			cur[sealtasks.TTPreCommit2] = worker.diskConcurrentLimit[spt]
 		}
 
-		log.Infof("<%s> update max concurrent for %v = %v [%s]",
-			eschedTag,
+		log.Infof("<%s> update max concurrent for (%v) %v = %v [%s]",
+			eschedTag, spt,
 			sealtasks.TTPreCommit1,
 			cur[sealtasks.TTPreCommit1],
 			worker.info.Address)
@@ -1161,11 +1159,11 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 	if _, ok := w.storeIDs[act.id]; ok {
 		stat := w.storeIDs[act.id]
 		if stat.space < act.stat.space {
-			log.Infof("<%s> store %v already update %v -> %v", eschedTag, act.id, stat.space, act.stat.space)
+			log.Infof("<%s> store %v is updating %v -> %v", eschedTag, act.id, stat.space, act.stat.space)
 			w.storeIDs[act.id] = act.stat
 		}
 	} else {
-		log.Infof("<%s> store %v already added", eschedTag, act.id)
+		log.Infof("<%s> store %v is adding %v", eschedTag, act.id, act.stat.space)
 		w.storeIDs[act.id] = act.stat
 	}
 
@@ -1595,8 +1593,8 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 			cur[sealtasks.TTAddPiece] = cur[sealtasks.TTPreCommit1]
 			cur[sealtasks.TTUnseal] = cur[sealtasks.TTPreCommit1]
 
-			log.Infof("<%s> max concurrent for %v = %v [%s]",
-				eschedTag,
+			log.Infof("<%s> max concurrent for (%v) %v = %v [%s]",
+				eschedTag, spt,
 				sealtasks.TTPreCommit1,
 				cur[sealtasks.TTPreCommit1],
 				w.info.Address)

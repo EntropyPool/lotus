@@ -497,7 +497,7 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, 
 
 		waitRes()
 		end := time.Now().Unix()
-		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, waitErr)
+		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, waitErr)
 		if waitErr != nil {
 			m.lsFailSectorsMutex.Lock()
 			if !sector.HasDeal {
