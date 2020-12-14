@@ -242,7 +242,7 @@ func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
 				}
 				err := m.Remove(ctx, sector)
 				if nil != err {
-					log.Errorf("cannot remove worker fail sector %v [%v]", sector.ID, err)
+					log.Errorf("cannot remove miner fail sector %v [%v]", sector.ID, err)
 				}
 			}
 		}
@@ -250,7 +250,7 @@ func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
 }
 
 func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
-	m.removeFailSectors(context.TODO(), 30)
+	m.removeFailSectors(context.TODO(), 180)
 	return m.sched.runWorker(ctx, w)
 }
 
