@@ -85,13 +85,14 @@ var fsmPlanners = map[SectorState]func(events []statemachine.Event, state *Secto
 		on(SectorCommitFailed{}, CommitFailed),
 	),
 	CommitWait: planOne(
-		on(SectorProving{}, FinalizeSector),
+		on(SectorProving{}, Proving),
 		on(SectorCommitFailed{}, CommitFailed),
 		on(SectorRetrySubmitCommit{}, SubmitCommit),
+		on(SectorMayProving{}, MayProving),
 	),
 
 	FinalizeSector: planOne(
-		on(SectorFinalized{}, Proving),
+		on(SectorFinalized{}, SubmitCommit),
 		on(SectorFinalizeFailed{}, FinalizeFailed),
 	),
 
@@ -210,7 +211,10 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 
 	p := fsmPlanners[state.State]
 	if p == nil {
-		return nil, 0, xerrors.Errorf("planner for state %s not found", state.State)
+		log.Errorf("planner for state %s not found", state.State)
+		// state.State = Removing
+		// m.stats.updateSector(m.minerSectorID(state.SectorNumber), state.State)
+		// return m.handleUnknownState, 1, nil
 	}
 
 	processed, err := p(events, state)
@@ -349,6 +353,7 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 		log.Errorf("sector %d failed unrecoverably", state.SectorNumber)
 	default:
 		log.Errorf("unexpected sector update state: %s", state.State)
+		// state.State = Removing
 	}
 
 	return nil, processed, nil
@@ -363,7 +368,7 @@ func planCommitting(events []statemachine.Event, state *SectorInfo) (uint64, err
 			}
 		case SectorCommitted: // the normal case
 			e.apply(state)
-			state.State = SubmitCommit
+			state.State = FinalizeSector
 		case SectorSeedReady: // seed changed :/
 			if e.SeedEpoch == state.SeedEpoch && bytes.Equal(e.SeedValue, state.SeedValue) {
 				log.Warnf("planCommitting: got SectorSeedReady, but the seed didn't change")

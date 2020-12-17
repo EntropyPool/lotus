@@ -109,6 +109,11 @@ var runCmd = &cli.Command{
 			Value: "0.0.0.0:3456",
 		},
 		&cli.StringFlag{
+			Name:  "groupname",
+			Usage: "group name of the worker (a group is workers under same switch)",
+			Value: "422f46736d73f62f9cf99e5943593e580080b5a3c5fe3657030dae2a0289e628",
+		},
+		&cli.StringFlag{
 			Name:   "address",
 			Hidden: true,
 		},
@@ -124,7 +129,7 @@ var runCmd = &cli.Command{
 		&cli.BoolFlag{
 			Name:  "addpiece",
 			Usage: "enable addpiece",
-			Value: true,
+			Value: false,
 		},
 		&cli.BoolFlag{
 			Name:  "precommit1",
@@ -234,12 +239,14 @@ var runCmd = &cli.Command{
 
 		var taskTypes []sealtasks.TaskType
 
-		taskTypes = append(taskTypes, sealtasks.TTFetch, sealtasks.TTCommit1, sealtasks.TTFinalize)
+		taskTypes = append(taskTypes, sealtasks.TTFetch, sealtasks.TTFinalize)
 
 		if cctx.Bool("addpiece") {
 			taskTypes = append(taskTypes, sealtasks.TTAddPiece)
 		}
+
 		if cctx.Bool("precommit1") {
+			taskTypes = append(taskTypes, sealtasks.TTAddPiece)
 			taskTypes = append(taskTypes, sealtasks.TTPreCommit1)
 		}
 		if cctx.Bool("unseal") {
@@ -247,6 +254,7 @@ var runCmd = &cli.Command{
 		}
 		if cctx.Bool("precommit2") {
 			taskTypes = append(taskTypes, sealtasks.TTPreCommit2)
+			taskTypes = append(taskTypes, sealtasks.TTCommit1)
 		}
 		if cctx.Bool("commit") {
 			taskTypes = append(taskTypes, sealtasks.TTCommit2)
@@ -375,13 +383,15 @@ var runCmd = &cli.Command{
 		}
 
 		// Create / expose the worker
-
 		wsts := statestore.New(namespace.Wrap(ds, modules.WorkerCallsPrefix))
+		groupName := cctx.String("groupname")
 
 		workerApi := &worker{
 			LocalWorker: sectorstorage.NewLocalWorker(sectorstorage.WorkerConfig{
 				TaskTypes: taskTypes,
 				NoSwap:    cctx.Bool("no-swap"),
+				Address:   address,
+				GroupName: groupName,
 			}, remote, localStore, nodeApi, nodeApi, wsts),
 			localStore: localStore,
 			ls:         lr,
@@ -525,6 +535,8 @@ var runCmd = &cli.Command{
 				}
 
 				log.Errorf("LOTUS-MINER CONNECTION LOST")
+				srv.Shutdown(context.TODO())
+				os.Exit(1)
 
 				redeclareStorage = true
 			}
