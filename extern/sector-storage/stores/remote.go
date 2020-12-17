@@ -26,7 +26,6 @@ import (
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/specs-storage/storage"
 
-	"github.com/hashicorp/go-multierror"
 	files "github.com/ipfs/go-ipfs-files"
 	"golang.org/x/xerrors"
 )

@@ -512,6 +512,9 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 	wg := sync.WaitGroup{}
 	wg.Add(numSectors)
 
+	wg := sync.WaitGroup{}
+	wg.Add(numSectors)
+
 	for i := abi.SectorNumber(1); i <= abi.SectorNumber(numSectors); i++ {
 		log.Infof("[%d] start add piece...", i)
 		go func(sector abi.SectorNumber, sectorSize abi.SectorSize, minerId abi.ActorID) {
