@@ -81,7 +81,31 @@ var sealingWorkersCmd = &cli.Command{
 				disabled = color.RedString(" (disabled)")
 			}
 
-			fmt.Printf("Worker %s, host %s%s\n", stat.id, color.MagentaString(stat.Info.Hostname), disabled)
+			addressStr := stat.Info.Address
+			if 0 == len(addressStr) {
+				addressStr = "localhost"
+			}
+			fmt.Printf("Worker %s (%s), host %s/%s%s\n", stat.id, stat.State,
+				color.MagentaString(stat.Info.Hostname),
+				color.MagentaString(addressStr), disabled)
+
+			taskTypes := ""
+			sort.Slice(stat.Info.SupportTasks, func(i, j int) bool {
+				return strings.Compare(string(stat.Info.SupportTasks[i]), string(stat.Info.SupportTasks[j])) < 0
+			})
+
+			fmt.Printf("\tGRP:  %s\n", color.MagentaString(stat.Info.GroupName))
+			for _, taskType := range stat.Info.SupportTasks {
+				taskTypes = fmt.Sprintf("%s\n\t      ", taskTypes)
+				maxConcurrent := stat.Tasks[taskType].MaxConcurrent
+				taskTypes = fmt.Sprintf("%s| %4s | %7d | %8d | %7d | %13d |",
+					taskTypes, taskType.Short(),
+					stat.Tasks[taskType].Running, stat.Tasks[taskType].Prepared,
+					stat.Tasks[taskType].Waiting, maxConcurrent)
+			}
+			fmt.Printf("\t      -------------------------------------------------------\n")
+			fmt.Printf("\tTSK:  | Type | Running | Prepared | Waiting | MaxConcurrent |%s\n", taskTypes)
+			fmt.Printf("\t      -------------------------------------------------------\n")
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)
@@ -184,7 +208,7 @@ var sealingJobsCmd = &cli.Command{
 		}
 
 		for wid, st := range wst {
-			workerHostnames[wid] = st.Info.Hostname
+			workerHostnames[wid] = st.Info.Address
 		}
 
 		tw := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)

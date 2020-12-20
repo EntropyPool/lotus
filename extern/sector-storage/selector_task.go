@@ -19,8 +19,15 @@ func newTaskSelector() *taskSelector {
 	return &taskSelector{}
 }
 
-func (s *taskSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, whnd *workerHandle) (bool, error) {
-	tasks, err := whnd.workerRpc.TaskTypes(ctx)
+func (s *taskSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, wi interface{}) (bool, error) {
+	var w Worker
+	switch wi.(type) {
+	case *workerHandle:
+		w = wi.(*workerHandle).workerRpc
+	case *eWorkerHandle:
+		w = wi.(*eWorkerHandle).w
+	}
+	tasks, err := w.TaskTypes(ctx)
 	if err != nil {
 		return false, xerrors.Errorf("getting supported worker task types: %w", err)
 	}

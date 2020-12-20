@@ -47,4 +47,6 @@ type SectorProvider interface {
 	AcquireSector(ctx context.Context, id storage.SectorRef, existing storiface.SectorFileType, allocate storiface.SectorFileType, ptype storiface.PathType) (storiface.SectorPaths, func(), error)
 }
 
+type ErrCacheInconsistent struct{ error }
+
 var _ SectorProvider = &basicfs.Provider{}

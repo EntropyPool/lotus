@@ -55,7 +55,17 @@ func (t *testWorker) asyncCall(sector storage.SectorRef, work func(ci storiface.
 
 	go work(ci)
 
+<<<<<<< HEAD
 	return ci, nil
+=======
+func (t *testWorker) MovingCache(ctx context.Context, sector abi.SectorID) error {
+	log.Warnw("test worker moving.")
+	return nil
+}
+
+func (t *testWorker) SealCommit1(ctx context.Context, sector abi.SectorID, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (storage.Commit1Out, error) {
+	panic("implement me")
+>>>>>>> master-entropy-v1.1.2
 }
 
 func (t *testWorker) AddPiece(ctx context.Context, sector storage.SectorRef, pieceSizes []abi.UnpaddedPieceSize, newPieceSize abi.UnpaddedPieceSize, pieceData storage.Data) (storiface.CallID, error) {
