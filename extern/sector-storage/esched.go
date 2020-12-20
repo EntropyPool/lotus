@@ -947,14 +947,14 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 }
 
 func (bucket *eWorkerBucket) scheduleBucketTask() {
-	log.Debugf("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
+	log.Infof("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
 	for _, worker := range bucket.workers {
 		bucket.scheduleTypedTasks(worker)
 	}
 }
 
 func (bucket *eWorkerBucket) schedulePreparedTask() {
-	log.Debugf("<%s> try schedule prepared task for bucket [%d]", eschedTag, bucket.id)
+	log.Infof("<%s> try schedule prepared task for bucket [%d]", eschedTag, bucket.id)
 	for _, worker := range bucket.workers {
 		bucket.schedulePreparedTasks(worker)
 	}
