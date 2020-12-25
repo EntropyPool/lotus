@@ -27,8 +27,8 @@ import (
 	"github.com/filecoin-project/go-state-types/abi"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
-	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper/basicfs"
+	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	"github.com/filecoin-project/specs-storage/storage"
 
 	lapi "github.com/filecoin-project/lotus/api"
@@ -663,7 +663,7 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 						if !skipunseal {
 							log.Infof("[%d] Unsealing sector", i)
 							sector := storage.SectorRef{
-								ID: abi.SectorID{Miner: mid, Number: 1},
+								ID:        abi.SectorID{Miner: mid, Number: 1},
 								ProofType: spt(sectorSize),
 							}
 							{
