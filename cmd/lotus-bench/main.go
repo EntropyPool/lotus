@@ -512,7 +512,9 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 	wg := sync.WaitGroup{}
 	wg.Add(numSectors)
 
-	for i := abi.SectorNumber(1); i <= abi.SectorNumber(numSectors); i++ {
+	var apErr error = nil
+
+	for i := abi.SectorNumber(0); i < abi.SectorNumber(numSectors); i++ {
 		log.Infof("[%d] start add piece...", i)
 		go func(sector abi.SectorNumber, sectorSize abi.SectorSize, minerId abi.ActorID) {
 			sid := storage.SectorRef{
@@ -531,18 +533,26 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 			pi, err := sb.AddPiece(context.TODO(), sid, nil, abi.PaddedPieceSize(sectorSize).Unpadded(), r)
 			if err != nil {
 				log.Errorf("[%d] fail to add piece", sector)
+				apErr = err
+				return
 			}
 
-			pieces[sector-1] = pi
+			pieces[sector] = pi
 
-			sealTimings[sector-1].AddPiece = time.Since(start)
+			sealTimings[sector].AddPiece = time.Since(start)
 
 			wg.Done()
+			log.Infof("[%d] success to add piece", sector)
 		}(i, sectorSize, mid)
 	}
 
 	wg.Wait()
 	sectorsPerWorker := numSectors / par.PreCommit1
+
+	if nil != apErr {
+		return nil, nil, fmt.Errorf("Cannot run add piece")
+	}
+
 
 	errs := make(chan error, par.PreCommit1)
 	for wid := 0; wid < par.PreCommit1; wid++ {
@@ -554,7 +564,7 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 					sid := storage.SectorRef{
 						ID: abi.SectorID{
 							Miner:  mid,
-							Number: i,
+							Number: i + 1,
 						},
 						ProofType: spt(sectorSize),
 					}
@@ -587,7 +597,7 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 
 						sealedSectors[i] = saproof2.SectorInfo{
 							SealProof:    sid.ProofType,
-							SectorNumber: i,
+							SectorNumber: i + 1,
 							SealedCID:    cids.Sealed,
 						}
 
@@ -638,7 +648,7 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 
 						if !skipc2 {
 							svi := saproof2.SealVerifyInfo{
-								SectorID:              abi.SectorID{Miner: mid, Number: i},
+								SectorID:              abi.SectorID{Miner: mid, Number: i + 1},
 								SealedCID:             cids.Sealed,
 								SealProof:             spt(sectorSize),
 								Proof:                 proof,
@@ -660,9 +670,9 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 						verifySeal := time.Now()
 
 						if !skipunseal {
-							log.Infof("[%d] Unsealing sector", i)
+							log.Infof("[%d] Unsealing sector", i + 1)
 							sector := storage.SectorRef{
-								ID:        abi.SectorID{Miner: mid, Number: 1},
+								ID:        abi.SectorID{Miner: mid, Number: i + 1},
 								ProofType: spt(sectorSize),
 							}
 							{

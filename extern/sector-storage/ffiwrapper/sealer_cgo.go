@@ -142,8 +142,8 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		copy(bufCid, buf[:read])
 
 		paral <- struct{}{}
+		wait.Add(1)
 		go func(idx int) {
-			wait.Add(1)
 			defer wait.Done()
 			c, err := sb.pieceCid(sector.ProofType, bufCid)
 			if err != nil {
@@ -159,6 +159,8 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		index++
 	}
 	wait.Wait()
+
+	log.Infof("add piece to %v", stagedFile.path)
 
 	if err := pw.Close(); err != nil {
 		return abi.PieceInfo{}, xerrors.Errorf("closing padded writer: %w", err)
