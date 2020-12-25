@@ -26,8 +26,8 @@ import (
 	"github.com/filecoin-project/go-state-types/abi"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
-	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper/basicfs"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
+	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper/basicfs"
 	"github.com/filecoin-project/specs-storage/storage"
 
 	lapi "github.com/filecoin-project/lotus/api"
@@ -476,7 +476,7 @@ var sealBenchCmd = &cli.Command{
 				}
 			}
 			if !skipc2 {
-				fmt.Printf("generate candidates: %s (%s)\n", bo.PostGenerateCandidates, bps(bo.SectorSize, len(bo.SealingResults), bo.PostGenerateCandidates))
+				fmt.Printf("generate candidates: %s (%s)\n", bo.PostGenerateCandidates, bps(bo.SectorSize, bo.PostGenerateCandidates))
 				fmt.Printf("compute winning post proof (cold): %s\n", bo.PostWinningProofCold)
 				fmt.Printf("compute winning post proof (hot): %s\n", bo.PostWinningProofHot)
 				fmt.Printf("verify winning post proof (cold): %s\n", bo.VerifyWinningPostCold)
@@ -509,9 +509,6 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 	if numSectors%par.PreCommit1 != 0 {
 		return nil, nil, fmt.Errorf("parallelism factor must cleanly divide numSectors")
 	}
-	wg := sync.WaitGroup{}
-	wg.Add(numSectors)
-
 	wg := sync.WaitGroup{}
 	wg.Add(numSectors)
 
@@ -588,7 +585,7 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 						precommit2 := time.Now()
 						<-preCommit2Sema
 
-						sealedSectors[ix] = saproof2.SectorInfo{
+						sealedSectors[i] = saproof2.SectorInfo{
 							SealProof:    sid.ProofType,
 							SectorNumber: i,
 							SealedCID:    cids.Sealed,
@@ -643,7 +640,7 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 							svi := saproof2.SealVerifyInfo{
 								SectorID:              abi.SectorID{Miner: mid, Number: i},
 								SealedCID:             cids.Sealed,
-								SealProof:             sb.SealProofType(),
+								SealProof:             spt(sectorSize),
 								Proof:                 proof,
 								DealIDs:               nil,
 								Randomness:            ticket,
@@ -664,8 +661,12 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 
 						if !skipunseal {
 							log.Infof("[%d] Unsealing sector", i)
+							sector := storage.SectorRef{
+								ID: abi.SectorID{Miner: mid, Number: 1},
+								ProofType: spt(sectorSize),
+							}
 							{
-								p, done, err := sbfs.AcquireSector(context.TODO(), abi.SectorID{Miner: mid, Number: 1}, stores.FTUnsealed, stores.FTNone, stores.PathSealing)
+								p, done, err := sbfs.AcquireSector(context.TODO(), sector, storiface.FTUnsealed, storiface.FTNone, storiface.PathSealing)
 								if err != nil {
 									return xerrors.Errorf("acquire unsealed sector for removing: %w", err)
 								}
@@ -676,20 +677,20 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 								}
 							}
 
-							err := sb.UnsealPiece(context.TODO(), abi.SectorID{Miner: mid, Number: 1}, 0, abi.PaddedPieceSize(sectorSize).Unpadded(), ticket, cids.Unsealed)
+							err := sb.UnsealPiece(context.TODO(), sector, 0, abi.PaddedPieceSize(sectorSize).Unpadded(), ticket, cids.Unsealed)
 							if err != nil {
 								return err
 							}
 						}
 						unseal := time.Now()
-						sealTimings[ix].PreCommit2 = precommit2.Sub(pc2Start)
-						sealTimings[ix].Commit1 = sealcommit1.Sub(commitStart)
-						sealTimings[ix].Commit2 = sealcommit2.Sub(sealcommit1)
-						sealTimings[ix].Verify = verifySeal.Sub(sealcommit2)
-						sealTimings[ix].Unseal = unseal.Sub(verifySeal)
+						sealTimings[i].PreCommit2 = precommit2.Sub(pc2Start)
+						sealTimings[i].Commit1 = sealcommit1.Sub(commitStart)
+						sealTimings[i].Commit2 = sealcommit2.Sub(sealcommit1)
+						sealTimings[i].Verify = verifySeal.Sub(sealcommit2)
+						sealTimings[i].Unseal = unseal.Sub(verifySeal)
 					}
 
-					sealTimings[ix].PreCommit1 = precommit1.Sub(start)
+					sealTimings[i].PreCommit1 = precommit1.Sub(start)
 				}
 				return nil
 			}()
