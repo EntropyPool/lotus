@@ -947,14 +947,14 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 }
 
 func (bucket *eWorkerBucket) scheduleBucketTask() {
-	log.Debugf("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
+	log.Infof("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
 	for _, worker := range bucket.workers {
 		bucket.scheduleTypedTasks(worker)
 	}
 }
 
 func (bucket *eWorkerBucket) schedulePreparedTask() {
-	log.Debugf("<%s> try schedule prepared task for bucket [%d]", eschedTag, bucket.id)
+	log.Infof("<%s> try schedule prepared task for bucket [%d]", eschedTag, bucket.id)
 	for _, worker := range bucket.workers {
 		bucket.schedulePreparedTasks(worker)
 	}
@@ -1312,14 +1312,14 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				ID:      storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
 				Sector:  task.sector.ID,
 				Task:    task.taskType,
-				RunWait: wi + 1,
+				RunWait: wi + 1 + 1000,
 				Start:   task.inqueueTimeRaw,
 			})
 			wi += 1
 		}
 		worker.preparingTasks.mutex.Unlock()
 
-		wi += 100000
+		wi = 0
 		log.Debugf("<%s> collect priority tasks for %s", eschedTag, worker.info.Address)
 		for _, pq := range worker.priorityTasksQueue {
 			for _, tq := range pq.typedTasksQueue {
@@ -1328,7 +1328,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 						ID:      storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
 						Sector:  task.sector.ID,
 						Task:    task.taskType,
-						RunWait: wi*(pq.priority+1) + 1,
+						RunWait: 100000*(pq.priority+1) + 1 + wi,
 						Start:   task.inqueueTimeRaw,
 					})
 					wi += 1

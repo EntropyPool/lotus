@@ -215,6 +215,7 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 		// state.State = Removing
 		// m.stats.updateSector(m.minerSectorID(state.SectorNumber), state.State)
 		// return m.handleUnknownState, 1, nil
+		return nil, 0, xerrors.Errorf("planner for state %s not found", state.State)
 	}
 
 	processed, err := p(events, state)

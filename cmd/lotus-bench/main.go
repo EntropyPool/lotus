@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	"io/ioutil"
 	"math/big"
 	"math/rand"
@@ -666,7 +667,6 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 								ProofType: spt(sectorSize),
 							}
 							{
-								p, done, err := sbfs.AcquireSector(context.TODO(), sector, storiface.FTUnsealed, storiface.FTNone, storiface.PathSealing)
 								if err != nil {
 									return xerrors.Errorf("acquire unsealed sector for removing: %w", err)
 								}
