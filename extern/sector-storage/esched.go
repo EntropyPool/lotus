@@ -203,6 +203,11 @@ type eTaskWorkerBinder struct {
 	binder map[abi.SectorNumber]string
 }
 
+type eTaskUUID struct {
+	sector storage.SectorRef
+	uuid   uuid.UUID
+}
+
 type eWorkerBucket struct {
 	spt                abi.RegisteredSealProof
 	id                 int
@@ -214,6 +219,7 @@ type eWorkerBucket struct {
 	reqFinisher        chan *eRequestFinisher
 	notifier           chan struct{}
 	dropWorker         chan uuid.UUID
+	taskUUID           chan eTaskUUID
 	retRequest         chan *eWorkerRequest
 	storageNotifier    chan eStoreAction
 	droppedWorker      chan string
@@ -329,6 +335,8 @@ type edispatcher struct {
 	nextWorker       uint64
 	newWorker        chan *eWorkerHandle
 	dropWorker       chan uuid.UUID
+	taskUUID         chan eTaskUUID
+	abortTask        chan storage.SectorRef
 	newRequest       chan *eWorkerRequest
 	buckets          []*eWorkerBucket
 	reqQueue         *eRequestQueue
@@ -1345,6 +1353,47 @@ func (bucket *eWorkerBucket) onScheduleTick() {
 	// go func() { bucket.notifier <- struct{}{} }()
 }
 
+func (bucket *eWorkerBucket) setTaskUUID(uuid eTaskUUID) {
+	for _, worker := range bucket.workers {
+		for _, task := range worker.runningTasks {
+			if task.sector.ID == uuid.sector.ID {
+				task.uuid = uuid.uuid
+				return
+			}
+		}
+
+		worker.preparedTasks.mutex.Lock()
+		for _, task := range worker.preparedTasks.queue {
+			if task.sector.ID == uuid.sector.ID {
+				task.uuid = uuid.uuid
+				return
+			}
+		}
+		worker.preparedTasks.mutex.Unlock()
+
+		worker.preparingTasks.mutex.Lock()
+		for _, task := range worker.preparingTasks.queue {
+			if task.sector.ID == uuid.sector.ID {
+				task.uuid = uuid.uuid
+				return
+			}
+		}
+		worker.preparingTasks.mutex.Unlock()
+
+		for _, pq := range worker.priorityTasksQueue {
+			for _, tq := range pq.typedTasksQueue {
+				for _, task := range tq.tasks {
+					if task.sector.ID == uuid.sector.ID {
+						task.uuid = uuid.uuid
+						return
+					}
+				}
+			}
+		}
+	}
+
+}
+
 func (bucket *eWorkerBucket) scheduler() {
 	log.Infof("<%s> run scheduler for bucket %d", eschedTag, bucket.id)
 
@@ -1360,6 +1409,8 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.schedulePreparedTask()
 		case finisher := <-bucket.reqFinisher:
 			bucket.taskFinished(finisher)
+		case uuid := <-bucket.taskUUID:
+			bucket.setTaskUUID(uuid)
 		case wid := <-bucket.dropWorker:
 			bucket.removeWorkerFromBucket(wid)
 		case act := <-bucket.storageNotifier:
@@ -1394,6 +1445,8 @@ func newExtScheduler() *edispatcher {
 		nextWorker: 0,
 		newWorker:  make(chan *eWorkerHandle, 40),
 		dropWorker: make(chan uuid.UUID, 10),
+		taskUUID:   make(chan eTaskUUID, 10),
+		abortTask:  make(chan storage.SectorRef, 10),
 		newRequest: make(chan *eWorkerRequest, 1000),
 		buckets:    make([]*eWorkerBucket, eschedWorkerBuckets),
 		reqQueue: &eRequestQueue{
@@ -1422,6 +1475,7 @@ func newExtScheduler() *edispatcher {
 			reqFinisher:        make(chan *eRequestFinisher),
 			notifier:           make(chan struct{}),
 			dropWorker:         make(chan uuid.UUID, 10),
+			taskUUID:           make(chan eTaskUUID, 10),
 			retRequest:         dispatcher.newRequest,
 			storageNotifier:    make(chan eStoreAction, 10),
 			droppedWorker:      dispatcher.droppedWorker,
@@ -1802,6 +1856,30 @@ func (sh *edispatcher) onWorkerStatsQuery(param *eWorkerStatsParam) {
 	}(param)
 }
 
+func (sh *edispatcher) onTaskUUID(uuid eTaskUUID) {
+	for _, bucket := range sh.buckets {
+		go func(bucket *eWorkerBucket) { bucket.taskUUID <- uuid }(bucket)
+	}
+}
+
+func (sh *edispatcher) onAbortTask(sector storage.SectorRef) {
+	sh.reqQueue.mutex.Lock()
+	for taskType, reqs := range sh.reqQueue.reqs {
+		remainReqs := make([]*eWorkerRequest, 0)
+		for _, req := range reqs {
+			if req.sector.ID == sector.ID {
+				go func(req *eWorkerRequest) {
+					req.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
+				}(req)
+				continue
+			}
+			remainReqs = append(remainReqs, req)
+		}
+		sh.reqQueue.reqs[taskType] = remainReqs
+	}
+	sh.reqQueue.mutex.Unlock()
+}
+
 func (sh *edispatcher) runSched() {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
@@ -1827,6 +1905,10 @@ func (sh *edispatcher) runSched() {
 			sh.onWorkerStatsQuery(param)
 		case param := <-sh.workerJobsQuery:
 			sh.onWorkerJobsQuery(param)
+		case uuid := <-sh.taskUUID:
+			sh.onTaskUUID(uuid)
+		case sector := <-sh.abortTask:
+			sh.onAbortTask(sector)
 		case <-sh.closing:
 			sh.closeAllBuckets()
 			return
@@ -1903,4 +1985,13 @@ func (sh *edispatcher) MoveCacheDone(sector storage.SectorRef) {
 
 func (sh *edispatcher) Debugging() bool {
 	return eschedDebug
+}
+
+func (sh *edispatcher) SetTaskUUID(sector storage.SectorRef, uuid uuid.UUID) {
+	go func() { sh.taskUUID <- eTaskUUID{sector: sector, uuid: uuid} }()
+}
+
+func (sh *edispatcher) AbortTask(sector storage.SectorRef) error {
+	go func() { sh.abortTask <- sector }()
+	return nil
 }
