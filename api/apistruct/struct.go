@@ -330,8 +330,9 @@ type StorageMinerStruct struct {
 		ReturnReadPiece       func(ctx context.Context, callID storiface.CallID, ok bool, err *storiface.CallError) error                   `perm:"admin" retry:"true"`
 		ReturnFetch           func(ctx context.Context, callID storiface.CallID, err *storiface.CallError) error                            `perm:"admin" retry:"true"`
 
-		SealingSchedDiag func(context.Context, bool) (interface{}, error)       `perm:"admin"`
-		SealingAbort     func(ctx context.Context, call storiface.CallID) error `perm:"admin"`
+		SealingSchedDiag func(context.Context, bool) (interface{}, error)          `perm:"admin"`
+		SealingAbort     func(ctx context.Context, call storiface.CallID) error    `perm:"admin"`
+		ScheduleAbort    func(ctx context.Context, sector storage.SectorRef) error `perm:"admin"`
 
 		StorageList          func(context.Context) (map[stores.ID][]stores.Decl, error)                                                                                   `perm:"admin"`
 		StorageLocal         func(context.Context) (map[stores.ID]string, error)                                                                                          `perm:"admin"`
@@ -1362,6 +1363,10 @@ func (c *StorageMinerStruct) ReturnFetch(ctx context.Context, callID storiface.C
 
 func (c *StorageMinerStruct) SealingSchedDiag(ctx context.Context, doSched bool) (interface{}, error) {
 	return c.Internal.SealingSchedDiag(ctx, doSched)
+}
+
+func (c *StorageMinerStruct) ScheduleAbort(ctx context.Context, sector storage.SectorRef) error {
+	return c.Internal.ScheduleAbort(ctx, sector)
 }
 
 func (c *StorageMinerStruct) SealingAbort(ctx context.Context, call storiface.CallID) error {

@@ -228,6 +228,9 @@ func (l *LocalWorker) asyncCall(ctx context.Context, sector storage.SectorRef, r
 		ID:     uuid.New(),
 	}
 
+	manager := reflect.ValueOf(l.ret).Interface().(*Manager)
+	manager.sched.esched.SetTaskUUID(sector, ci.ID)
+
 	if err := l.ct.onStart(ci, rt); err != nil {
 		log.Errorf("tracking call (start): %+v", err)
 	}
