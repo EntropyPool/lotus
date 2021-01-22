@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
+	"github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
@@ -29,6 +31,7 @@ var sealingCmd = &cli.Command{
 		sealingWorkersCmd,
 		sealingSchedDiagCmd,
 		sealingAbortCmd,
+		scheduleAbortCmd,
 	},
 }
 
@@ -81,7 +84,31 @@ var sealingWorkersCmd = &cli.Command{
 				disabled = color.RedString(" (disabled)")
 			}
 
-			fmt.Printf("Worker %s, host %s%s\n", stat.id, color.MagentaString(stat.Info.Hostname), disabled)
+			addressStr := stat.Info.Address
+			if 0 == len(addressStr) {
+				addressStr = "localhost"
+			}
+			fmt.Printf("Worker %s (%s), host %s/%s%s\n", stat.id, stat.State,
+				color.MagentaString(stat.Info.Hostname),
+				color.MagentaString(addressStr), disabled)
+
+			taskTypes := ""
+			sort.Slice(stat.Info.SupportTasks, func(i, j int) bool {
+				return strings.Compare(string(stat.Info.SupportTasks[i]), string(stat.Info.SupportTasks[j])) < 0
+			})
+
+			fmt.Printf("\tGRP:  %s\n", color.MagentaString(stat.Info.GroupName))
+			for _, taskType := range stat.Info.SupportTasks {
+				taskTypes = fmt.Sprintf("%s\n\t      ", taskTypes)
+				maxConcurrent := stat.Tasks[taskType].MaxConcurrent
+				taskTypes = fmt.Sprintf("%s| %4s | %7d | %8d | %7d | %13d |",
+					taskTypes, taskType.Short(),
+					stat.Tasks[taskType].Running, stat.Tasks[taskType].Prepared,
+					stat.Tasks[taskType].Waiting, maxConcurrent)
+			}
+			fmt.Printf("\t      -------------------------------------------------------\n")
+			fmt.Printf("\tTSK:  | Type | Running | Prepared | Waiting | MaxConcurrent |%s\n", taskTypes)
+			fmt.Printf("\t      -------------------------------------------------------\n")
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)
@@ -184,7 +211,7 @@ var sealingJobsCmd = &cli.Command{
 		}
 
 		for wid, st := range wst {
-			workerHostnames[wid] = st.Info.Hostname
+			workerHostnames[wid] = st.Info.Address
 		}
 
 		tw := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
@@ -303,5 +330,55 @@ var sealingAbortCmd = &cli.Command{
 		fmt.Printf("aborting job %s, task %s, sector %d, running on host %s\n", job.ID.String(), job.Task.Short(), job.Sector.Number, job.Hostname)
 
 		return nodeApi.SealingAbort(ctx, job.ID)
+	},
+}
+
+var scheduleAbortCmd = &cli.Command{
+	Name:      "sched-abort",
+	Usage:     "Abort a schedule waiting job",
+	ArgsUsage: "[sector]",
+	Action: func(cctx *cli.Context) error {
+		if cctx.Args().Len() != 1 {
+			return xerrors.Errorf("expected 1 argument")
+		}
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		ctx := lcli.ReqContext(cctx)
+
+		jobs, err := nodeApi.WorkerJobs(ctx)
+		if err != nil {
+			return xerrors.Errorf("getting worker jobs: %w", err)
+		}
+
+		var job *storiface.WorkerJob
+	outer:
+		for _, workerJobs := range jobs {
+			for _, j := range workerJobs {
+				number, _ := strconv.ParseUint(cctx.Args().First(), 10, 64)
+				if uint(j.Sector.Number) == uint(number) {
+					j := j
+					job = &j
+					break outer
+				}
+			}
+		}
+
+		if job == nil {
+			return xerrors.Errorf("job with specified id prefix not found")
+		}
+
+		fmt.Printf("aborting job %s, task %s, sector %d, running on host %s\n", job.ID.String(), job.Task.Short(), job.Sector.Number, job.Hostname)
+
+		sector := storage.SectorRef{
+			ID:        job.Sector,
+			ProofType: 0,
+		}
+
+		return nodeApi.ScheduleAbort(ctx, sector)
 	},
 }

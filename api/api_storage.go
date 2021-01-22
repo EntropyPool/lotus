@@ -90,6 +90,7 @@ type StorageMiner interface {
 
 	// SealingSchedDiag dumps internal sealing scheduler state
 	SealingSchedDiag(ctx context.Context, doSched bool) (interface{}, error)
+	ScheduleAbort(ctx context.Context, sector storage.SectorRef) error
 	SealingAbort(ctx context.Context, call storiface.CallID) error
 
 	stores.SectorIndex

@@ -132,10 +132,11 @@ func (m *Sealing) handlePreCommit1(ctx statemachine.Context, sector SectorInfo) 
 			log.Errorf("handlePreCommit1: api error, not proceeding: %+v", err)
 			return nil
 		case *ErrInvalidDeals:
-			log.Warnf("invalid deals in sector %d: %v", sector.SectorNumber, err)
 			return ctx.Send(SectorInvalidDealIDs{Return: RetPreCommit1})
 		case *ErrExpiredDeals: // Probably not much we can do here, maybe re-pack the sector?
 			return ctx.Send(SectorDealsExpired{xerrors.Errorf("expired dealIDs in sector: %w", err)})
+		case *ErrInvalidPiece:
+			return ctx.Send(SectorRemove{})
 		default:
 			return xerrors.Errorf("checkPieces sanity check error: %w", err)
 		}
@@ -151,7 +152,10 @@ func (m *Sealing) handlePreCommit1(ctx statemachine.Context, sector SectorInfo) 
 		return ctx.Send(SectorOldTicket{}) // go get new ticket
 	}
 
-	pc1o, err := m.sealer.SealPreCommit1(sector.sealingCtx(ctx.Context()), m.minerSector(sector.SectorType, sector.SectorNumber), sector.TicketValue, sector.pieceInfos())
+	sectorRef := m.minerSector(sector.SectorType, sector.SectorNumber)
+	sectorRef.HasDeal = checkDeals(sector.sealingCtx(ctx.Context()), sector)
+
+	pc1o, err := m.sealer.SealPreCommit1(sector.sealingCtx(ctx.Context()), sectorRef, sector.TicketValue, sector.pieceInfos())
 	if err != nil {
 		return ctx.Send(SectorSealPreCommit1Failed{xerrors.Errorf("seal pre commit(1) failed: %w", err)})
 	}
@@ -162,7 +166,10 @@ func (m *Sealing) handlePreCommit1(ctx statemachine.Context, sector SectorInfo) 
 }
 
 func (m *Sealing) handlePreCommit2(ctx statemachine.Context, sector SectorInfo) error {
-	cids, err := m.sealer.SealPreCommit2(sector.sealingCtx(ctx.Context()), m.minerSector(sector.SectorType, sector.SectorNumber), sector.PreCommit1Out)
+	sectorRef := m.minerSector(sector.SectorType, sector.SectorNumber)
+	sectorRef.HasDeal = checkDeals(sector.sealingCtx(ctx.Context()), sector)
+
+	cids, err := m.sealer.SealPreCommit2(sector.sealingCtx(ctx.Context()), sectorRef, sector.PreCommit1Out)
 	if err != nil {
 		return ctx.Send(SectorSealPreCommit2Failed{xerrors.Errorf("seal pre commit(2) failed: %w", err)})
 	}
@@ -186,6 +193,13 @@ func (m *Sealing) remarkForUpgrade(sid abi.SectorNumber) {
 }
 
 func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInfo) error {
+	log.Infof("handlePreCommitting: try to check PreCommit2 results start")
+	err := m.sealer.MovingCache(sector.sealingCtx(ctx.Context()), m.minerSector(sector.SectorType, sector.SectorNumber))
+	if err != nil {
+		log.Errorf("handlePreCommitting: moving cache to hdd error: %+v", err)
+	}
+	log.Infof("handlePreCommitting: try to check PreCommit2 results end")
+
 	tok, height, err := m.api.ChainHead(ctx.Context())
 	if err != nil {
 		log.Errorf("handlePreCommitting: api error, not proceeding: %+v", err)
@@ -287,6 +301,13 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 }
 
 func (m *Sealing) handlePreCommitWait(ctx statemachine.Context, sector SectorInfo) error {
+	log.Infof("handlePreCommitWait: try to check PreCommit2 results start")
+	err := m.sealer.MovingCache(sector.sealingCtx(ctx.Context()), m.minerSector(sector.SectorType, sector.SectorNumber))
+	if err != nil {
+		log.Errorf("handlePreCommitWait: try to check PreCommit2 results error: %+v", err)
+	}
+	log.Infof("handlePreCommitWait: try to check PreCommit2 results end")
+
 	if sector.PreCommitMessage == nil {
 		return ctx.Send(SectorChainPreCommitFailed{xerrors.Errorf("precommit message was nil")})
 	}
@@ -318,6 +339,13 @@ func (m *Sealing) handlePreCommitWait(ctx statemachine.Context, sector SectorInf
 }
 
 func (m *Sealing) handleWaitSeed(ctx statemachine.Context, sector SectorInfo) error {
+	log.Infof("handleWaitSeed: try to check PreCommit2 results start")
+	err := m.sealer.MovingCache(sector.sealingCtx(ctx.Context()), m.minerSector(sector.SectorType, sector.SectorNumber))
+	if err != nil {
+		log.Errorf("handleWaitSeed: try to check PreCommit2 results error: %+v", err)
+	}
+	log.Infof("handleWaitSeed: try to check PreCommit2 results end")
+
 	tok, _, err := m.api.ChainHead(ctx.Context())
 	if err != nil {
 		log.Errorf("handleWaitSeed: api error, not proceeding: %+v", err)
@@ -397,6 +425,15 @@ func (m *Sealing) handleCommitting(ctx statemachine.Context, sector SectorInfo) 
 		Unsealed: *sector.CommD,
 		Sealed:   *sector.CommR,
 	}
+
+	log.Infof("handleCommitting: try to check PreCommit2 results start")
+	err := m.sealer.MovingCache(sector.sealingCtx(ctx.Context()), m.minerSector(sector.SectorType, sector.SectorNumber))
+	if err != nil {
+		log.Errorf("handleCommitting: try to check PreCommit2 results error: %+v", err)
+		return ctx.Send(SectorComputeProofFailed{xerrors.Errorf("computing seal proof failed(0): %w", err)})
+	}
+	log.Infof("handleCommitting: try to check PreCommit2 results end")
+
 	c2in, err := m.sealer.SealCommit1(sector.sealingCtx(ctx.Context()), m.minerSector(sector.SectorType, sector.SectorNumber), sector.TicketValue, sector.SeedValue, sector.pieceInfos(), cids)
 	if err != nil {
 		return ctx.Send(SectorComputeProofFailed{xerrors.Errorf("computing seal proof failed(1): %w", err)})

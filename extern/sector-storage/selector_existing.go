@@ -28,8 +28,15 @@ func newExistingSelector(index stores.SectorIndex, sector abi.SectorID, alloc st
 	}
 }
 
-func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, whnd *workerHandle) (bool, error) {
-	tasks, err := whnd.workerRpc.TaskTypes(ctx)
+func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt abi.RegisteredSealProof, wi interface{}) (bool, error) {
+	var w Worker
+	switch wi.(type) {
+	case *workerHandle:
+		w = wi.(*workerHandle).workerRpc
+	case *eWorkerHandle:
+		w = wi.(*eWorkerHandle).w
+	}
+	tasks, err := w.TaskTypes(ctx)
 	if err != nil {
 		return false, xerrors.Errorf("getting supported worker task types: %w", err)
 	}
@@ -37,7 +44,7 @@ func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt 
 		return false, nil
 	}
 
-	paths, err := whnd.workerRpc.Paths(ctx)
+	paths, err := w.Paths(ctx)
 	if err != nil {
 		return false, xerrors.Errorf("getting worker paths: %w", err)
 	}
@@ -47,14 +54,25 @@ func (s *existingSelector) Ok(ctx context.Context, task sealtasks.TaskType, spt 
 		have[path.ID] = struct{}{}
 	}
 
+	// Always use the one which already have the sector
+	var best []stores.SectorStorageInfo = make([]stores.SectorStorageInfo, 0)
+
 	ssize, err := spt.SectorSize()
 	if err != nil {
 		return false, xerrors.Errorf("getting sector size: %w", err)
 	}
+	bestExist, err := s.index.StorageFindSector(ctx, s.sector, s.alloc, ssize, false)
+	if err == nil {
+		best = append(best, bestExist...)
+	}
 
-	best, err := s.index.StorageFindSector(ctx, s.sector, s.alloc, ssize, s.allowFetch)
-	if err != nil {
-		return false, xerrors.Errorf("finding best storage: %w", err)
+	bestFetch, err := s.index.StorageFindSector(ctx, s.sector, s.alloc, ssize, s.allowFetch)
+	if err == nil {
+		best = append(best, bestFetch...)
+	}
+
+	if 0 == len(best) {
+		return false, xerrors.Errorf("cannot find best storage")
 	}
 
 	for _, info := range best {

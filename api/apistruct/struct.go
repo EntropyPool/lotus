@@ -336,8 +336,9 @@ type StorageMinerStruct struct {
 		ReturnReadPiece       func(ctx context.Context, callID storiface.CallID, ok bool, err *storiface.CallError) error                   `perm:"admin" retry:"true"`
 		ReturnFetch           func(ctx context.Context, callID storiface.CallID, err *storiface.CallError) error                            `perm:"admin" retry:"true"`
 
-		SealingSchedDiag func(context.Context, bool) (interface{}, error)       `perm:"admin"`
-		SealingAbort     func(ctx context.Context, call storiface.CallID) error `perm:"admin"`
+		SealingSchedDiag func(context.Context, bool) (interface{}, error)          `perm:"admin"`
+		SealingAbort     func(ctx context.Context, call storiface.CallID) error    `perm:"admin"`
+		ScheduleAbort    func(ctx context.Context, sector storage.SectorRef) error `perm:"admin"`
 
 		StorageList          func(context.Context) (map[stores.ID][]stores.Decl, error)                                                                                   `perm:"admin"`
 		StorageLocal         func(context.Context) (map[stores.ID]string, error)                                                                                          `perm:"admin"`
@@ -1395,6 +1396,10 @@ func (c *StorageMinerStruct) SealingSchedDiag(ctx context.Context, doSched bool)
 	return c.Internal.SealingSchedDiag(ctx, doSched)
 }
 
+func (c *StorageMinerStruct) ScheduleAbort(ctx context.Context, sector storage.SectorRef) error {
+	return c.Internal.ScheduleAbort(ctx, sector)
+}
+
 func (c *StorageMinerStruct) SealingAbort(ctx context.Context, call storiface.CallID) error {
 	return c.Internal.SealingAbort(ctx, call)
 }
@@ -1615,6 +1620,10 @@ func (w *WorkerStruct) AddPiece(ctx context.Context, sector storage.SectorRef, p
 
 func (w *WorkerStruct) SealPreCommit1(ctx context.Context, sector storage.SectorRef, ticket abi.SealRandomness, pieces []abi.PieceInfo) (storiface.CallID, error) {
 	return w.Internal.SealPreCommit1(ctx, sector, ticket, pieces)
+}
+
+func (w *WorkerStruct) MovingCache(ctx context.Context, sector storage.SectorRef) error {
+	return nil //w.Internal.Moving(ctx, sector)
 }
 
 func (w *WorkerStruct) SealPreCommit2(ctx context.Context, sector storage.SectorRef, pc1o storage.PreCommit1Out) (storiface.CallID, error) {

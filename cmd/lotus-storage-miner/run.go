@@ -63,12 +63,30 @@ var runCmd = &cli.Command{
 			}
 		}
 
-		nodeApi, ncloser, err := lcli.GetFullNodeAPI(cctx)
+		nodeok := true
+		var (
+			ctx     context.Context
+			nodeApi api.FullNode
+			ncloser jsonrpc.ClientCloser
+			err     error
+		)
+		nodeApi, ncloser, err = lcli.GetFullNodeAPI(cctx)
 		if err != nil {
-			return xerrors.Errorf("getting full node api: %w", err)
+			log.Warnf("getting full node api: %s", err)
+			nodeok = false
+			goto lbBackNode
 		}
+		ctx = lcli.DaemonContext(cctx)
+
+		lbBackNode:
+		if !nodeok {
+			nodeApi, ncloser, ctx, err = lcli.GetBackNodeAPI(cctx)
+			if err != nil {
+				return err
+			}
+		}
+
 		defer ncloser()
-		ctx := lcli.DaemonContext(cctx)
 
 		// Register all metric views
 		if err := view.Register(

@@ -17,6 +17,7 @@ var ExistSectorStateList = map[SectorState]struct{}{
 	CommitWait:           {},
 	FinalizeSector:       {},
 	Proving:              {},
+	MayProving:           {},
 	FailedUnrecoverable:  {},
 	SealPreCommit1Failed: {},
 	SealPreCommit2Failed: {},
@@ -57,6 +58,7 @@ const (
 	CommitWait     SectorState = "CommitWait"    // wait for the commit message to land on chain
 	FinalizeSector SectorState = "FinalizeSector"
 	Proving        SectorState = "Proving"
+	MayProving     SectorState = "MayProving"
 	// error modes
 	FailedUnrecoverable  SectorState = "FailedUnrecoverable"
 	SealPreCommit1Failed SectorState = "SealPreCommit1Failed"
@@ -87,7 +89,7 @@ func toStatState(st SectorState) statSectorState {
 	switch st {
 	case Empty, WaitDeals, Packing, GetTicket, PreCommit1, PreCommit2, PreCommitting, PreCommitWait, WaitSeed, Committing, SubmitCommit, CommitWait, FinalizeSector:
 		return sstSealing
-	case Proving, Removed, Removing, Terminating, TerminateWait, TerminateFinality, TerminateFailed:
+	case Proving, MayProving, Removed, Removing, Terminating, TerminateWait, TerminateFinality, TerminateFailed:g:
 		return sstProving
 	}
 

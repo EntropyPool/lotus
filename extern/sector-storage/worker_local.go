@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/go-cid"
+	"github.com/shirou/gopsutil/v3/cpu"
 	"golang.org/x/xerrors"
 
 	ffi "github.com/filecoin-project/filecoin-ffi"
@@ -33,6 +35,8 @@ var pathTypes = []storiface.SectorFileType{storiface.FTUnsealed, storiface.FTSea
 type WorkerConfig struct {
 	TaskTypes []sealtasks.TaskType
 	NoSwap    bool
+	Address   string
+	GroupName string
 }
 
 // used do provide custom proofs impl (mostly used in testing)
@@ -50,6 +54,9 @@ type LocalWorker struct {
 	acceptTasks map[sealtasks.TaskType]struct{}
 	running     sync.WaitGroup
 	taskLk      sync.Mutex
+
+	Address   string
+	GroupName string
 
 	session     uuid.UUID
 	testDisable int64
@@ -74,6 +81,8 @@ func newLocalWorker(executor ExecutorFunc, wcfg WorkerConfig, store stores.Store
 		acceptTasks: acceptTasks,
 		executor:    executor,
 		noSwap:      wcfg.NoSwap,
+		Address:     wcfg.Address,
+		GroupName:   wcfg.GroupName,
 
 		session: uuid.New(),
 		closing: make(chan struct{}),
@@ -218,6 +227,9 @@ func (l *LocalWorker) asyncCall(ctx context.Context, sector storage.SectorRef, r
 		Sector: sector.ID,
 		ID:     uuid.New(),
 	}
+
+	manager := reflect.ValueOf(l.ret).Interface().(*Manager)
+	manager.sched.esched.SetTaskUUID(sector, ci.ID)
 
 	if err := l.ct.onStart(ci, rt); err != nil {
 		log.Errorf("tracking call (start): %+v", err)
@@ -510,14 +522,40 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 		memSwap = 0
 	}
 
+	var supportTasks = make([]sealtasks.TaskType, 0)
+	for taskType, _ := range l.acceptTasks {
+		supportTasks = append(supportTasks, taskType)
+	}
+
+	bigCache := false
+	env := os.Getenv("LOTUS_CACHE_HDD")
+
+	if 0 < len(env) {
+		hdd := strings.Split(env, ";")
+		if 0 < len(hdd) {
+			bigCache = true
+		}
+	}
+
+	cpus, err := cpu.Counts(false)
+	if nil != err {
+		cpus = runtime.NumCPU()
+	}
+
 	return storiface.WorkerInfo{
-		Hostname: hostname,
+		Hostname:     hostname,
+		Address:      l.Address,
+		GroupName:    l.GroupName,
+		SupportTasks: supportTasks,
+		BigCache:     bigCache,
 		Resources: storiface.WorkerResources{
-			MemPhysical: mem.Total,
-			MemSwap:     memSwap,
-			MemReserved: mem.VirtualUsed + mem.Total - mem.Available, // TODO: sub this process
-			CPUs:        uint64(runtime.NumCPU()),
-			GPUs:        gpus,
+			MemPhysical:  mem.Total,
+			MemSwap:      memSwap,
+			MemReserved:  mem.VirtualUsed + mem.Total - mem.Available, // TODO: sub this process
+			CPUs:         uint64(cpus),
+			GPUs:         gpus,
+			HugePageSize: mem.Metrics["Hugepagesize"],
+			HugePages:    int(mem.Metrics["HugePages_Total"]),
 		},
 	}, nil
 }
