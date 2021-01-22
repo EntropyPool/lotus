@@ -89,7 +89,7 @@ func toStatState(st SectorState) statSectorState {
 	switch st {
 	case Empty, WaitDeals, Packing, GetTicket, PreCommit1, PreCommit2, PreCommitting, PreCommitWait, WaitSeed, Committing, SubmitCommit, CommitWait, FinalizeSector:
 		return sstSealing
-	case Proving, MayProving, Removed, Removing, Terminating, TerminateWait, TerminateFinality, TerminateFailed:g:
+	case Proving, MayProving, Removed, Removing, Terminating, TerminateWait, TerminateFinality, TerminateFailed:
 		return sstProving
 	}
 

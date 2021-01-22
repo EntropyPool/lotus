@@ -6,13 +6,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"github.com/ipfs/go-cid"
-	"golang.org/x/xerrors"
 	"io"
 	"math/bits"
 	"os"
 	"runtime"
-	"sync"
+
+	"github.com/ipfs/go-cid"
+	"golang.org/x/xerrors"
 
 	ffi "github.com/filecoin-project/filecoin-ffi"
 	rlepluslazy "github.com/filecoin-project/go-bitfield/rle"
