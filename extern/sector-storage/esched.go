@@ -1366,6 +1366,7 @@ func (bucket *eWorkerBucket) setTaskUUID(uuid eTaskUUID) {
 		for _, task := range worker.preparedTasks.queue {
 			if task.sector.ID == uuid.sector.ID {
 				task.uuid = uuid.uuid
+				worker.preparedTasks.mutex.Unlock()
 				return
 			}
 		}
@@ -1375,6 +1376,7 @@ func (bucket *eWorkerBucket) setTaskUUID(uuid eTaskUUID) {
 		for _, task := range worker.preparingTasks.queue {
 			if task.sector.ID == uuid.sector.ID {
 				task.uuid = uuid.uuid
+				worker.preparingTasks.mutex.Unlock()
 				return
 			}
 		}
