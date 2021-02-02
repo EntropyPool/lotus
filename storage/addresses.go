@@ -57,7 +57,7 @@ func (as *AddressSelector) AddressFor(ctx context.Context, a addrSelectApi, mi m
 			addrs = append(addrs, a)
 		}
 	}
-	addrs = append(addrs, mi.Owner, mi.Worker)
+	addrs = append(addrs, /* mi.Owner, */mi.Worker)
 
 	return pickAddress(ctx, a, mi, goodFunds, minFunds, addrs)
 }
