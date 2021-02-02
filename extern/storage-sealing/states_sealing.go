@@ -517,7 +517,8 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 
 	from, _, err := m.addrSel(ctx.Context(), mi, api.CommitAddr, goodFunds, collateral)
 	if err != nil {
-		return ctx.Send(SectorCommitFailed{xerrors.Errorf("no good address to send commit message from: %w", err)})
+		return ctx.Send(SectorRetrySubmitCommit{})
+		// return ctx.Send(SectorCommitFailed{xerrors.Errorf("no good address to send commit message from: %w", err)})
 	}
 
 	// TODO: check seed / ticket / deals are up to date
@@ -587,4 +588,10 @@ func (m *Sealing) handleProvingSector(ctx statemachine.Context, sector SectorInf
 	// TODO: Auto-extend if set
 
 	return nil
+}
+
+func (m *Sealing) handleMayProvingSector(ctx statemachine.Context, sector SectorInfo) error {
+	// TODO: track sector health / expiration
+	log.Infof("May Proving sector %d", sector.SectorNumber)
+	return m.handleProvingSector(ctx, sector)
 }

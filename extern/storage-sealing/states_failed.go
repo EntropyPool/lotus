@@ -90,6 +90,8 @@ func (m *Sealing) handlePreCommitFailed(ctx statemachine.Context, sector SectorI
 		case exitcode.SysErrOutOfGas:
 			// API error in PreCommitWait AND gas estimator guessed a wrong number in PreCommit
 			return ctx.Send(SectorRetryPreCommit{})
+		case exitcode.SysErrInsufficientFunds:
+			return ctx.Send(SectorRetrySubmitCommit{})
 		default:
 			// something else went wrong
 		}
