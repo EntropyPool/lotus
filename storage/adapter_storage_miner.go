@@ -301,6 +301,14 @@ func (s SealingAPIAdapter) SendMsg(ctx context.Context, from, to address.Address
 	return smsg.Cid(), nil
 }
 
+func (s SealingAPIAdapter) ChainGetParentBaseFee(ctx context.Context) (abi.TokenAmount, error) {
+	head, err := s.delegate.ChainHead(ctx)
+	if err != nil {
+		return abi.NewTokenAmount(0), err
+	}
+	return head.MinTicketBlock().ParentBaseFee, nil
+}
+
 func (s SealingAPIAdapter) ChainHead(ctx context.Context) (sealing.TipSetToken, abi.ChainEpoch, error) {
 	head, err := s.delegate.ChainHead(ctx)
 	if err != nil {

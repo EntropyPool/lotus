@@ -281,7 +281,17 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 	}
 
 	deposit := big.Max(depositMinimum, collateral)
-	goodFunds := big.Add(deposit, m.feeCfg.MaxPreCommitGasFee)
+
+	baseFee, err := m.api.ChainGetParentBaseFee(ctx.Context())
+	if err != nil {
+		baseFee = m.feeCfg.MaxPreCommitGasFee
+	} else {
+		baseFee = big.Mul(baseFee, big.NewInt(11))
+		baseFee = big.Div(baseFee, big.NewInt(10))
+	}
+	baseFee = big.Max(baseFee, m.feeCfg.MaxPreCommitGasFee)
+
+	goodFunds := big.Add(deposit, baseFee)
 
 	from, _, err := m.addrSel(ctx.Context(), mi, api.PreCommitAddr, goodFunds, deposit)
 	if err != nil {
@@ -289,7 +299,7 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 	}
 
 	log.Infof("submitting precommit for sector %d (deposit: %s): ", sector.SectorNumber, deposit)
-	mcid, err := m.api.SendMsg(ctx.Context(), from, m.maddr, miner.Methods.PreCommitSector, deposit, m.feeCfg.MaxPreCommitGasFee, enc.Bytes())
+	mcid, err := m.api.SendMsg(ctx.Context(), from, m.maddr, miner.Methods.PreCommitSector, deposit, baseFee, enc.Bytes())
 	if err != nil {
 		if params.ReplaceCapacity {
 			m.remarkForUpgrade(params.ReplaceSectorNumber)
@@ -494,7 +504,16 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 		collateral = big.Zero()
 	}
 
-	goodFunds := big.Add(collateral, m.feeCfg.MaxCommitGasFee)
+	baseFee, err := m.api.ChainGetParentBaseFee(ctx.Context())
+	if err != nil {
+		baseFee = m.feeCfg.MaxCommitGasFee
+	} else {
+		baseFee = big.Mul(baseFee, big.NewInt(11))
+		baseFee = big.Div(baseFee, big.NewInt(10))
+	}
+	baseFee = big.Max(baseFee, m.feeCfg.MaxCommitGasFee)
+
+	goodFunds := big.Add(collateral, baseFee)
 
 	from, _, err := m.addrSel(ctx.Context(), mi, api.CommitAddr, goodFunds, collateral)
 	if err != nil {
@@ -502,7 +521,7 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 	}
 
 	// TODO: check seed / ticket / deals are up to date
-	mcid, err := m.api.SendMsg(ctx.Context(), from, m.maddr, miner.Methods.ProveCommitSector, collateral, m.feeCfg.MaxCommitGasFee, enc.Bytes())
+	mcid, err := m.api.SendMsg(ctx.Context(), from, m.maddr, miner.Methods.ProveCommitSector, collateral, baseFee, enc.Bytes())
 	if err != nil {
 		return ctx.Send(SectorCommitFailed{xerrors.Errorf("pushing message to mpool: %w", err)})
 	}
