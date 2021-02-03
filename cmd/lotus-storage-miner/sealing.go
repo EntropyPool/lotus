@@ -32,6 +32,7 @@ var sealingCmd = &cli.Command{
 		sealingSchedDiagCmd,
 		sealingAbortCmd,
 		scheduleAbortCmd,
+		sealingGasAdjustCmd,
 	},
 }
 
@@ -380,5 +381,27 @@ var scheduleAbortCmd = &cli.Command{
 		}
 
 		return nodeApi.ScheduleAbort(ctx, sector)
+	},
+}
+
+var sealingGasAdjustCmd = &cli.Command{
+	Name:      "gas-adjust",
+	Usage:     "Adjust sealing gas",
+	Flags: []cli.Flag{
+        &cli.BoolFlag{
+            Name:  "prefer-sector-on-chain",
+            Value: true,
+        },
+        &cli.StringFlag{
+            Name:   "max-pre-commit-gas-fee",
+            Value:  "0.1 FIL",
+        },
+        &cli.StringFlag{
+            Name:   "max-commit-gas-fee",
+            Value:  "0.3 FIL",
+        },
+	},
+	Action: func(cctx *cli.Context) error {
+		return nil
 	},
 }
