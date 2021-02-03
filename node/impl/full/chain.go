@@ -44,6 +44,7 @@ type ChainModuleAPI interface {
 	ChainGetBlockMessages(context.Context, cid.Cid) (*api.BlockMessages, error)
 	ChainHasObj(context.Context, cid.Cid) (bool, error)
 	ChainHead(context.Context) (*types.TipSet, error)
+	ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error)
 	ChainGetMessage(ctx context.Context, mc cid.Cid) (*types.Message, error)
 	ChainGetTipSet(ctx context.Context, tsk types.TipSetKey) (*types.TipSet, error)
 	ChainGetTipSetByHeight(ctx context.Context, h abi.ChainEpoch, tsk types.TipSetKey) (*types.TipSet, error)
@@ -72,6 +73,10 @@ type ChainAPI struct {
 
 func (m *ChainModule) ChainNotify(ctx context.Context) (<-chan []*api.HeadChange, error) {
 	return m.Chain.SubHeadChanges(ctx), nil
+}
+
+func (m *ChainModule) ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error) {
+	return m.Chain.ComputeBaseFee(ctx, ts)
 }
 
 func (m *ChainModule) ChainHead(context.Context) (*types.TipSet, error) {

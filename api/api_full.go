@@ -46,6 +46,7 @@ type FullNode interface {
 
 	// ChainHead returns the current head of the chain.
 	ChainHead(context.Context) (*types.TipSet, error)
+	ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error)
 
 	// ChainGetRandomnessFromTickets is used to sample the chain for randomness.
 	ChainGetRandomnessFromTickets(ctx context.Context, tsk types.TipSetKey, personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) (abi.Randomness, error)

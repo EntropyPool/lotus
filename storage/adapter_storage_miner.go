@@ -2,7 +2,6 @@ package storage
 
 import (
 	"bytes"
-	"fmt"
 	"context"
 
 	"github.com/ipfs/go-cid"
@@ -307,7 +306,10 @@ func (s SealingAPIAdapter) ChainGetParentBaseFee(ctx context.Context) (abi.Token
 	if err != nil {
 		return abi.NewTokenAmount(0), err
 	}
-	baseFee := head.MinTicketBlock().ParentBaseFee
+	baseFee, err := s.delegate.ChainComputeBaseFee(ctx, head)
+	if err != nil {
+		return abi.NewTokenAmount(0), err
+	}
 	return baseFee, nil
 }
 
