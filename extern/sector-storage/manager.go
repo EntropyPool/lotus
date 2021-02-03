@@ -83,9 +83,6 @@ type Manager struct {
 
 	results map[WorkID]result
 	waitRes map[WorkID]chan struct{}
-
-	failSectors        map[abi.SectorNumber]*stores.FailSector
-	lsFailSectorsMutex sync.Mutex
 }
 
 type result struct {
@@ -137,15 +134,9 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, sc 
 		results:     map[WorkID]result{},
 		waitRes:     map[WorkID]chan struct{}{},
 		Prover:      prover,
-		failSectors: make(map[abi.SectorNumber]*stores.FailSector),
 	}
 
 	m.setupWorkTracker()
-
-	failSectors := m.localStore.MayFailSectors
-	for failSector, failInfo := range failSectors {
-		m.failSectors[failSector] = failInfo
-	}
 
 	m.sched.SetStorage(&EStorage{
 		ctx:   ctx,
@@ -203,58 +194,7 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 	return nil
 }
 
-func (m *Manager) failedSector(ctx context.Context, sector abi.SectorID) bool {
-	if _, ok := m.localStore.FailSectors[sector.Number]; ok {
-		return true
-	}
-	if _, ok := m.failSectors[sector.Number]; ok {
-		return true
-	}
-	return false
-}
-
-func (m *Manager) removeFailSectors(ctx context.Context, delay time.Duration) {
-	timer := time.NewTimer(delay * time.Second)
-	go func() {
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-			m.lsFailSectorsMutex.Lock()
-			for failSector, failInfo := range m.localStore.FailSectors {
-				sector := storage.SectorRef{
-					ID: abi.SectorID{
-						Miner:  failInfo.Miner,
-						Number: failSector,
-					},
-				}
-				go func() {
-					ctx, cancel := context.WithCancel(ctx)
-					defer cancel()
-					err := m.Remove(ctx, sector)
-					if nil != err {
-						log.Errorf("cannot remove worker fail sector %v [%v]", sector.ID, err)
-					}
-				}()
-			}
-			m.lsFailSectorsMutex.Unlock()
-			for failSector, failInfo := range m.failSectors {
-				sector := storage.SectorRef{
-					ID: abi.SectorID{
-						Miner:  failInfo.Miner,
-						Number: failSector,
-					},
-				}
-				err := m.Remove(ctx, sector)
-				if nil != err {
-					log.Errorf("cannot remove miner fail sector %v [%v]", sector.ID, err)
-				}
-			}
-		}
-	}()
-}
-
 func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
-	m.removeFailSectors(context.TODO(), 180)
 	return m.sched.runWorker(ctx, w)
 }
 
@@ -407,26 +347,16 @@ func (m *Manager) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		selector = newExistingSelector(m.index, sector.ID, storiface.FTUnsealed, false)
 	}
 
-	m.localStore.AddMayFailSector(ctx, sector.ID, string(sealtasks.TTAddPiece), "")
-	m.lsFailSectorsMutex.Lock()
-	m.localStore.DropFailSector(ctx, sector.ID)
-	m.lsFailSectorsMutex.Unlock()
-
 	var out abi.PieceInfo
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTAddPiece, selector, schedNop, func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
 		inf, _ := w.Info(ctx)
 		log.Infow("run task start", "worker", inf.Address, "taskType", sealtasks.TTAddPiece, "sectorNumber", sector.ID.Number, "start", start)
 		p, err := m.waitSimpleCall(ctx)(w.AddPiece(ctx, sector, existingPieces, sz, r))
-		m.localStore.DropMayFailSector(ctx, sector.ID)
 		end := time.Now().Unix()
 		log.Infow("run task end", "worker", inf.Address, "taskType", sealtasks.TTAddPiece, "sectorNumber", sector.ID.Number, "start", end)
 		sealingElapseStatistic(ctx, w, sealtasks.TTAddPiece, sector, start, end, err)
 		if err != nil {
-			m.lsFailSectorsMutex.Lock()
-			m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTAddPiece), "")
-			m.lsFailSectorsMutex.Unlock()
-			m.removeFailSectors(context.TODO(), 0)
 			return err
 		}
 		if p != nil {
@@ -435,7 +365,6 @@ func (m *Manager) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		return nil
 	})
 
-	m.removeFailSectors(context.TODO(), 60)
 
 	return out, err
 }
@@ -443,10 +372,6 @@ func (m *Manager) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, ticket abi.SealRandomness, pieces []abi.PieceInfo) (out storage.PreCommit1Out, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	if m.failedSector(ctx, sector.ID) {
-		return nil, xerrors.Errorf("sector %v removed by miner fail", sector)
-	}
 
 	wk, wait, cancel, err := m.getWork(ctx, sealtasks.TTPreCommit1, sector, ticket, pieces)
 	if err != nil {
@@ -479,42 +404,22 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, 
 
 	selector := newAllocSelector(m.index, storiface.FTCache|storiface.FTSealed, storiface.PathSealing)
 
-	if !sector.HasDeal {
-		m.localStore.AddMayFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit1), "")
-	}
-	m.lsFailSectorsMutex.Lock()
-	m.localStore.DropFailSector(ctx, sector.ID)
-	m.lsFailSectorsMutex.Unlock()
-
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit1, selector, m.schedFetch(sector, storiface.FTUnsealed, storiface.PathSealing, storiface.AcquireMove), func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
 		inf, _ := w.Info(ctx)
 		log.Infow("run task start", "worker", inf.Address, "taskType", sealtasks.TTPreCommit1, "sectorNumber", sector.ID.Number, "start", start)
 		err := m.startWork(ctx, w, wk)(w.SealPreCommit1(ctx, sector, ticket, pieces))
-		m.localStore.DropMayFailSector(ctx, sector.ID)
 		end := time.Now().Unix()
 		log.Infow("run task end", "worker", inf.Address, "taskType", sealtasks.TTPreCommit1, "sectorNumber", sector.ID.Number, "start", end)
 
 		if err != nil {
 			sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, err)
-			m.lsFailSectorsMutex.Lock()
-			if !sector.HasDeal {
-				m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit1), "")
-			}
-			m.lsFailSectorsMutex.Unlock()
-			m.removeFailSectors(context.TODO(), 0)
 			return err
 		}
 
 		waitRes()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit1, sector, start, end, waitErr)
 		if waitErr != nil {
-			m.lsFailSectorsMutex.Lock()
-			if !sector.HasDeal {
-				m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
-			}
-			m.lsFailSectorsMutex.Unlock()
-			m.removeFailSectors(context.TODO(), 0)
 			return waitErr
 		}
 
@@ -525,7 +430,6 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, 
 		return nil, err
 	}
 
-	m.removeFailSectors(context.TODO(), 60)
 
 	return out, waitErr
 }
@@ -567,51 +471,27 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector storage.SectorRef, 
 		return out, waitErr
 	}
 
-	if m.failedSector(ctx, sector.ID) {
-		return storage.SectorCids{}, xerrors.Errorf("sector %v removed by miner fail", sector)
-	}
-
 	if err := m.index.StorageLock(ctx, sector.ID, storiface.FTSealed, storiface.FTCache); err != nil {
 		return storage.SectorCids{}, xerrors.Errorf("acquiring sector lock: %v", err)
 	}
 
 	selector := newExistingSelector(m.index, sector.ID, storiface.FTCache|storiface.FTSealed, true)
 
-	if !sector.HasDeal {
-		m.localStore.AddMayFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
-	}
-	m.lsFailSectorsMutex.Lock()
-	m.localStore.DropFailSector(ctx, sector.ID)
-	m.lsFailSectorsMutex.Unlock()
-
 	err = m.sched.Schedule(ctx, sector, sealtasks.TTPreCommit2, selector, m.schedFetch(sector, storiface.FTCache|storiface.FTSealed, storiface.PathSealing, storiface.AcquireMove), func(ctx context.Context, w Worker) error {
 		start := time.Now().Unix()
 		inf, _ := w.Info(ctx)
 		log.Infow("run task start", "worker", inf.Address, "taskType", sealtasks.TTPreCommit2, "sectorNumber", sector.ID.Number, "start", start)
 		err := m.startWork(ctx, w, wk)(w.SealPreCommit2(ctx, sector, phase1Out))
-		m.localStore.DropMayFailSector(ctx, sector.ID)
 		end := time.Now().Unix()
 		log.Infow("run task end", "worker", inf.Address, "taskType", sealtasks.TTPreCommit2, "sectorNumber", sector.ID.Number, "start", end)
 		if err != nil {
 			sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, err)
-			m.lsFailSectorsMutex.Lock()
-			if !sector.HasDeal {
-				m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
-			}
-			m.lsFailSectorsMutex.Unlock()
-			m.removeFailSectors(context.TODO(), 0)
 			return err
 		}
 
 		waitRes()
 		sealingElapseStatistic(ctx, w, sealtasks.TTPreCommit2, sector, start, end, waitErr)
 		if waitErr != nil {
-			m.lsFailSectorsMutex.Lock()
-			if !sector.HasDeal {
-				m.localStore.AddFailSector(ctx, sector.ID, string(sealtasks.TTPreCommit2), "")
-			}
-			m.lsFailSectorsMutex.Unlock()
-			m.removeFailSectors(context.TODO(), 0)
 			return waitErr
 		}
 
@@ -621,8 +501,6 @@ func (m *Manager) SealPreCommit2(ctx context.Context, sector storage.SectorRef, 
 	if err != nil {
 		return storage.SectorCids{}, err
 	}
-
-	m.removeFailSectors(context.TODO(), 60)
 
 	return out, waitErr
 }

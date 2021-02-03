@@ -298,7 +298,7 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 		return ctx.Send(SectorChainPreCommitFailed{xerrors.Errorf("no good address to send precommit message from: %w", err)})
 	}
 
-	log.Infof("submitting precommit for sector %d (deposit: %s): ", sector.SectorNumber, deposit)
+	log.Infof("submitting precommit for sector %d (deposit: %s, basefee: %v): ", sector.SectorNumber, deposit, baseFee)
 	mcid, err := m.api.SendMsg(ctx.Context(), from, m.maddr, miner.Methods.PreCommitSector, deposit, baseFee, enc.Bytes())
 	if err != nil {
 		if params.ReplaceCapacity {
@@ -522,6 +522,7 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 	}
 
 	// TODO: check seed / ticket / deals are up to date
+	log.Infof("submitting commit for sector %d (collateral: %s, basefee: %v): ", sector.SectorNumber, collateral, baseFee)
 	mcid, err := m.api.SendMsg(ctx.Context(), from, m.maddr, miner.Methods.ProveCommitSector, collateral, baseFee, enc.Bytes())
 	if err != nil {
 		return ctx.Send(SectorCommitFailed{xerrors.Errorf("pushing message to mpool: %w", err)})
