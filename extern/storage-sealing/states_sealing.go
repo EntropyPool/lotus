@@ -282,23 +282,36 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 
 	deposit := big.Max(depositMinimum, collateral)
 
-	baseFee, err := m.api.ChainGetParentBaseFee(ctx.Context())
-	if err != nil {
-		baseFee = m.feeCfg.MaxPreCommitGasFee
-	} else {
-		baseFee = big.Mul(baseFee, big.NewInt(11))
-		baseFee = big.Div(baseFee, big.NewInt(10))
+	var gasLimit int64 = 0
+	from, _, err := m.addrSel(ctx.Context(), mi, api.PreCommitAddr, deposit, deposit)
+	if err == nil {
+		gasLimit, err = m.api.EstimateMsgGasLimit(ctx.Context(), from, m.maddr, miner.Methods.PreCommitSector, deposit, enc.Bytes())
+		if err != nil {
+			log.Warnf("cannot get chain gas limit for precommit: %v", err)
+			gasLimit = 0
+		}
 	}
-	baseFee = big.Max(baseFee, m.feeCfg.MaxPreCommitGasFee)
+
+	parentBaseFee, err := m.api.ChainGetParentBaseFee(ctx.Context())
+	if err != nil {
+		log.Warnf("cannot get chain parent base fee for precommit: %v", err)
+		gasLimit = 0
+	} else {
+		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(11))
+		parentBaseFee = big.Div(parentBaseFee, big.NewInt(10))
+		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(gasLimit))
+	}
+	baseFee := big.Max(parentBaseFee, m.feeCfg.MaxPreCommitGasFee)
 
 	goodFunds := big.Add(deposit, baseFee)
 
-	from, _, err := m.addrSel(ctx.Context(), mi, api.PreCommitAddr, goodFunds, deposit)
+	from, _, err = m.addrSel(ctx.Context(), mi, api.PreCommitAddr, goodFunds, deposit)
 	if err != nil {
 		return ctx.Send(SectorChainPreCommitFailed{xerrors.Errorf("no good address to send precommit message from: %w", err)})
 	}
 
-	log.Infof("submitting precommit for sector %d (deposit: %s, basefee: %v): ", sector.SectorNumber, deposit, baseFee)
+	log.Infof("submitting precommit for sector %d (deposit: %s, basefee: %v, parentBaseFee: %v)",
+		sector.SectorNumber, deposit, baseFee, parentBaseFee)
 	mcid, err := m.api.SendMsg(ctx.Context(), from, m.maddr, miner.Methods.PreCommitSector, deposit, baseFee, enc.Bytes())
 	if err != nil {
 		if params.ReplaceCapacity {
@@ -504,25 +517,38 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 		collateral = big.Zero()
 	}
 
-	baseFee, err := m.api.ChainGetParentBaseFee(ctx.Context())
-	if err != nil {
-		baseFee = m.feeCfg.MaxCommitGasFee
-	} else {
-		baseFee = big.Mul(baseFee, big.NewInt(11))
-		baseFee = big.Div(baseFee, big.NewInt(10))
+	var gasLimit int64 = 0
+	from, _, err := m.addrSel(ctx.Context(), mi, api.CommitAddr, collateral, collateral)
+	if err == nil {
+		gasLimit, err = m.api.EstimateMsgGasLimit(ctx.Context(), from, m.maddr, miner.Methods.ProveCommitSector, collateral, enc.Bytes())
+		if err != nil {
+			log.Warnf("cannot get chain gas limit for precommit: %v", err)
+			gasLimit = 0
+		}
 	}
-	baseFee = big.Max(baseFee, m.feeCfg.MaxCommitGasFee)
+
+	parentBaseFee, err := m.api.ChainGetParentBaseFee(ctx.Context())
+	if err != nil {
+		log.Warnf("cannot get chain parent base fee for precommit: %v", err)
+		gasLimit = 0
+	} else {
+		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(11))
+		parentBaseFee = big.Div(parentBaseFee, big.NewInt(10))
+		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(gasLimit))
+	}
+	baseFee := big.Max(parentBaseFee, m.feeCfg.MaxPreCommitGasFee)
 
 	goodFunds := big.Add(collateral, baseFee)
 
-	from, _, err := m.addrSel(ctx.Context(), mi, api.CommitAddr, goodFunds, collateral)
+	from, _, err = m.addrSel(ctx.Context(), mi, api.CommitAddr, goodFunds, collateral)
 	if err != nil {
 		return ctx.Send(SectorRetrySubmitCommit{})
 		// return ctx.Send(SectorCommitFailed{xerrors.Errorf("no good address to send commit message from: %w", err)})
 	}
 
 	// TODO: check seed / ticket / deals are up to date
-	log.Infof("submitting commit for sector %d (collateral: %s, basefee: %v): ", sector.SectorNumber, collateral, baseFee)
+	log.Infof("submitting commit for sector %d (collateral: %s, basefee: %v, parentBaseFee: %v)",
+		sector.SectorNumber, collateral, baseFee, parentBaseFee)
 	mcid, err := m.api.SendMsg(ctx.Context(), from, m.maddr, miner.Methods.ProveCommitSector, collateral, baseFee, enc.Bytes())
 	if err != nil {
 		return ctx.Send(SectorCommitFailed{xerrors.Errorf("pushing message to mpool: %w", err)})

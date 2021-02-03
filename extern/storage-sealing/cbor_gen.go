@@ -475,7 +475,7 @@ func (t *SectorInfo) MarshalCBOR(w io.Writer) error {
 		_, err := w.Write(cbg.CborNull)
 		return err
 	}
-	if _, err := w.Write([]byte{184, 25}); err != nil {
+	if _, err := w.Write([]byte{184, 26}); err != nil {
 		return err
 	}
 

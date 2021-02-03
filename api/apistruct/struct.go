@@ -430,6 +430,7 @@ type GatewayStruct struct {
 		ChainGetTipSetByHeight            func(ctx context.Context, h abi.ChainEpoch, tsk types.TipSetKey) (*types.TipSet, error)
 		ChainHasObj                       func(context.Context, cid.Cid) (bool, error)
 		ChainHead                         func(ctx context.Context) (*types.TipSet, error)
+		ChainComputeBaseFee               func(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error)
 		ChainNotify                       func(ctx context.Context) (<-chan []*api.HeadChange, error)
 		ChainReadObj                      func(context.Context, cid.Cid) ([]byte, error)
 		GasEstimateMessageGas             func(ctx context.Context, msg *types.Message, spec *api.MessageSendSpec, tsk types.TipSetKey) (*types.Message, error)
@@ -1725,6 +1726,10 @@ func (g GatewayStruct) ChainHasObj(ctx context.Context, c cid.Cid) (bool, error)
 
 func (g GatewayStruct) ChainHead(ctx context.Context) (*types.TipSet, error) {
 	return g.Internal.ChainHead(ctx)
+}
+
+func (c *GatewayStruct) ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error) {
+	return c.Internal.ChainComputeBaseFee(ctx, ts)
 }
 
 func (g GatewayStruct) ChainNotify(ctx context.Context) (<-chan []*api.HeadChange, error) {

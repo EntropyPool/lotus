@@ -301,6 +301,26 @@ func (s SealingAPIAdapter) SendMsg(ctx context.Context, from, to address.Address
 	return smsg.Cid(), nil
 }
 
+func (s SealingAPIAdapter) EstimateMsgGasLimit(ctx context.Context, from, to address.Address, method abi.MethodNum, value abi.TokenAmount, params []byte) (int64, error) {
+	msg := types.Message{
+		To:     to,
+		From:   from,
+		Value:  value,
+		Method: method,
+		Params: params,
+	}
+
+	return s.delegate.GasEstimateGasLimit(ctx, &msg, types.TipSetKey{})
+}
+
+func (s SealingAPIAdapter) ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error) {
+	baseFee, err := s.delegate.ChainComputeBaseFee(ctx, ts)
+	if err != nil {
+		return abi.NewTokenAmount(0), err
+	}
+	return baseFee, nil
+}
+
 func (s SealingAPIAdapter) ChainGetParentBaseFee(ctx context.Context) (abi.TokenAmount, error) {
 	head, err := s.delegate.ChainHead(ctx)
 	if err != nil {
@@ -311,6 +331,10 @@ func (s SealingAPIAdapter) ChainGetParentBaseFee(ctx context.Context) (abi.Token
 		return abi.NewTokenAmount(0), err
 	}
 	return baseFee, nil
+}
+
+func (s SealingAPIAdapter) GasEstimateGasLimit(ctx context.Context, msg *types.Message) (int64, error) {
+	return s.delegate.GasEstimateGasLimit(ctx, msg, types.TipSetKey{})
 }
 
 func (s SealingAPIAdapter) ChainHead(ctx context.Context) (sealing.TipSetToken, abi.ChainEpoch, error) {

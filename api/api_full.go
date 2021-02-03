@@ -46,6 +46,8 @@ type FullNode interface {
 
 	// ChainHead returns the current head of the chain.
 	ChainHead(context.Context) (*types.TipSet, error)
+
+	// ChainComputeBaseFee returns the base fee of last tipset.
 	ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error)
 
 	// ChainGetRandomnessFromTickets is used to sample the chain for randomness.
