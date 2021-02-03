@@ -484,10 +484,14 @@ func (m *Sealing) handleCommitting(ctx statemachine.Context, sector SectorInfo) 
 }
 
 func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo) error {
-	tok, _, err := m.api.ChainHead(ctx.Context())
+	tok, height, err := m.api.ChainHead(ctx.Context())
 	if err != nil {
 		log.Errorf("handleCommitting: api error, not proceeding: %+v", err)
 		return nil
+	}
+
+	if err := checkPrecommit(ctx.Context(), m.Address(), sector, tok, height, m.api); err != nil {
+		return ctx.Send(SectorCommitFailed{xerrors.Errorf("precommit check error: %w", err)})
 	}
 
 	if err := m.checkCommit(ctx.Context(), sector, sector.Proof, tok); err != nil {
