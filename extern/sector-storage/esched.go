@@ -1354,6 +1354,7 @@ func (bucket *eWorkerBucket) onScheduleTick() {
 }
 
 func (bucket *eWorkerBucket) setTaskUUID(uuid eTaskUUID) {
+	log.Infof("<%s> try to set sector %v uuid to %v", eschedTag, uuid.sector.ID, uuid.uuid)
 	for _, worker := range bucket.workers {
 		for _, task := range worker.runningTasks {
 			if task.sector.ID == uuid.sector.ID {
