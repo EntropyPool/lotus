@@ -73,6 +73,7 @@ type MinerFeeConfig struct {
 	MaxWindowPoStGasFee    types.FIL
 	MaxPublishDealsFee     types.FIL
 	MaxMarketBalanceAddFee types.FIL
+	PreferSectorOnChain    bool
 }
 
 type MinerAddressConfig struct {
@@ -216,6 +217,7 @@ func DefaultStorageMiner() *StorageMiner {
 			MaxWindowPoStGasFee:    types.MustParseFIL("5"),
 			MaxPublishDealsFee:     types.MustParseFIL("0.05"),
 			MaxMarketBalanceAddFee: types.MustParseFIL("0.007"),
+			PreferSectorOnChain:    true,
 		},
 
 		Addresses: MinerAddressConfig{

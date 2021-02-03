@@ -108,9 +108,10 @@ type Sealing struct {
 }
 
 type FeeConfig struct {
-	MaxPreCommitGasFee abi.TokenAmount
-	MaxCommitGasFee    abi.TokenAmount
-	MaxTerminateGasFee abi.TokenAmount
+	MaxPreCommitGasFee  abi.TokenAmount
+	MaxCommitGasFee     abi.TokenAmount
+	MaxTerminateGasFee  abi.TokenAmount
+	PreferSectorOnChain bool
 }
 
 type UnsealedSectorMap struct {

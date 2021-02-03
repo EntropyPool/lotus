@@ -292,7 +292,8 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 		}
 	}
 
-	parentBaseFee, err := m.api.ChainGetParentBaseFee(ctx.Context())
+	parentBaseFee := abi.NewTokenAmount(0)
+	parentBaseFee, err = m.api.ChainGetParentBaseFee(ctx.Context())
 	if err != nil {
 		log.Warnf("cannot get chain parent base fee for precommit: %v", err)
 		gasLimit = 0
@@ -301,7 +302,17 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 		parentBaseFee = big.Div(parentBaseFee, big.NewInt(100))
 		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(gasLimit))
 	}
-	baseFee := big.Max(parentBaseFee, m.feeCfg.MaxPreCommitGasFee)
+
+	baseFee := abi.NewTokenAmount(0)
+	if m.feeCfg.PreferSectorOnChain && 0 < gasLimit {
+		baseFee = parentBaseFee
+	} else {
+		if 0 == gasLimit {
+			baseFee = m.feeCfg.MaxPreCommitGasFee
+		} else {
+			baseFee = big.Min(parentBaseFee, m.feeCfg.MaxPreCommitGasFee)
+		}
+	}
 
 	goodFunds := big.Add(deposit, baseFee)
 
@@ -527,7 +538,8 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 		}
 	}
 
-	parentBaseFee, err := m.api.ChainGetParentBaseFee(ctx.Context())
+	parentBaseFee := abi.NewTokenAmount(0)
+	parentBaseFee, err = m.api.ChainGetParentBaseFee(ctx.Context())
 	if err != nil {
 		log.Warnf("cannot get chain parent base fee for precommit: %v", err)
 		gasLimit = 0
@@ -536,7 +548,17 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 		parentBaseFee = big.Div(parentBaseFee, big.NewInt(100))
 		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(gasLimit))
 	}
-	baseFee := big.Max(parentBaseFee, m.feeCfg.MaxPreCommitGasFee)
+
+	baseFee := abi.NewTokenAmount(0)
+	if m.feeCfg.PreferSectorOnChain && 0 < gasLimit {
+		baseFee = parentBaseFee
+	} else {
+		if 0 == gasLimit {
+			baseFee = m.feeCfg.MaxCommitGasFee
+		} else {
+			baseFee = big.Min(parentBaseFee, m.feeCfg.MaxCommitGasFee)
+		}
+	}
 
 	goodFunds := big.Add(collateral, baseFee)
 
