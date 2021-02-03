@@ -57,7 +57,15 @@ func (m *Sealing) handleSealPrecommit1Failed(ctx statemachine.Context, sector Se
 
 func (m *Sealing) handleSealPrecommit2Failed(ctx statemachine.Context, sector SectorInfo) error {
 	log.Warnf("pre commit2 fails(%v) sector (%v)", sector.PreCommit2Fails, sector.SectorNumber)
-	return ctx.Send(SectorRemove{})
+	if err := failedCooldown(ctx, sector); err != nil {
+        return err
+    }
+
+    if sector.PreCommit2Fails > 5 {
+		return ctx.Send(SectorRemove{})
+    }
+
+    return ctx.Send(SectorRetrySealPreCommit2{})
 }
 
 func (m *Sealing) handlePreCommitFailed(ctx statemachine.Context, sector SectorInfo) error {
