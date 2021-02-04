@@ -372,6 +372,8 @@ func (s SealingAPIAdapter) ChainGetParentBaseFee(ctx context.Context) (abi.Token
         return headFee, nil
     }
 
+	log.Infof("current base fee %v =? head fee %v", baseFee, headFee)
+
     baseFee = big.Div(baseFee, feeCount)
     if big.Cmp(baseFee, headFee) < 0 {
         return headFee, nil
