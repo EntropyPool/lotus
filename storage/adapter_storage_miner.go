@@ -328,8 +328,8 @@ func (s SealingAPIAdapter) ChainGetParentBaseFee(ctx context.Context) (abi.Token
 	}
 
 	var feeEpochs int64 = int64(head.Height())
-	if 200 < feeEpochs {
-		feeEpochs = 200
+	if 600 < feeEpochs {
+		feeEpochs = 600
 	}
 
 	baseFee := abi.NewTokenAmount(0)
