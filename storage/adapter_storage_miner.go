@@ -326,15 +326,56 @@ func (s SealingAPIAdapter) ChainGetParentBaseFee(ctx context.Context) (abi.Token
 	if err != nil {
 		return abi.NewTokenAmount(0), err
 	}
+
+	feeEpochs := head.Height()
+	if 200 < feeEpochs {
+		feeEpochs = 200
+	}
+
 	baseFee := abi.NewTokenAmount(0)
-	if len(head.Blocks()) > 0 {
-        baseFee = head.Blocks()[0].ParentBaseFee
-	} else {
-        baseFee, err = s.delegate.ChainComputeBaseFee(ctx, head)
+    feeCount := big.NewInt(0)
+
+	for epoch := head.Height(); 0 < feeEpochs; epoch -= 1 {
+        fee := abi.NewTokenAmount(0)
+
+		ts, err := s.delegate.ChainGetTipSetByHeight(ctx, epoch, types.TipSetKey{})
+        if err != nil {
+            log.Errorf("cannot get tipset from epoch %v, %v", epoch, err)
+            continue
+        }
+
+		if len(ts.Blocks()) > 0 {
+            fee = ts.Blocks()[0].ParentBaseFee
+		} else {
+            fee, err = s.delegate.ChainComputeBaseFee(ctx, ts)
+            if err != nil {
+                log.Errorf("cannot caculate fee from epoch %v, %v", epoch, err)
+                continue
+            }
+		}
+		baseFee = big.Add(baseFee, fee)
+        feeCount = big.Add(feeCount, big.NewInt(1))
 	}
-	if err != nil {
-		return abi.NewTokenAmount(0), err
-	}
+
+    headFee := abi.NewTokenAmount(0)
+    if len(head.Blocks()) > 0 {
+        headFee = head.Blocks()[0].ParentBaseFee
+    } else {
+        headFee, err = s.delegate.ChainComputeBaseFee(ctx, head)
+        if err != nil {
+            return baseFee, err
+        }
+    }
+
+    if big.Cmp(feeCount, big.NewInt(0)) == 0 {
+        return headFee, nil
+    }
+
+    baseFee = big.Div(baseFee, feeCount)
+    if big.Cmp(baseFee, headFee) < 0 {
+        return headFee, nil
+    }
+
 	return baseFee, nil
 }
 
