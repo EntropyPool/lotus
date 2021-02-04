@@ -335,9 +335,10 @@ func (s SealingAPIAdapter) ChainGetParentBaseFee(ctx context.Context) (abi.Token
 	baseFee := abi.NewTokenAmount(0)
     feeCount := big.NewInt(0)
 
-	for epoch := head.Height(); 0 < feeEpochs; epoch -= 1 {
+	for ; 0 < feeEpochs; feeEpochs -= 1 {
         fee := abi.NewTokenAmount(0)
 
+		epoch := head.Height() - feeEpochs
 		ts, err := s.delegate.ChainGetTipSetByHeight(ctx, epoch, types.TipSetKey{})
         if err != nil {
             log.Errorf("cannot get tipset from epoch %v, %v", epoch, err)
