@@ -9,6 +9,10 @@ import (
 	"github.com/filecoin-project/specs-storage/storage"
 )
 
+func (m *Sealing) AutoPledgeTask(ctx context.Context) {
+
+}
+
 func (m *Sealing) pledgeSector(ctx context.Context, sectorID storage.SectorRef, existingPieceSizes []abi.UnpaddedPieceSize, sizes ...abi.UnpaddedPieceSize) ([]abi.PieceInfo, error) {
 	if len(sizes) == 0 {
 		return nil, nil

@@ -500,7 +500,10 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 	}
 
 	if err := checkPrecommit(ctx.Context(), m.Address(), sector, tok, height, m.api); err != nil {
-		return ctx.Send(SectorCommitFailed{xerrors.Errorf("precommit check error: %w", err)})
+		switch err := err.(type) {
+		case *ErrExpiredTicket:
+			return ctx.Send(SectorCommitFailed{xerrors.Errorf("precommit check error: %w", err)})
+        }
 	}
 
 	if err := m.checkCommit(ctx.Context(), sector, sector.Proof, tok); err != nil {
