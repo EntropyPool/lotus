@@ -64,6 +64,12 @@ type SealingConfig struct {
 	MaxSealingSectorsForDeals uint64
 
 	WaitDealsDelay Duration
+
+	PreferSectorOnChain bool
+
+	EnableAutoPledge bool
+
+	AutoPledgeBalanceThreshold types.FIL
 }
 
 type MinerFeeConfig struct {
@@ -73,7 +79,6 @@ type MinerFeeConfig struct {
 	MaxWindowPoStGasFee    types.FIL
 	MaxPublishDealsFee     types.FIL
 	MaxMarketBalanceAddFee types.FIL
-	PreferSectorOnChain    bool
 }
 
 type MinerAddressConfig struct {
@@ -180,10 +185,13 @@ func DefaultStorageMiner() *StorageMiner {
 		Common: defCommon(),
 
 		Sealing: SealingConfig{
-			MaxWaitDealsSectors:       2, // 64G with 32G sectors
-			MaxSealingSectors:         0,
-			MaxSealingSectorsForDeals: 0,
-			WaitDealsDelay:            Duration(time.Hour * 6),
+			MaxWaitDealsSectors:        2, // 64G with 32G sectors
+			MaxSealingSectors:          0,
+			MaxSealingSectorsForDeals:  0,
+			WaitDealsDelay:             Duration(time.Hour * 6),
+			PreferSectorOnChain:        true,
+			EnableAutoPledge:           true,
+			AutoPledgeBalanceThreshold: types.MustParseFIL("300"),
 		},
 
 		Storage: sectorstorage.SealerConfig{
@@ -217,7 +225,6 @@ func DefaultStorageMiner() *StorageMiner {
 			MaxWindowPoStGasFee:    types.MustParseFIL("5"),
 			MaxPublishDealsFee:     types.MustParseFIL("0.05"),
 			MaxMarketBalanceAddFee: types.MustParseFIL("0.007"),
-			PreferSectorOnChain:    true,
 		},
 
 		Addresses: MinerAddressConfig{

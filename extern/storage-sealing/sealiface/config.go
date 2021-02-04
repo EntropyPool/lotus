@@ -1,6 +1,9 @@
 package sealiface
 
-import "time"
+import (
+	"time"
+	"github.com/filecoin-project/go-state-types/abi"
+)
 
 // this has to be in a separate package to not make lotus API depend on filecoin-ffi
 
@@ -15,4 +18,10 @@ type Config struct {
 	MaxSealingSectorsForDeals uint64
 
 	WaitDealsDelay time.Duration
+
+	PreferSectorOnChain bool
+
+	EnableAutoPledge bool
+
+	AutoPledgeBalanceThreshold abi.TokenAmount
 }

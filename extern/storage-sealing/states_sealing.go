@@ -304,7 +304,16 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 	}
 
 	baseFee := abi.NewTokenAmount(0)
-	if m.feeCfg.PreferSectorOnChain && 0 < gasLimit {
+	preferSectorOnChain := true
+
+	cfg, err := m.getConfig()
+	if err != nil {
+		preferSectorOnChain = false
+	} else {
+		preferSectorOnChain = cfg.PreferSectorOnChain
+	}
+
+	if preferSectorOnChain && 0 < gasLimit {
 		baseFee = parentBaseFee
 	} else {
 		if 0 == gasLimit {
@@ -554,7 +563,16 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 	}
 
 	baseFee := abi.NewTokenAmount(0)
-	if m.feeCfg.PreferSectorOnChain && 0 < gasLimit {
+	preferSectorOnChain := true
+
+	cfg, err := m.getConfig()
+	if err != nil {
+		preferSectorOnChain = false
+	} else {
+		preferSectorOnChain = cfg.PreferSectorOnChain
+	}
+
+	if preferSectorOnChain && 0 < gasLimit {
 		baseFee = parentBaseFee
 	} else {
 		if 0 == gasLimit {

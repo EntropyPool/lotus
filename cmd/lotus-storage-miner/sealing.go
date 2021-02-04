@@ -400,6 +400,14 @@ var sealingGasAdjustCmd = &cli.Command{
             Name:   "max-commit-gas-fee",
             Value:  "0.3 FIL",
         },
+		&cli.BoolFlag{
+			Name:   "enable-auto-pledge",
+			Value:  true,
+		},
+		&cli.StringFlag{
+			Name:   "auto-pledge-balance-threshold",
+			Value:  "300 FIL",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		return nil
