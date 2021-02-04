@@ -1213,7 +1213,8 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 func (bucket *eWorkerBucket) onTaskClean(clean *eWorkerTaskCleaning) {
 	for _, worker := range bucket.workers {
 		if !worker.info.BigCache && clean.byCacheMove {
-			log.Debugf("<%s> task %v / %v cannot removed by move cache done from worker %s", clean.sector, clean.taskType, worker.info.Address)
+			log.Debugf("<%s> task %v / %v cannot removed by move cache done from worker %s",
+                eschedTag, clean.sector, clean.taskType, worker.info.Address)
 			continue
 		}
 		for idx, task := range worker.cleaningTasks {
@@ -1248,7 +1249,6 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				MaxConcurrent: worker.maxConcurrent[bucket.spt][taskType],
 			}
 		}
-		log.Debugf("<%s> collect status of priority tasks for %s", eschedTag, worker.info.Address)
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
 				info := out[worker.wid].Tasks[taskType]
@@ -1256,7 +1256,6 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 				out[worker.wid].Tasks[taskType] = info
 			}
 		}
-		log.Debugf("<%s> collect status of preparing tasks for %s", eschedTag, worker.info.Address)
 		worker.preparingTasks.mutex.Lock()
 		for _, task := range worker.preparingTasks.queue {
 			info := out[worker.wid].Tasks[task.taskType]
@@ -1264,7 +1263,6 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			out[worker.wid].Tasks[task.taskType] = info
 		}
 		worker.preparingTasks.mutex.Unlock()
-		log.Debugf("<%s> collect status of prepared tasks for %s", eschedTag, worker.info.Address)
 		worker.preparedTasks.mutex.Lock()
 		for _, task := range worker.preparedTasks.queue {
 			info := out[worker.wid].Tasks[task.taskType]
@@ -1272,7 +1270,6 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			out[worker.wid].Tasks[task.taskType] = info
 		}
 		worker.preparedTasks.mutex.Unlock()
-		log.Debugf("<%s> collect status of running tasks for %s", eschedTag, worker.info.Address)
 		for _, task := range worker.runningTasks {
 			info := out[worker.wid].Tasks[task.taskType]
 			info.Running += 1
@@ -1280,7 +1277,6 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 		}
 	}
 
-	log.Debugf("<%s> collected all worker status", eschedTag)
 	go func() { param.resp <- out }()
 }
 
@@ -1288,7 +1284,6 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 	out := map[uuid.UUID][]storiface.WorkerJob{}
 
 	for _, worker := range bucket.workers {
-		log.Debugf("<%s> collect running tasks for %s", eschedTag, worker.info.Address)
 		for _, task := range worker.runningTasks {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
 				ID:     storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
@@ -1299,7 +1294,6 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		}
 
 		wi := 0
-		log.Debugf("<%s> collect prepared tasks for %s", eschedTag, worker.info.Address)
 		worker.preparedTasks.mutex.Lock()
 		for _, task := range worker.preparedTasks.queue {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
@@ -1313,7 +1307,6 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		}
 		worker.preparedTasks.mutex.Unlock()
 
-		log.Debugf("<%s> collect preparing tasks for %s", eschedTag, worker.info.Address)
 		worker.preparingTasks.mutex.Lock()
 		for _, task := range worker.preparingTasks.queue {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
@@ -1328,7 +1321,6 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		worker.preparingTasks.mutex.Unlock()
 
 		wi = 0
-		log.Debugf("<%s> collect priority tasks for %s", eschedTag, worker.info.Address)
 		for _, pq := range worker.priorityTasksQueue {
 			for _, tq := range pq.typedTasksQueue {
 				for _, task := range tq.tasks {
@@ -1345,7 +1337,6 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		}
 	}
 
-	log.Debugf("<%s> collect jobs done", eschedTag)
 	go func() { param.resp <- out }()
 }
 
@@ -1940,11 +1931,9 @@ func (sh *edispatcher) WorkerStats() map[uuid.UUID]storiface.WorkerStats {
 		command: eschedWorkerStats,
 		resp:    resp,
 	}
-	log.Infof("<%s> try to get worker status", eschedTag)
 	go func() { sh.workerStatsQuery <- param }()
 	select {
 	case out := <-resp:
-		log.Infof("<%s> got worker status", eschedTag)
 		return out
 	}
 }
@@ -1955,11 +1944,9 @@ func (sh *edispatcher) WorkerJobs() map[uuid.UUID][]storiface.WorkerJob {
 		command: eschedWorkerJobs,
 		resp:    resp,
 	}
-	log.Infof("<%s> try to get worker jobs", eschedTag)
 	go func() { sh.workerJobsQuery <- param }()
 	select {
 	case out := <-resp:
-		log.Infof("<%s> got worker jobs", eschedTag)
 		return out
 	}
 }
@@ -1982,7 +1969,6 @@ func (sh *edispatcher) doCleanTask(sector storage.SectorRef, taskType sealtasks.
 }
 
 func (sh *edispatcher) MoveCacheDone(sector storage.SectorRef) {
-	log.Infof("<%s> try to clean %v's PC2 by move cache done", eschedTag, sector)
 	go sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish)
 }
 
