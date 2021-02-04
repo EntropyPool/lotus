@@ -326,7 +326,12 @@ func (s SealingAPIAdapter) ChainGetParentBaseFee(ctx context.Context) (abi.Token
 	if err != nil {
 		return abi.NewTokenAmount(0), err
 	}
-	baseFee, err := s.delegate.ChainComputeBaseFee(ctx, head)
+	baseFee := abi.NewTokenAmount(0)
+	if len(head.Blocks()) > 0 {
+        baseFee = head.Blocks()[0].ParentBaseFee
+	} else {
+        baseFee, err = s.delegate.ChainComputeBaseFee(ctx, head)
+	}
 	if err != nil {
 		return abi.NewTokenAmount(0), err
 	}
