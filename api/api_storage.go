@@ -93,6 +93,10 @@ type StorageMiner interface {
 	ScheduleAbort(ctx context.Context, sector storage.SectorRef) error
 	SealingAbort(ctx context.Context, call storiface.CallID) error
 
+    SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error
+    SealingSetEnableAutoPledge(ctx context.Context, enable bool) error
+    SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error
+
 	stores.SectorIndex
 
 	MarketImportDealData(ctx context.Context, propcid cid.Cid, path string) error
@@ -140,6 +144,9 @@ type StorageMiner interface {
 	// LOTUS_BACKUP_BASE_PATH environment variable set to some path, and that
 	// the path specified when calling CreateBackup is within the base path
 	CreateBackup(ctx context.Context, fpath string) error
+
+    SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
+    SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
 
 	CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, expensive bool) (map[abi.SectorNumber]string, error)
 }

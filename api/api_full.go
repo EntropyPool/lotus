@@ -556,6 +556,9 @@ type FullNode interface {
 	// LOTUS_BACKUP_BASE_PATH environment variable set to some path, and that
 	// the path specified when calling CreateBackup is within the base path
 	CreateBackup(ctx context.Context, fpath string) error
+
+    SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
+    SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
 }
 
 type FileRef struct {

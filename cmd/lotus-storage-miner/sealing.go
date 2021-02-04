@@ -16,6 +16,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
 
+	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	"github.com/filecoin-project/specs-storage/storage"
 
@@ -410,6 +411,48 @@ var sealingGasAdjustCmd = &cli.Command{
 		},
 	},
 	Action: func(cctx *cli.Context) error {
+		preferSectorOnChain := cctx.Bool("prefer-sector-on-chain")
+        maxPrecommitGasFee := cctx.String("max-pre-commit-gas-fee")
+        maxCommitGasFee := cctx.String("max-commit-gas-fee")
+        autoPledgeBalanceThreshold := cctx.String("auto-pledge-balance-threshold")
+        enableAutoPledge := cctx.Bool("enable-auto-pledge")
+
+		ctx := lcli.ReqContext(cctx)
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+        err = nodeApi.SealingSetPreferSectorOnChain(ctx, preferSectorOnChain)
+        if err != nil {
+            return err
+        }
+
+		gasFee := abi.TokenAmount(types.MustParseFIL(maxPrecommitGasFee))
+        err = nodeApi.SetMaxPreCommitGasFee(ctx, gasFee)
+        if err != nil {
+            return err
+        }
+
+		gasFee = abi.TokenAmount(types.MustParseFIL(maxCommitGasFee))
+        err = nodeApi.SetMaxCommitGasFee(ctx, gasFee)
+        if err != nil {
+            return err
+        }
+
+        err = nodeApi.SealingSetEnableAutoPledge(ctx, enableAutoPledge)
+        if err != nil {
+            return err
+        }
+
+        balance := abi.TokenAmount(types.MustParseFIL(autoPledgeBalanceThreshold))
+        err = nodeApi.SealingSetAutoPledgeBalanceThreshold(ctx, balance)
+        if err != nil {
+            return err
+        }
+
 		return nil
 	},
 }

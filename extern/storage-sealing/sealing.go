@@ -163,6 +163,16 @@ func New(api SealingAPI, fc FeeConfig, events Events, maddr address.Address, ds 
 	return s
 }
 
+func (m *Sealing) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+    m.feeCfg.MaxPreCommitGasFee = fee
+    return nil
+}
+
+func (m *Sealing) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+    m.feeCfg.MaxCommitGasFee = fee
+    return nil
+}
+
 func (m *Sealing) Run(ctx context.Context) error {
 	if err := m.restartSectors(ctx); err != nil {
 		log.Errorf("%+v", err)

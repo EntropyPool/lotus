@@ -312,6 +312,39 @@ func (sm *StorageMinerAPI) SectorGetSealDelay(ctx context.Context) (time.Duratio
 	return cfg.WaitDealsDelay, nil
 }
 
+func (sm *StorageMinerAPI) SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return xerrors.Errorf("get config: %w", err)
+	}
+
+	cfg.PreferSectorOnChain = prefer
+
+	return sm.SetSealingConfigFunc(cfg)
+}
+
+func (sm *StorageMinerAPI) SealingSetEnableAutoPledge(ctx context.Context, enable bool) error {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return xerrors.Errorf("get config: %w", err)
+	}
+
+	cfg.EnableAutoPledge = enable
+
+	return sm.SetSealingConfigFunc(cfg)
+}
+
+func (sm *StorageMinerAPI) SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return xerrors.Errorf("get config: %w", err)
+	}
+
+	cfg.AutoPledgeBalanceThreshold = threshold
+
+	return sm.SetSealingConfigFunc(cfg)
+}
+
 func (sm *StorageMinerAPI) SectorSetExpectedSealDuration(ctx context.Context, delay time.Duration) error {
 	return sm.SetExpectedSealDurationFunc(delay)
 }
@@ -322,6 +355,14 @@ func (sm *StorageMinerAPI) SectorGetExpectedSealDuration(ctx context.Context) (t
 
 func (sm *StorageMinerAPI) SectorsUpdate(ctx context.Context, id abi.SectorNumber, state api.SectorState) error {
 	return sm.Miner.ForceSectorState(ctx, id, sealing.SectorState(state))
+}
+
+func (sm *StorageMinerAPI) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return sm.Miner.SetMaxPreCommitGasFee(ctx, fee)
+}
+
+func (sm *StorageMinerAPI) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return sm.Miner.SetMaxCommitGasFee(ctx, fee)
 }
 
 func (sm *StorageMinerAPI) SectorRemove(ctx context.Context, id abi.SectorNumber) error {

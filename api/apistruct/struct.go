@@ -271,6 +271,9 @@ type FullNodeStruct struct {
 		PaychVoucherSubmit          func(context.Context, address.Address, *paych.SignedVoucher, []byte, []byte) (cid.Cid, error)             `perm:"sign"`
 
 		CreateBackup func(ctx context.Context, fpath string) error `perm:"admin"`
+
+		SetMaxPreCommitGasFee       func(context.Context, abi.TokenAmount) error                                               `perm:"admin"`
+		SetMaxCommitGasFee          func(context.Context, abi.TokenAmount) error                                               `perm:"admin"`
 	}
 }
 
@@ -315,6 +318,10 @@ type StorageMinerStruct struct {
 		SectorSetExpectedSealDuration func(context.Context, time.Duration) error                                                    `perm:"write"`
 		SectorGetExpectedSealDuration func(context.Context) (time.Duration, error)                                                  `perm:"read"`
 		SectorsUpdate                 func(context.Context, abi.SectorNumber, api.SectorState) error                                `perm:"admin"`
+
+		SetMaxPreCommitGasFee         func(context.Context, abi.TokenAmount) error                                               `perm:"admin"`
+		SetMaxCommitGasFee            func(context.Context, abi.TokenAmount) error                                               `perm:"admin"`
+
 		SectorRemove                  func(context.Context, abi.SectorNumber) error                                                 `perm:"admin"`
 		SectorTerminate               func(context.Context, abi.SectorNumber) error                                                 `perm:"admin"`
 		SectorTerminateFlush          func(ctx context.Context) (*cid.Cid, error)                                                   `perm:"admin"`
@@ -340,6 +347,9 @@ type StorageMinerStruct struct {
 		SealingSchedDiag func(context.Context, bool) (interface{}, error)          `perm:"admin"`
 		SealingAbort     func(ctx context.Context, call storiface.CallID) error    `perm:"admin"`
 		ScheduleAbort    func(ctx context.Context, sector storage.SectorRef) error `perm:"admin"`
+        SealingSetPreferSectorOnChain func(ctx context.Context, prefer bool) error `perm:"admin"`
+        SealingSetEnableAutoPledge func(ctx context.Context, enable bool) error    `perm:"admin"`
+        SealingSetAutoPledgeBalanceThreshold func(ctx context.Context, threshold abi.TokenAmount) error `perm:"admin"`
 
 		StorageList          func(context.Context) (map[stores.ID][]stores.Decl, error)                                                                                   `perm:"admin"`
 		StorageLocal         func(context.Context) (map[stores.ID]string, error)                                                                                          `perm:"admin"`
@@ -1254,6 +1264,14 @@ func (c *FullNodeStruct) CreateBackup(ctx context.Context, fpath string) error {
 	return c.Internal.CreateBackup(ctx, fpath)
 }
 
+func (c *FullNodeStruct) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return c.Internal.SetMaxPreCommitGasFee(ctx, fee)
+}
+
+func (c *FullNodeStruct) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return c.Internal.SetMaxCommitGasFee(ctx, fee)
+}
+
 // StorageMinerStruct
 
 func (c *StorageMinerStruct) ActorAddress(ctx context.Context) (address.Address, error) {
@@ -1316,6 +1334,14 @@ func (c *StorageMinerStruct) SectorSetExpectedSealDuration(ctx context.Context, 
 
 func (c *StorageMinerStruct) SectorGetExpectedSealDuration(ctx context.Context) (time.Duration, error) {
 	return c.Internal.SectorGetExpectedSealDuration(ctx)
+}
+
+func (c *StorageMinerStruct) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+    return c.Internal.SetMaxPreCommitGasFee(ctx, fee)
+}
+
+func (c *StorageMinerStruct) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return c.Internal.SetMaxCommitGasFee(ctx, fee)
 }
 
 func (c *StorageMinerStruct) SectorsUpdate(ctx context.Context, id abi.SectorNumber, state api.SectorState) error {
@@ -1400,6 +1426,18 @@ func (c *StorageMinerStruct) ReturnFetch(ctx context.Context, callID storiface.C
 
 func (c *StorageMinerStruct) SealingSchedDiag(ctx context.Context, doSched bool) (interface{}, error) {
 	return c.Internal.SealingSchedDiag(ctx, doSched)
+}
+
+func (c *StorageMinerStruct) SealingSetEnableAutoPledge(ctx context.Context, enable bool) error {
+    return c.Internal.SealingSetEnableAutoPledge(ctx, enable)
+}
+
+func (c *StorageMinerStruct) SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error {
+    return c.Internal.SealingSetAutoPledgeBalanceThreshold(ctx, threshold)
+}
+
+func (c *StorageMinerStruct) SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error {
+    return c.Internal.SealingSetPreferSectorOnChain(ctx, prefer)
 }
 
 func (c *StorageMinerStruct) ScheduleAbort(ctx context.Context, sector storage.SectorRef) error {
