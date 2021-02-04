@@ -228,6 +228,7 @@ type eWorkerBucket struct {
 	taskCleanerHandler chan *eWorkerTaskCleaning
 	workerStatsQuery   chan *eWorkerStatsParam
 	workerJobsQuery    chan *eWorkerJobsParam
+    bucketPledgedJobs  chan *eBucketPledgedJobsParam
 	closing            chan struct{}
 	ticker             *time.Ticker
 }
@@ -325,30 +326,35 @@ type eWorkerStatsParam struct {
 	resp    chan map[uuid.UUID]storiface.WorkerStats
 }
 
+type eBucketPledgedJobsParam struct {
+    resp chan int
+}
+
 type eWorkerJobsParam struct {
 	command string
 	resp    chan map[uuid.UUID][]storiface.WorkerJob
 }
 
 type edispatcher struct {
-	nextRequest      uint64
-	nextWorker       uint64
-	newWorker        chan *eWorkerHandle
-	dropWorker       chan uuid.UUID
-	taskUUID         chan eTaskUUID
-	abortTask        chan storage.SectorRef
-	newRequest       chan *eWorkerRequest
-	buckets          []*eWorkerBucket
-	reqQueue         *eRequestQueue
-	storage          *EStorage
-	storageNotifier  chan eStoreAction
-	droppedWorker    chan string
-	taskCleaner      chan *eWorkerTaskCleaning
-	closing          chan struct{}
-	ctx              context.Context
-	taskWorkerBinder *eTaskWorkerBinder
-	workerStatsQuery chan *eWorkerStatsParam
-	workerJobsQuery  chan *eWorkerJobsParam
+	nextRequest        uint64
+	nextWorker         uint64
+	newWorker          chan *eWorkerHandle
+	dropWorker         chan uuid.UUID
+	taskUUID           chan eTaskUUID
+	abortTask          chan storage.SectorRef
+	newRequest         chan *eWorkerRequest
+	buckets            []*eWorkerBucket
+	reqQueue           *eRequestQueue
+	storage            *EStorage
+	storageNotifier    chan eStoreAction
+	droppedWorker      chan string
+	taskCleaner        chan *eWorkerTaskCleaning
+	closing            chan struct{}
+	ctx                context.Context
+	taskWorkerBinder   *eTaskWorkerBinder
+	workerStatsQuery   chan *eWorkerStatsParam
+	workerJobsQuery    chan *eWorkerJobsParam
+    bucketPledgedJobs  chan *eBucketPledgedJobsParam
 }
 
 const eschedWorkerBuckets = 10
@@ -1340,6 +1346,21 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 	go func() { param.resp <- out }()
 }
 
+func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
+    var jobs int = 0
+	for _, worker := range bucket.workers {
+	    taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
+	    if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
+		    for _, lTaskType := range taskTypes {
+			    taskCount += worker.typedTaskCount(lTaskType, false)
+		    }
+	    }
+	    taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
+        jobs += (worker.maxConcurrent[bucket.spt][sealtasks.TTPreCommit1] - taskCount)
+    }
+    go func(jobs int) { param.resp <- jobs }(jobs)
+}
+
 func (bucket *eWorkerBucket) onScheduleTick() {
 	// go func() { bucket.notifier <- struct{}{} }()
 }
@@ -1415,6 +1436,8 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.onWorkerStatsQuery(param)
 		case param := <-bucket.workerJobsQuery:
 			bucket.onWorkerJobsQuery(param)
+        case param := <-bucket.bucketPledgedJobs:
+            bucket.onBucketPledgedJobs(param)
 		case <-bucket.ticker.C:
 			bucket.onScheduleTick()
 		case <-bucket.closing:
@@ -1453,8 +1476,9 @@ func newExtScheduler() *edispatcher {
 		taskWorkerBinder: &eTaskWorkerBinder{
 			binder: make(map[abi.SectorNumber]string),
 		},
-		workerStatsQuery: make(chan *eWorkerStatsParam, 10),
-		workerJobsQuery:  make(chan *eWorkerJobsParam, 10),
+		workerStatsQuery:  make(chan *eWorkerStatsParam, 10),
+		workerJobsQuery:   make(chan *eWorkerJobsParam, 10),
+        bucketPledgedJobs: make(chan *eBucketPledgedJobsParam, 0),
 	}
 
 	for i := range dispatcher.buckets {
@@ -1480,6 +1504,7 @@ func newExtScheduler() *edispatcher {
 			workerJobsQuery:    make(chan *eWorkerJobsParam, 10),
 			closing:            make(chan struct{}, 2),
 			ticker:             time.NewTicker(3 * 60 * time.Second),
+            bucketPledgedJobs:  make(chan *eBucketPledgedJobsParam, 0),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -1850,6 +1875,24 @@ func (sh *edispatcher) onWorkerStatsQuery(param *eWorkerStatsParam) {
 	}(param)
 }
 
+func (sh *edispatcher) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
+    go func(param *eBucketPledgedJobsParam) {
+        var jobs int = 0
+        for _, bucket := range sh.buckets {
+            resp := make(chan int)
+            jobsParam := &eBucketPledgedJobsParam {
+                resp: resp,
+            }
+            go func(bucket *eWorkerBucket) { bucket.bucketPledgedJobs <- jobsParam }(bucket)
+            select {
+            case count := <-resp:
+                jobs += count
+            }
+		}
+		param.resp <- jobs
+    }(param)
+}
+
 func (sh *edispatcher) onTaskUUID(uuid eTaskUUID) {
 	for _, bucket := range sh.buckets {
 		go func(bucket *eWorkerBucket) { bucket.taskUUID <- uuid }(bucket)
@@ -1899,6 +1942,8 @@ func (sh *edispatcher) runSched() {
 			sh.onWorkerStatsQuery(param)
 		case param := <-sh.workerJobsQuery:
 			sh.onWorkerJobsQuery(param)
+        case param := <-sh.bucketPledgedJobs:
+            sh.onBucketPledgedJobs(param)
 		case uuid := <-sh.taskUUID:
 			sh.onTaskUUID(uuid)
 		case sector := <-sh.abortTask:
@@ -1983,4 +2028,16 @@ func (sh *edispatcher) SetTaskUUID(sector storage.SectorRef, uuid uuid.UUID) {
 func (sh *edispatcher) AbortTask(sector storage.SectorRef) error {
 	go func() { sh.abortTask <- sector }()
 	return nil
+}
+
+func (sh *edispatcher) PledgedJobs() int {
+    resp := make(chan int)
+    param := &eBucketPledgedJobsParam {
+        resp: resp,
+    }
+    go func() { sh.bucketPledgedJobs <- param }()
+    select {
+    case jobs := <-resp:
+        return jobs
+    }
 }

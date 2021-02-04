@@ -5,12 +5,49 @@ import (
 
 	"golang.org/x/xerrors"
 
+	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/specs-storage/storage"
+    "time"
 )
 
 func (m *Sealing) AutoPledgeTask(ctx context.Context) {
+    ticker := time.NewTicker(1 * time.Minute)
+    for {
+        select {
+        case <-ticker.C:
+            cfg, err := m.getConfig()
+            if err != nil {
+                break
+            }
+            if !cfg.EnableAutoPledge {
+                break
+            }
+	        tok, _, err := m.api.ChainHead(ctx)
+	        if err != nil {
+	            log.Errorf("autoPledge: api error, not proceeding: %+v", err)
+                break
+	        }
 
+	        mi, err := m.api.StateMinerInfo(ctx, m.maddr, tok)
+	        if err != nil {
+	            log.Errorf("autoPledge: api error, not proceeding: %+v", err)
+                break
+	        }
+	        _, _, err = m.addrSel(ctx, mi, api.PreCommitAddr,
+                             cfg.AutoPledgeBalanceThreshold,
+                             cfg.AutoPledgeBalanceThreshold)
+            if err != nil {
+	            log.Infof("autoPledge: balance from address error: %+v", err)
+                break
+            }
+            sealings := m.sealer.PledgedJobs(ctx)
+            for i := 0; i < sealings; i++ {
+                m.PledgeSector()
+                time.Sleep(time.Second)
+            }
+        }
+    }
 }
 
 func (m *Sealing) pledgeSector(ctx context.Context, sectorID storage.SectorRef, existingPieceSizes []abi.UnpaddedPieceSize, sizes ...abi.UnpaddedPieceSize) ([]abi.PieceInfo, error) {

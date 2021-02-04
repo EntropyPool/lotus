@@ -49,6 +49,7 @@ type Worker interface {
 
 type SectorManager interface {
 	ReadPiece(context.Context, io.Writer, storage.SectorRef, storiface.UnpaddedByteIndex, abi.UnpaddedPieceSize, abi.SealRandomness, cid.Cid) error
+    PledgedJobs(ctx context.Context) int
 
 	ffiwrapper.StorageSealer
 	storage.Prover
@@ -822,6 +823,10 @@ func (m *Manager) SchedDiag(ctx context.Context, doSched bool) (interface{}, err
 
 func (m *Manager) Close(ctx context.Context) error {
 	return m.sched.Close(ctx)
+}
+
+func (m *Manager) PledgedJobs(ctx context.Context) int {
+    return m.sched.esched.PledgedJobs()
 }
 
 var _ SectorManager = &Manager{}
