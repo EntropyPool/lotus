@@ -34,15 +34,19 @@ func (m *Sealing) AutoPledgeTask(ctx context.Context) {
 	            log.Errorf("autoPledge: api error, not proceeding: %+v", err)
                 break
 	        }
-	        from, _, err := m.addrSel(ctx, mi, api.PreCommitAddr,
+	        from, balance, err := m.addrSel(ctx, mi, api.PreCommitAddr,
                              cfg.AutoPledgeBalanceThreshold,
                              cfg.AutoPledgeBalanceThreshold)
             if err != nil {
 	            log.Infof("autoPledge: balance from address error: %+v", err)
                 break
             }
+            if balance == cfg.AutoPledgeBalanceThreshold {
+                log.Infof("autoPledge: are you kidding me? balance is totally same?")
+                break
+            }
             sealings := m.sealer.PledgedJobs(ctx)
-	        log.Infof("autoPledge: pledge %+v sectors [%v FIL in %v]", sealings, cfg.AutoPledgeBalanceThreshold, from)
+	        log.Infof("autoPledge: pledge %+v sectors [%v / %v FIL in %v]", sealings, cfg.AutoPledgeBalanceThreshold, balance, from)
             for i := 0; i < sealings; i++ {
                 m.PledgeSector()
                 time.Sleep(time.Second)
