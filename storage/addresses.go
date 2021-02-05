@@ -65,6 +65,10 @@ func (as *AddressSelector) AddressFor(ctx context.Context, a addrSelectApi, mi m
 func pickAddress(ctx context.Context, a addrSelectApi, mi miner.MinerInfo, goodFunds, minFunds abi.TokenAmount, addrs []address.Address) (address.Address, abi.TokenAmount, error) {
 	leastBad := mi.Worker
 	bestAvail := minFunds
+	b, err := a.WalletBalance(ctx, mi.Worker)
+    if err == nil {
+        bestAvail = b
+    }
 
 	ctl := map[address.Address]struct{}{}
 	for _, a := range append(mi.ControlAddresses, mi.Owner, mi.Worker) {

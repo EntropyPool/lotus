@@ -5,6 +5,7 @@ import (
 
 	"golang.org/x/xerrors"
 
+	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/specs-storage/storage"
@@ -43,6 +44,10 @@ func (m *Sealing) AutoPledgeTask(ctx context.Context) {
             }
             if balance == cfg.AutoPledgeBalanceThreshold {
                 log.Infof("autoPledge: are you kidding me? balance is totally same?")
+                break
+            }
+            if big.Cmp(balance, cfg.AutoPledgeBalanceThreshold) < 0 {
+                log.Infof("autoPledge: %v < %v [%v]", balance, cfg.AutoPledgeBalanceThreshold, from)
                 break
             }
             sealings := m.sealer.PledgedJobs(ctx)
