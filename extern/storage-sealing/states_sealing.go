@@ -298,8 +298,8 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 		log.Warnf("cannot get chain parent base fee for precommit: %v", err)
 		gasLimit = 0
 	} else {
-		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(110))
-		parentBaseFee = big.Div(parentBaseFee, big.NewInt(100))
+		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(1252))
+		parentBaseFee = big.Div(parentBaseFee, big.NewInt(1000))
 		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(gasLimit))
 	}
 
@@ -560,8 +560,8 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 		log.Warnf("cannot get chain parent base fee for precommit: %v", err)
 		gasLimit = 0
 	} else {
-		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(110))
-		parentBaseFee = big.Div(parentBaseFee, big.NewInt(100))
+		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(1252))
+		parentBaseFee = big.Div(parentBaseFee, big.NewInt(1000))
 		parentBaseFee = big.Mul(parentBaseFee, big.NewInt(gasLimit))
 	}
 
