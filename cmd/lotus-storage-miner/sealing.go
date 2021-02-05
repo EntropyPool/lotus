@@ -386,35 +386,35 @@ var scheduleAbortCmd = &cli.Command{
 }
 
 var sealingGasAdjustCmd = &cli.Command{
-	Name:      "gas-adjust",
-	Usage:     "Adjust sealing gas",
+	Name:  "sealing-adjust",
+	Usage: "Adjust sealing gas",
 	Flags: []cli.Flag{
         &cli.BoolFlag{
             Name:  "prefer-sector-on-chain",
             Value: true,
         },
-        &cli.StringFlag{
-            Name:   "max-pre-commit-gas-fee",
-            Value:  "0.1 FIL",
+        &cli.Float64Flag{
+            Name:  "max-pre-commit-gas-fee",
+            Value: 0.07,
         },
-        &cli.StringFlag{
-            Name:   "max-commit-gas-fee",
-            Value:  "0.3 FIL",
+        &cli.Float64Flag{
+            Name:  "max-commit-gas-fee",
+            Value: 0.3,
         },
 		&cli.BoolFlag{
-			Name:   "enable-auto-pledge",
-			Value:  true,
+			Name:  "enable-auto-pledge",
+            Value: true,
 		},
-		&cli.StringFlag{
-			Name:   "auto-pledge-balance-threshold",
-			Value:  "300 FIL",
+		&cli.IntFlag{
+			Name:  "auto-pledge-balance-threshold",
+            Value: 300,
 		},
 	},
 	Action: func(cctx *cli.Context) error {
 		preferSectorOnChain := cctx.Bool("prefer-sector-on-chain")
-        maxPrecommitGasFee := cctx.String("max-pre-commit-gas-fee")
-        maxCommitGasFee := cctx.String("max-commit-gas-fee")
-        autoPledgeBalanceThreshold := cctx.String("auto-pledge-balance-threshold")
+        maxPrecommitGasFee := cctx.Float64("max-pre-commit-gas-fee")
+        maxCommitGasFee := cctx.Float64("max-commit-gas-fee")
+        autoPledgeBalanceThreshold := cctx.Int("auto-pledge-balance-threshold")
         enableAutoPledge := cctx.Bool("enable-auto-pledge")
 
 		ctx := lcli.ReqContext(cctx)
@@ -430,13 +430,13 @@ var sealingGasAdjustCmd = &cli.Command{
             return err
         }
 
-		gasFee := abi.TokenAmount(types.MustParseFIL(maxPrecommitGasFee))
+		gasFee := abi.TokenAmount(types.MustParseFIL(fmt.Sprintf("%v FIL", maxPrecommitGasFee)))
         err = nodeApi.SetMaxPreCommitGasFee(ctx, gasFee)
         if err != nil {
             return err
         }
 
-		gasFee = abi.TokenAmount(types.MustParseFIL(maxCommitGasFee))
+		gasFee = abi.TokenAmount(types.MustParseFIL(fmt.Sprintf("%v FIL", maxCommitGasFee)))
         err = nodeApi.SetMaxCommitGasFee(ctx, gasFee)
         if err != nil {
             return err
@@ -447,11 +447,18 @@ var sealingGasAdjustCmd = &cli.Command{
             return err
         }
 
-        balance := abi.TokenAmount(types.MustParseFIL(autoPledgeBalanceThreshold))
+        balance := abi.TokenAmount(types.MustParseFIL(fmt.Sprintf("%v FIL", autoPledgeBalanceThreshold)))
         err = nodeApi.SealingSetAutoPledgeBalanceThreshold(ctx, balance)
         if err != nil {
             return err
         }
+
+        fmt.Printf("Sealing Adjust ---\n")
+        fmt.Printf("  PreCommit GAS:             %v FIL\n", maxPrecommitGasFee)
+        fmt.Printf("  Commit GAS:                %v FIL\n", maxCommitGasFee)
+        fmt.Printf("  Prefer Sector On Chain:    %v\n", preferSectorOnChain)
+        fmt.Printf("  Enable Auto Pledge:        %v\n", enableAutoPledge)
+        fmt.Printf("  Auto Pledge Threshold:     %v FIL\n", autoPledgeBalanceThreshold)
 
 		return nil
 	},
