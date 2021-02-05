@@ -179,6 +179,8 @@ func (m *Sealing) Run(ctx context.Context) error {
 		return xerrors.Errorf("failed load sector states: %w", err)
 	}
 
+    go m.AutoPledgeTask(ctx)
+
 	return nil
 }
 

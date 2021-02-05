@@ -34,7 +34,7 @@ func (m *Sealing) AutoPledgeTask(ctx context.Context) {
 	            log.Errorf("autoPledge: api error, not proceeding: %+v", err)
                 break
 	        }
-	        _, _, err = m.addrSel(ctx, mi, api.PreCommitAddr,
+	        from, _, err := m.addrSel(ctx, mi, api.PreCommitAddr,
                              cfg.AutoPledgeBalanceThreshold,
                              cfg.AutoPledgeBalanceThreshold)
             if err != nil {
@@ -42,6 +42,7 @@ func (m *Sealing) AutoPledgeTask(ctx context.Context) {
                 break
             }
             sealings := m.sealer.PledgedJobs(ctx)
+	        log.Infof("autoPledge: pledge %+v sectors [%v FIL in %v]", sealings, cfg.AutoPledgeBalanceThreshold, from)
             for i := 0; i < sealings; i++ {
                 m.PledgeSector()
                 time.Sleep(time.Second)

@@ -1349,6 +1349,9 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
     var jobs int = 0
 	for _, worker := range bucket.workers {
+        if eschedWorkerStateWaving == worker.state {
+            continue
+        }
 	    taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
 	    if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
 		    for _, lTaskType := range taskTypes {
