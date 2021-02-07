@@ -310,9 +310,15 @@ var eschedTaskHugePage = map[sealtasks.TaskType]bool{
 }
 
 var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
-	sealtasks.TTAddPiece: []sealtasks.TaskType{sealtasks.TTPreCommit1, sealtasks.TTPreCommit2},
+	sealtasks.TTAddPiece:   []sealtasks.TaskType{sealtasks.TTPreCommit1, sealtasks.TTPreCommit2},
 	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit2},
 	sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit1},
+}
+
+var eschedTaskPeekByRuntimeLimit = map[sealtasks.TaskType]bool {
+	sealtasks.TTAddPiece:   true,
+	sealtasks.TTPreCommit1: true,
+	sealtasks.TTPreCommit2: true,
 }
 
 var eschedTaskStableRunning = map[sealtasks.TaskType]struct{}{
@@ -614,7 +620,12 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 
 		curConcurrentLimit := worker.maxConcurrent[req.sector.ProofType]
-		if curConcurrentLimit[req.taskType] <= taskCount {
+		taskRuntimeLimit := curConcurrentLimit[req.taskType]
+		if byRuntimeLimit, ok := eschedTaskPeekByRuntimeLimit[req.taskType]; ok && byRuntimeLimit {
+			taskRuntimeLimit = worker.maxRuntimeConcurrent[req.sector.ProofType]
+		}
+
+		if taskRuntimeLimit <= taskCount {
 			log.Debugf("<%s> worker %s's %v tasks queue is full %d / %d",
 				eschedTag, worker.info.Address, req.taskType,
 				taskCount, curConcurrentLimit[req.taskType])
