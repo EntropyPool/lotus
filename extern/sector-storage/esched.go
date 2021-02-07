@@ -185,6 +185,7 @@ type eWorkerHandle struct {
 	runningTasks          []*eWorkerRequest
 	cleaningTasks         []*eWorkerTaskCleaning
 	maxConcurrent         map[abi.RegisteredSealProof]map[sealtasks.TaskType]int
+	maxRuntimeConcurrent  map[abi.RegisteredSealProof]int
 	memoryConcurrentLimit map[abi.RegisteredSealProof]int
 	diskConcurrentLimit   map[abi.RegisteredSealProof]int
 	storeIDs              map[stores.ID]eStoreStat
@@ -1156,6 +1157,11 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 			cur[sealtasks.TTPreCommit1] = worker.diskConcurrentLimit[spt]
 			cur[sealtasks.TTAddPiece] = worker.diskConcurrentLimit[spt]
 		}
+		if worker.maxRuntimeConcurrent[spt] * 2 < cur[sealtasks.TTPreCommit1] {
+			worker.maxRuntimeConcurrent[spt] *= 2
+		} else {
+			worker.maxRuntimeConcurrent[spt] = cur[sealtasks.TTPreCommit1]
+		}
 		if worker.supportTaskType(sealtasks.TTPreCommit2) {
 			cur[sealtasks.TTPreCommit2] = worker.diskConcurrentLimit[spt]
 		}
@@ -1361,7 +1367,7 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 	    }
 	    taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
 
-        jobs += (worker.maxConcurrent[bucket.spt][sealtasks.TTPreCommit1] - taskCount)
+        jobs += (worker.maxRuntimeConcurrent[bucket.spt] - taskCount)
     }
     go func(jobs int) { param.resp <- jobs }(jobs)
 }
@@ -1700,6 +1706,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 
 	w.diskConcurrentLimit = make(map[abi.RegisteredSealProof]int)
 	w.memoryConcurrentLimit = make(map[abi.RegisteredSealProof]int)
+	w.maxRuntimeConcurrent = make(map[abi.RegisteredSealProof]int)
 	w.maxConcurrent = make(map[abi.RegisteredSealProof]map[sealtasks.TaskType]int)
 
 	w.hugePageBytes = uint64(w.info.Resources.HugePages) * w.info.Resources.HugePageSize
@@ -1729,6 +1736,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 			if limit2 < cur[sealtasks.TTPreCommit1] {
 				cur[sealtasks.TTPreCommit1] = limit2
 			}
+			w.maxRuntimeConcurrent[spt] = cur[sealtasks.TTPreCommit1]
 
 			cur[sealtasks.TTAddPiece] = cur[sealtasks.TTPreCommit1]
 			cur[sealtasks.TTUnseal] = cur[sealtasks.TTPreCommit1]
