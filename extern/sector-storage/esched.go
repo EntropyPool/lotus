@@ -1379,7 +1379,13 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 	    }
 	    taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
 
-        jobs += (worker.maxRuntimeConcurrent[bucket.spt] - taskCount)
+		if taskCount == 0 {
+			jobs += worker.maxRuntimeConcurrent[bucket.spt]
+		}
+
+		if 0 < worker.maxRuntimeConcurrent[bucket.spt] - taskCount {
+			jobs += (worker.maxRuntimeConcurrent[bucket.spt] - taskCount)
+		}
     }
     go func(jobs int) { param.resp <- jobs }(jobs)
 }
