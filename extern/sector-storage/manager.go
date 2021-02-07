@@ -49,7 +49,7 @@ type Worker interface {
 
 type SectorManager interface {
 	ReadPiece(context.Context, io.Writer, storage.SectorRef, storiface.UnpaddedByteIndex, abi.UnpaddedPieceSize, abi.SealRandomness, cid.Cid) error
-    PledgedJobs(ctx context.Context) int
+	PledgedJobs(ctx context.Context) int
 
 	ffiwrapper.StorageSealer
 	storage.Prover
@@ -129,12 +129,12 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, sc 
 
 		sched: newScheduler(),
 
-		work:        mss,
-		callToWork:  map[storiface.CallID]WorkID{},
-		callRes:     map[storiface.CallID]chan result{},
-		results:     map[WorkID]result{},
-		waitRes:     map[WorkID]chan struct{}{},
-		Prover:      prover,
+		work:       mss,
+		callToWork: map[storiface.CallID]WorkID{},
+		callRes:    map[storiface.CallID]chan result{},
+		results:    map[WorkID]result{},
+		waitRes:    map[WorkID]chan struct{}{},
+		Prover:     prover,
 	}
 
 	m.setupWorkTracker()
@@ -366,7 +366,6 @@ func (m *Manager) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		return nil
 	})
 
-
 	return out, err
 }
 
@@ -431,7 +430,6 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, 
 	if err != nil {
 		return nil, err
 	}
-
 
 	return out, waitErr
 }
@@ -703,7 +701,7 @@ func (m *Manager) Remove(ctx context.Context, sector storage.SectorRef) error {
 		err = multierror.Append(err, xerrors.Errorf("removing sector (unsealed): %w", rerr))
 	}
 
-    m.sched.esched.RemoveSector(sector)
+	m.sched.esched.RemoveSector(sector)
 
 	return err
 }
@@ -828,7 +826,7 @@ func (m *Manager) Close(ctx context.Context) error {
 }
 
 func (m *Manager) PledgedJobs(ctx context.Context) int {
-    return m.sched.esched.PledgedJobs()
+	return m.sched.esched.PledgedJobs()
 }
 
 var _ SectorManager = &Manager{}

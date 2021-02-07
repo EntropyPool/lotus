@@ -229,7 +229,7 @@ type eWorkerBucket struct {
 	taskCleanerHandler chan *eWorkerTaskCleaning
 	workerStatsQuery   chan *eWorkerStatsParam
 	workerJobsQuery    chan *eWorkerJobsParam
-    bucketPledgedJobs  chan *eBucketPledgedJobsParam
+	bucketPledgedJobs  chan *eBucketPledgedJobsParam
 	closing            chan struct{}
 	ticker             *time.Ticker
 }
@@ -328,7 +328,7 @@ type eWorkerStatsParam struct {
 }
 
 type eBucketPledgedJobsParam struct {
-    resp chan int
+	resp chan int
 }
 
 type eWorkerJobsParam struct {
@@ -337,25 +337,25 @@ type eWorkerJobsParam struct {
 }
 
 type edispatcher struct {
-	nextRequest        uint64
-	nextWorker         uint64
-	newWorker          chan *eWorkerHandle
-	dropWorker         chan uuid.UUID
-	taskUUID           chan eTaskUUID
-	abortTask          chan storage.SectorRef
-	newRequest         chan *eWorkerRequest
-	buckets            []*eWorkerBucket
-	reqQueue           *eRequestQueue
-	storage            *EStorage
-	storageNotifier    chan eStoreAction
-	droppedWorker      chan string
-	taskCleaner        chan *eWorkerTaskCleaning
-	closing            chan struct{}
-	ctx                context.Context
-	taskWorkerBinder   *eTaskWorkerBinder
-	workerStatsQuery   chan *eWorkerStatsParam
-	workerJobsQuery    chan *eWorkerJobsParam
-    bucketPledgedJobs  chan *eBucketPledgedJobsParam
+	nextRequest       uint64
+	nextWorker        uint64
+	newWorker         chan *eWorkerHandle
+	dropWorker        chan uuid.UUID
+	taskUUID          chan eTaskUUID
+	abortTask         chan storage.SectorRef
+	newRequest        chan *eWorkerRequest
+	buckets           []*eWorkerBucket
+	reqQueue          *eRequestQueue
+	storage           *EStorage
+	storageNotifier   chan eStoreAction
+	droppedWorker     chan string
+	taskCleaner       chan *eWorkerTaskCleaning
+	closing           chan struct{}
+	ctx               context.Context
+	taskWorkerBinder  *eTaskWorkerBinder
+	workerStatsQuery  chan *eWorkerStatsParam
+	workerJobsQuery   chan *eWorkerJobsParam
+	bucketPledgedJobs chan *eBucketPledgedJobsParam
 }
 
 const eschedWorkerBuckets = 10
@@ -1221,7 +1221,7 @@ func (bucket *eWorkerBucket) onTaskClean(clean *eWorkerTaskCleaning) {
 	for _, worker := range bucket.workers {
 		if !worker.info.BigCache && clean.byCacheMove {
 			log.Debugf("<%s> task %v / %v cannot removed by move cache done from worker %s",
-                eschedTag, clean.sector, clean.taskType, worker.info.Address)
+				eschedTag, clean.sector, clean.taskType, worker.info.Address)
 			continue
 		}
 		for idx, task := range worker.cleaningTasks {
@@ -1348,44 +1348,44 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 }
 
 func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
-    var jobs int = 0
+	var jobs int = 0
 	for _, worker := range bucket.workers {
-        if eschedWorkerStateWaving == worker.state {
-            continue
-        }
-	    taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
-	    if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
-		    for _, lTaskType := range taskTypes {
-			    taskCount += worker.typedTaskCount(lTaskType, false)
-		    }
-	    }
-	    taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
+		if eschedWorkerStateWaving == worker.state {
+			continue
+		}
+		taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
+		if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
+			for _, lTaskType := range taskTypes {
+				taskCount += worker.typedTaskCount(lTaskType, false)
+			}
+		}
+		taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
 
-        for _, task := range worker.runningTasks {
-                if task.taskType == sealtasks.TTPreCommit1 {
-                        taskCount += 1
-                }
-        }
+		for _, task := range worker.runningTasks {
+			if task.taskType == sealtasks.TTPreCommit1 {
+				taskCount += 1
+			}
+		}
 
-        worker.preparedTasks.mutex.Lock()
-        for _, task := range worker.preparedTasks.queue {
-                if task.taskType == sealtasks.TTPreCommit1 {
-                        taskCount += 1
-                }
-        }
-        worker.preparedTasks.mutex.Unlock()
+		worker.preparedTasks.mutex.Lock()
+		for _, task := range worker.preparedTasks.queue {
+			if task.taskType == sealtasks.TTPreCommit1 {
+				taskCount += 1
+			}
+		}
+		worker.preparedTasks.mutex.Unlock()
 
-        worker.preparingTasks.mutex.Lock()
-        for _, task := range worker.preparingTasks.queue {
-                if task.taskType == sealtasks.TTPreCommit1 {
-                        taskCount += 1
-                }
-        }
-        worker.preparingTasks.mutex.Unlock()
+		worker.preparingTasks.mutex.Lock()
+		for _, task := range worker.preparingTasks.queue {
+			if task.taskType == sealtasks.TTPreCommit1 {
+				taskCount += 1
+			}
+		}
+		worker.preparingTasks.mutex.Unlock()
 
-        jobs += (worker.maxConcurrent[bucket.spt][sealtasks.TTPreCommit1] - taskCount)
-    }
-    go func(jobs int) { param.resp <- jobs }(jobs)
+		jobs += (worker.maxConcurrent[bucket.spt][sealtasks.TTPreCommit1] - taskCount)
+	}
+	go func(jobs int) { param.resp <- jobs }(jobs)
 }
 
 func (bucket *eWorkerBucket) onScheduleTick() {
@@ -1443,11 +1443,11 @@ func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
 				go func(task *eWorkerRequest) {
 					task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
 				}(task)
-                continue
+				continue
 			}
 			remainReqs = append(remainReqs, task)
 		}
-        worker.runningTasks = remainReqs
+		worker.runningTasks = remainReqs
 
 		remainReqs = make([]*eWorkerRequest, 0)
 		worker.preparedTasks.mutex.Lock()
@@ -1456,11 +1456,11 @@ func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
 				go func(task *eWorkerRequest) {
 					task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
 				}(task)
-                continue
+				continue
 			}
 			remainReqs = append(remainReqs, task)
 		}
-        worker.preparedTasks.queue = remainReqs
+		worker.preparedTasks.queue = remainReqs
 		worker.preparedTasks.mutex.Unlock()
 
 		remainReqs = make([]*eWorkerRequest, 0)
@@ -1470,26 +1470,26 @@ func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
 				go func(task *eWorkerRequest) {
 					task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
 				}(task)
-                continue
+				continue
 			}
 			remainReqs = append(remainReqs, task)
 		}
-        worker.preparingTasks.queue = remainReqs
+		worker.preparingTasks.queue = remainReqs
 		worker.preparingTasks.mutex.Unlock()
 
 		for _, pq := range worker.priorityTasksQueue {
 			for _, tq := range pq.typedTasksQueue {
-		        remainReqs = make([]*eWorkerRequest, 0)
+				remainReqs = make([]*eWorkerRequest, 0)
 				for _, task := range tq.tasks {
-			        if task.sector.ID == sector.ID {
-			            go func(task *eWorkerRequest) {
-			                task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
-			            }(task)
-                        continue
-			        }
-			        remainReqs = append(remainReqs, task)
+					if task.sector.ID == sector.ID {
+						go func(task *eWorkerRequest) {
+							task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
+						}(task)
+						continue
+					}
+					remainReqs = append(remainReqs, task)
 				}
-                tq.tasks = remainReqs
+				tq.tasks = remainReqs
 			}
 		}
 	}
@@ -1524,8 +1524,8 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.onWorkerStatsQuery(param)
 		case param := <-bucket.workerJobsQuery:
 			bucket.onWorkerJobsQuery(param)
-        case param := <-bucket.bucketPledgedJobs:
-            bucket.onBucketPledgedJobs(param)
+		case param := <-bucket.bucketPledgedJobs:
+			bucket.onBucketPledgedJobs(param)
 		case <-bucket.ticker.C:
 			bucket.onScheduleTick()
 		case <-bucket.closing:
@@ -1566,7 +1566,7 @@ func newExtScheduler() *edispatcher {
 		},
 		workerStatsQuery:  make(chan *eWorkerStatsParam, 10),
 		workerJobsQuery:   make(chan *eWorkerJobsParam, 10),
-        bucketPledgedJobs: make(chan *eBucketPledgedJobsParam, 0),
+		bucketPledgedJobs: make(chan *eBucketPledgedJobsParam, 0),
 	}
 
 	for i := range dispatcher.buckets {
@@ -1582,7 +1582,7 @@ func newExtScheduler() *edispatcher {
 			notifier:           make(chan struct{}),
 			dropWorker:         make(chan uuid.UUID, 10),
 			taskUUID:           make(chan eTaskUUID, 10),
-		    abortTask:          make(chan storage.SectorRef, 10),
+			abortTask:          make(chan storage.SectorRef, 10),
 			retRequest:         dispatcher.newRequest,
 			storageNotifier:    make(chan eStoreAction, 10),
 			droppedWorker:      dispatcher.droppedWorker,
@@ -1593,7 +1593,7 @@ func newExtScheduler() *edispatcher {
 			workerJobsQuery:    make(chan *eWorkerJobsParam, 10),
 			closing:            make(chan struct{}, 2),
 			ticker:             time.NewTicker(3 * 60 * time.Second),
-            bucketPledgedJobs:  make(chan *eBucketPledgedJobsParam, 0),
+			bucketPledgedJobs:  make(chan *eBucketPledgedJobsParam, 0),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -1965,21 +1965,21 @@ func (sh *edispatcher) onWorkerStatsQuery(param *eWorkerStatsParam) {
 }
 
 func (sh *edispatcher) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
-    go func(param *eBucketPledgedJobsParam) {
-        var jobs int = 0
-        for _, bucket := range sh.buckets {
-            resp := make(chan int)
-            jobsParam := &eBucketPledgedJobsParam {
-                resp: resp,
-            }
-            go func(bucket *eWorkerBucket) { bucket.bucketPledgedJobs <- jobsParam }(bucket)
-            select {
-            case count := <-resp:
-                jobs += count
-            }
+	go func(param *eBucketPledgedJobsParam) {
+		var jobs int = 0
+		for _, bucket := range sh.buckets {
+			resp := make(chan int)
+			jobsParam := &eBucketPledgedJobsParam{
+				resp: resp,
+			}
+			go func(bucket *eWorkerBucket) { bucket.bucketPledgedJobs <- jobsParam }(bucket)
+			select {
+			case count := <-resp:
+				jobs += count
+			}
 		}
 		param.resp <- jobs
-    }(param)
+	}(param)
 }
 
 func (sh *edispatcher) onTaskUUID(uuid eTaskUUID) {
@@ -2005,8 +2005,8 @@ func (sh *edispatcher) onAbortTask(sector storage.SectorRef) {
 	}
 	sh.reqQueue.mutex.Unlock()
 
-    for _, bucket := range sh.buckets {
-        go func(bucket *eWorkerBucket, sector storage.SectorRef) { bucket.abortTask <- sector }(bucket, sector)
+	for _, bucket := range sh.buckets {
+		go func(bucket *eWorkerBucket, sector storage.SectorRef) { bucket.abortTask <- sector }(bucket, sector)
 	}
 }
 
@@ -2035,8 +2035,8 @@ func (sh *edispatcher) runSched() {
 			sh.onWorkerStatsQuery(param)
 		case param := <-sh.workerJobsQuery:
 			sh.onWorkerJobsQuery(param)
-        case param := <-sh.bucketPledgedJobs:
-            sh.onBucketPledgedJobs(param)
+		case param := <-sh.bucketPledgedJobs:
+			sh.onBucketPledgedJobs(param)
 		case uuid := <-sh.taskUUID:
 			sh.onTaskUUID(uuid)
 		case sector := <-sh.abortTask:
@@ -2128,13 +2128,13 @@ func (sh *edispatcher) AbortTask(sector storage.SectorRef) error {
 }
 
 func (sh *edispatcher) PledgedJobs() int {
-    resp := make(chan int)
-    param := &eBucketPledgedJobsParam {
-        resp: resp,
-    }
-    go func() { sh.bucketPledgedJobs <- param }()
-    select {
-    case jobs := <-resp:
-        return jobs
-    }
+	resp := make(chan int)
+	param := &eBucketPledgedJobsParam{
+		resp: resp,
+	}
+	go func() { sh.bucketPledgedJobs <- param }()
+	select {
+	case jobs := <-resp:
+		return jobs
+	}
 }

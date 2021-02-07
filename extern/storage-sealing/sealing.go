@@ -25,9 +25,9 @@ import (
 	"github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/api"
-	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/market"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
+	"github.com/filecoin-project/lotus/chain/types"
 	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
 )
@@ -108,9 +108,9 @@ type Sealing struct {
 }
 
 type FeeConfig struct {
-	MaxPreCommitGasFee  abi.TokenAmount
-	MaxCommitGasFee     abi.TokenAmount
-	MaxTerminateGasFee  abi.TokenAmount
+	MaxPreCommitGasFee abi.TokenAmount
+	MaxCommitGasFee    abi.TokenAmount
+	MaxTerminateGasFee abi.TokenAmount
 }
 
 type UnsealedSectorMap struct {
@@ -164,13 +164,13 @@ func New(api SealingAPI, fc FeeConfig, events Events, maddr address.Address, ds 
 }
 
 func (m *Sealing) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
-    m.feeCfg.MaxPreCommitGasFee = fee
-    return nil
+	m.feeCfg.MaxPreCommitGasFee = fee
+	return nil
 }
 
 func (m *Sealing) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
-    m.feeCfg.MaxCommitGasFee = fee
-    return nil
+	m.feeCfg.MaxCommitGasFee = fee
+	return nil
 }
 
 func (m *Sealing) Run(ctx context.Context) error {
@@ -179,7 +179,7 @@ func (m *Sealing) Run(ctx context.Context) error {
 		return xerrors.Errorf("failed load sector states: %w", err)
 	}
 
-    go m.AutoPledgeTask(ctx)
+	go m.AutoPledgeTask(ctx)
 
 	return nil
 }
