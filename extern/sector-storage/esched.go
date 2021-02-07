@@ -219,6 +219,7 @@ type eWorkerBucket struct {
 	reqFinisher        chan *eRequestFinisher
 	notifier           chan struct{}
 	dropWorker         chan uuid.UUID
+	abortTask          chan storage.SectorRef
 	taskUUID           chan eTaskUUID
 	retRequest         chan *eWorkerRequest
 	storageNotifier    chan eStoreAction
@@ -1432,7 +1433,66 @@ func (bucket *eWorkerBucket) setTaskUUID(uuid eTaskUUID) {
 			}
 		}
 	}
+}
 
+func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
+	for _, worker := range bucket.workers {
+		remainReqs := make([]*eWorkerRequest, 0)
+		for _, task := range worker.runningTasks {
+			if task.sector.ID == sector.ID {
+				go func(task *eWorkerRequest) {
+					task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
+				}(task)
+                continue
+			}
+			remainReqs = append(remainReqs, task)
+		}
+        worker.runningTasks = remainReqs
+
+		remainReqs = make([]*eWorkerRequest, 0)
+		worker.preparedTasks.mutex.Lock()
+		for _, task := range worker.preparedTasks.queue {
+			if task.sector.ID == sector.ID {
+				go func(task *eWorkerRequest) {
+					task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
+				}(task)
+                continue
+			}
+			remainReqs = append(remainReqs, task)
+		}
+        worker.preparedTasks.queue = remainReqs
+		worker.preparedTasks.mutex.Unlock()
+
+		remainReqs = make([]*eWorkerRequest, 0)
+		worker.preparingTasks.mutex.Lock()
+		for _, task := range worker.preparingTasks.queue {
+			if task.sector.ID == sector.ID {
+				go func(task *eWorkerRequest) {
+					task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
+				}(task)
+                continue
+			}
+			remainReqs = append(remainReqs, task)
+		}
+        worker.preparingTasks.queue = remainReqs
+		worker.preparingTasks.mutex.Unlock()
+
+		for _, pq := range worker.priorityTasksQueue {
+			for _, tq := range pq.typedTasksQueue {
+		        remainReqs = make([]*eWorkerRequest, 0)
+				for _, task := range tq.tasks {
+			        if task.sector.ID == sector.ID {
+			            go func(task *eWorkerRequest) {
+			                task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
+			            }(task)
+                        continue
+			        }
+			        remainReqs = append(remainReqs, task)
+				}
+                tq.tasks = remainReqs
+			}
+		}
+	}
 }
 
 func (bucket *eWorkerBucket) scheduler() {
@@ -1452,6 +1512,8 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.taskFinished(finisher)
 		case uuid := <-bucket.taskUUID:
 			bucket.setTaskUUID(uuid)
+		case sector := <-bucket.abortTask:
+			bucket.onAbortTask(sector)
 		case wid := <-bucket.dropWorker:
 			bucket.removeWorkerFromBucket(wid)
 		case act := <-bucket.storageNotifier:
@@ -1520,6 +1582,7 @@ func newExtScheduler() *edispatcher {
 			notifier:           make(chan struct{}),
 			dropWorker:         make(chan uuid.UUID, 10),
 			taskUUID:           make(chan eTaskUUID, 10),
+		    abortTask:          make(chan storage.SectorRef, 10),
 			retRequest:         dispatcher.newRequest,
 			storageNotifier:    make(chan eStoreAction, 10),
 			droppedWorker:      dispatcher.droppedWorker,
@@ -1941,6 +2004,10 @@ func (sh *edispatcher) onAbortTask(sector storage.SectorRef) {
 		sh.reqQueue.reqs[taskType] = remainReqs
 	}
 	sh.reqQueue.mutex.Unlock()
+
+    for _, bucket := range sh.buckets {
+        go func(bucket *eWorkerBucket, sector storage.SectorRef) { bucket.abortTask <- sector }(bucket, sector)
+	}
 }
 
 func (sh *edispatcher) runSched() {
