@@ -1359,6 +1359,29 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 		    }
 	    }
 	    taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
+
+        for _, task := range worker.runningTasks {
+                if task.taskType == sealtasks.TTPreCommit1 {
+                        taskCount += 1
+                }
+        }
+
+        worker.preparedTasks.mutex.Lock()
+        for _, task := range worker.preparedTasks.queue {
+                if task.taskType == sealtasks.TTPreCommit1 {
+                        taskCount += 1
+                }
+        }
+        worker.preparedTasks.mutex.Unlock()
+
+        worker.preparingTasks.mutex.Lock()
+        for _, task := range worker.preparingTasks.queue {
+                if task.taskType == sealtasks.TTPreCommit1 {
+                        taskCount += 1
+                }
+        }
+        worker.preparingTasks.mutex.Unlock()
+
         jobs += (worker.maxConcurrent[bucket.spt][sealtasks.TTPreCommit1] - taskCount)
     }
     go func(jobs int) { param.resp <- jobs }(jobs)
