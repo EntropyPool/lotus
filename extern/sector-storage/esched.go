@@ -2022,7 +2022,7 @@ func (sh *edispatcher) WorkerJobs() map[uuid.UUID][]storiface.WorkerJob {
 	}
 }
 
-func (sh *edispatcher) doCleanTask(sector storage.SectorRef, taskType sealtasks.TaskType, stage string) {
+func (sh *edispatcher) doCleanTask(sector storage.SectorRef, taskType sealtasks.TaskType, stage string, byCacheMove bool) {
 	clean, ok := eschedTaskCleanMap[taskType]
 	if !ok {
 		return
@@ -2035,12 +2035,16 @@ func (sh *edispatcher) doCleanTask(sector storage.SectorRef, taskType sealtasks.
 	sh.taskCleaner <- &eWorkerTaskCleaning{
 		sector:      sector,
 		taskType:    clean.taskType,
-		byCacheMove: true,
+		byCacheMove: byCacheMove,
 	}
 }
 
 func (sh *edispatcher) MoveCacheDone(sector storage.SectorRef) {
-	go sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish)
+	go sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish, true)
+}
+
+func (sh *edispatcher) RemoveSector(sector storage.SectorRef) {
+	go sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish, false)
 }
 
 func (sh *edispatcher) Debugging() bool {
