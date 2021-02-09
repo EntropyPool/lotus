@@ -1442,9 +1442,13 @@ func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
 		remainReqs := make([]*eWorkerRequest, 0)
 		for _, task := range worker.runningTasks {
 			if task.sector.ID == sector.ID {
-				go func(task *eWorkerRequest) {
-					task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
-				}(task)
+				go func(worker *eWorkerHandle, task *eWorkerRequest) {
+					bucket.reqFinisher <- &eRequestFinisher{
+						req:  task,
+						resp: &workerResponse{err: xerrors.Errorf("aborted by user")},
+						wid:  worker.wid,
+					}
+				}(worker, task)
 				continue
 			}
 			remainReqs = append(remainReqs, task)
@@ -1455,9 +1459,13 @@ func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
 		worker.preparedTasks.mutex.Lock()
 		for _, task := range worker.preparedTasks.queue {
 			if task.sector.ID == sector.ID {
-				go func(task *eWorkerRequest) {
-					task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
-				}(task)
+				go func(worker *eWorkerHandle, task *eWorkerRequest) {
+					bucket.reqFinisher <- &eRequestFinisher{
+						req:  task,
+						resp: &workerResponse{err: xerrors.Errorf("aborted by user")},
+						wid:  worker.wid,
+					}
+				}(worker, task)
 				continue
 			}
 			remainReqs = append(remainReqs, task)
@@ -1469,9 +1477,13 @@ func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
 		worker.preparingTasks.mutex.Lock()
 		for _, task := range worker.preparingTasks.queue {
 			if task.sector.ID == sector.ID {
-				go func(task *eWorkerRequest) {
-					task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
-				}(task)
+				go func(worker *eWorkerHandle, task *eWorkerRequest) {
+					bucket.reqFinisher <- &eRequestFinisher{
+						req:  task,
+						resp: &workerResponse{err: xerrors.Errorf("aborted by user")},
+						wid:  worker.wid,
+					}
+				}(worker, task)
 				continue
 			}
 			remainReqs = append(remainReqs, task)
@@ -1484,9 +1496,13 @@ func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
 				remainReqs = make([]*eWorkerRequest, 0)
 				for _, task := range tq.tasks {
 					if task.sector.ID == sector.ID {
-						go func(task *eWorkerRequest) {
-							task.ret <- workerResponse{err: xerrors.Errorf("aborted by user")}
-						}(task)
+						go func(worker *eWorkerHandle, task *eWorkerRequest) {
+							bucket.reqFinisher <- &eRequestFinisher{
+								req:  task,
+								resp: &workerResponse{err: xerrors.Errorf("aborted by user")},
+								wid:  worker.wid,
+							}
+						}(worker, task)
 						continue
 					}
 					remainReqs = append(remainReqs, task)
