@@ -507,6 +507,8 @@ func (w *eWorkerHandle) releaseRequestResource(req *eWorkerRequest, resType stri
 	case eschedResStagePrepare:
 		w.diskUsed -= req.diskUsed
 	case eschedResStageRuntime:
+		log.Infof("<%s> release runtime resource %v, gpu %v, cpu %v",
+			eschedTag, req.sector, req.gpuUsed, req.cpuUsed)
 		w.cpuUsed -= req.cpuUsed
 		w.gpuUsed -= req.gpuUsed
 		hugepage, ok := eschedTaskHugePage[req.taskType]
@@ -918,9 +920,10 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		if 0 < res.GPUs {
 			if 0 < len(worker.info.Resources.GPUs) {
 				if len(worker.info.Resources.GPUs) < res.GPUs+worker.gpuUsed {
-					log.Infof("<%s> need %d = %d + %d GPUs but only %d available [%v / %v]",
+					log.Infof("<%s> need %d = %d + %d GPUs but only %d available [%v / %v] [%s]",
 						eschedTag, res.GPUs+worker.gpuUsed, res.GPUs, worker.gpuUsed,
-						len(worker.info.Resources.GPUs)-worker.gpuUsed, task.sector.ID, taskType)
+						len(worker.info.Resources.GPUs)-worker.gpuUsed, task.sector.ID,
+						taskType, worker.info.Address)
 					break
 				}
 			} else {
@@ -928,17 +931,18 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			}
 		}
 		if int(worker.info.Resources.CPUs)-idleCpus < needCPUs+worker.cpuUsed {
-			log.Infof("<%s> need %d = %d + %d CPUs but only %d available [%v / %v]",
+			log.Infof("<%s> need %d = %d + %d CPUs but only %d available [%v / %v] [%s]",
 				eschedTag, needCPUs+worker.cpuUsed, needCPUs, worker.cpuUsed,
-				int(worker.info.Resources.CPUs)-idleCpus, task.sector.ID, taskType)
+				int(worker.info.Resources.CPUs)-idleCpus, task.sector.ID,
+				taskType, worker.info.Address)
 			break
 		}
 		hugepage, ok := eschedTaskHugePage[taskType]
 		if ok && hugepage && 0 < worker.hugePageBytes {
 			if worker.hugePageBytes < res.Memory+worker.hugePageUsed {
-				log.Infof("<%s> need %d = %d + %d hugepage but only %d available [%v / %v]",
+				log.Infof("<%s> need %d = %d + %d hugepage but only %d available [%v / %v] [%s]",
 					eschedTag, res.Memory+worker.hugePageUsed, res.Memory, worker.hugePageUsed,
-					worker.hugePageBytes, task.sector.ID, taskType)
+					worker.hugePageBytes, task.sector.ID, taskType, worker.info.Address)
 				break
 			}
 		} else {
@@ -947,9 +951,10 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 				extraMem = worker.info.Resources.MemSwap
 			}
 			if worker.info.Resources.MemPhysical+extraMem < res.Memory+worker.memUsed {
-				log.Infof("<%s> need %d = %d + %d memory but only %d available [%v / %v]",
+				log.Infof("<%s> need %d = %d + %d memory but only %d available [%v / %v] [%s]",
 					eschedTag, res.Memory+worker.memUsed, res.Memory, worker.memUsed,
-					worker.info.Resources.MemPhysical+extraMem, task.sector.ID, taskType)
+					worker.info.Resources.MemPhysical+extraMem, task.sector.ID,
+					taskType, worker.info.Address)
 				break
 			}
 		}
@@ -1033,6 +1038,8 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 			if !eschedDebug || finisher.resp.err == nil {
 				bucket.addCleaningTask(finisher.wid, finisher.req)
 			}
+		} else {
+			log.Warnf("<%s> cannot find sector %v in running queue", eschedTag, finisher.req.id)
 		}
 	}
 
