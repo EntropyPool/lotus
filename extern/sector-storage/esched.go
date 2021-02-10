@@ -1229,7 +1229,6 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 		}
 	}
 	if nil == worker {
-		log.Errorf("<%s> cannot find worker by URL %s", eschedTag, act.stat.URLs)
 		return
 	}
 	log.Infof("<%s> %v store %v [bucket %d / worker %s]", eschedTag, act.act, act.id, bucket.id, worker.info.Address)
