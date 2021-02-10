@@ -345,6 +345,7 @@ func sealingElapseStatistic(ctx context.Context, worker Worker, taskType sealtas
 				"sectorNumber", sector.ID.Number,
 				"start", end,
 				"elapsed", end - start,
+				"error": err,
 			)
 			return
 		}
