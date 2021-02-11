@@ -315,7 +315,7 @@ var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
 	sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit1},
 }
 
-var eschedTaskPeekByRuntimeLimit = map[sealtasks.TaskType]bool {
+var eschedTaskPeekByRuntimeLimit = map[sealtasks.TaskType]bool{
 	sealtasks.TTAddPiece:   true,
 	sealtasks.TTPreCommit1: true,
 	sealtasks.TTPreCommit2: true,
@@ -652,7 +652,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		ok, err := req.sel.Ok(rpcCtx, req.taskType, req.sector.ProofType, worker)
 		cancel()
 		if err != nil {
-			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %w",
+			log.Debugf("<%s> cannot judge worker %s for task %v/%v status %v",
 				eschedTag, worker.info.Address, req.sector.ID, req.taskType, err)
 			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
 			continue
@@ -1176,7 +1176,7 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 			cur[sealtasks.TTPreCommit1] = worker.diskConcurrentLimit[spt]
 			cur[sealtasks.TTAddPiece] = worker.diskConcurrentLimit[spt]
 		}
-		if worker.maxRuntimeConcurrent[spt] * 2 < cur[sealtasks.TTPreCommit1] {
+		if worker.maxRuntimeConcurrent[spt]*2 < cur[sealtasks.TTPreCommit1] {
 			worker.maxRuntimeConcurrent[spt] *= 2
 		} else {
 			worker.maxRuntimeConcurrent[spt] = cur[sealtasks.TTPreCommit1]
@@ -1229,7 +1229,6 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 		}
 	}
 	if nil == worker {
-		log.Errorf("<%s> cannot find worker by URL %s", eschedTag, act.stat.URLs)
 		return
 	}
 	log.Infof("<%s> %v store %v [bucket %d / worker %s]", eschedTag, act.act, act.id, bucket.id, worker.info.Address)
@@ -1375,26 +1374,26 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 	var jobs int = 0
 	for _, worker := range bucket.workers {
-        if eschedWorkerStateWaving == worker.state {
-            continue
-        }
-	    taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
-	    if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
-		    for _, lTaskType := range taskTypes {
-			    taskCount += worker.typedTaskCount(lTaskType, false)
-		    }
-	    }
-	    taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
+		if eschedWorkerStateWaving == worker.state {
+			continue
+		}
+		taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
+		if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
+			for _, lTaskType := range taskTypes {
+				taskCount += worker.typedTaskCount(lTaskType, false)
+			}
+		}
+		taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
 
 		if taskCount == 0 {
 			jobs += worker.maxRuntimeConcurrent[bucket.spt]
 		}
 
-		if 0 < worker.maxRuntimeConcurrent[bucket.spt] - taskCount {
+		if 0 < worker.maxRuntimeConcurrent[bucket.spt]-taskCount {
 			jobs += (worker.maxRuntimeConcurrent[bucket.spt] - taskCount)
 		}
-    }
-    go func(jobs int) { param.resp <- jobs }(jobs)
+	}
+	go func(jobs int) { param.resp <- jobs }(jobs)
 }
 
 func (bucket *eWorkerBucket) onScheduleTick() {
@@ -2005,6 +2004,27 @@ func (sh *edispatcher) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 				jobs += count
 			}
 		}
+		waitingJobs := 0
+
+		sh.reqQueue.mutex.Lock()
+		if reqs, ok := sh.reqQueue.reqs[sealtasks.TTPreCommit1]; ok {
+			waitingJobs += len(reqs)
+		}
+		if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
+			for _, taskType := range taskTypes {
+				if reqs, ok := sh.reqQueue.reqs[taskType]; ok {
+					waitingJobs += len(reqs)
+				}
+			}
+		}
+		sh.reqQueue.mutex.Unlock()
+
+		if jobs < waitingJobs {
+			jobs = 0
+		} else {
+			jobs -= waitingJobs
+		}
+
 		param.resp <- jobs
 	}(param)
 }
