@@ -2006,7 +2006,6 @@ func (sh *edispatcher) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 		}
 		waitingJobs := 0
 
-		sh.reqQueue.mutex.Lock()
 		if reqs, ok := sh.reqQueue.reqs[sealtasks.TTPreCommit1]; ok {
 			waitingJobs += len(reqs)
 		}
@@ -2017,7 +2016,6 @@ func (sh *edispatcher) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 				}
 			}
 		}
-		sh.reqQueue.mutex.Unlock()
 
 		if jobs < waitingJobs {
 			jobs = 0
