@@ -335,7 +335,7 @@ func sealingElapseStatistic(ctx context.Context, worker Worker, taskType sealtas
 			"worker", address,
 			"taskType", taskType,
 			"sectorNumber", sector.ID.Number,
-			"start", end,
+			"start", start,
 		)
 	case sealingEnd:
 		if nil != err {
@@ -345,6 +345,7 @@ func sealingElapseStatistic(ctx context.Context, worker Worker, taskType sealtas
 				"sectorNumber", sector.ID.Number,
 				"start", end,
 				"elapsed", end - start,
+				"error": err,
 			)
 			return
 		}

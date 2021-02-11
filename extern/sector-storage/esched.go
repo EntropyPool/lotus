@@ -48,11 +48,11 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 	},
 	sealtasks.TTPreCommit2: {
 		/* Specially, for P2 at the different worker as PC1, it should add disk space of PC1 */
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 32 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (64*15 + 80) * eGiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 32 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (32*15 + 40) * eGiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (512*15 + 1) * eMiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB, InheritDiskSpace: (2*15 + 1) * eKiB * 11 / 10},
-		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB, InheritDiskSpace: (8*15 + 1) * eMiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 32 * eGiB, CPUs: 0, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (64*15 + 80) * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 32 * eGiB, CPUs: 0, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (32*15 + 40) * eGiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: eGiB, CPUs: 0, GPUs: 1, DiskSpace: 512 * eMiB, InheritDiskSpace: (512*15 + 1) * eMiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 4 * eKiB, CPUs: 0, GPUs: 0, DiskSpace: 2 * eMiB, InheritDiskSpace: (2*15 + 1) * eKiB * 11 / 10},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 16 * eMiB, CPUs: 0, GPUs: 0, DiskSpace: 16 * eMiB, InheritDiskSpace: (8*15 + 1) * eMiB * 11 / 10},
 	},
 	sealtasks.TTCommit1: {
 		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 1 * eGiB, CPUs: 0, GPUs: 0, DiskSpace: 512 * eMiB},
@@ -62,11 +62,11 @@ var eResourceTable = map[sealtasks.TaskType]map[abi.RegisteredSealProof]*eResour
 		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 1 * eMiB, CPUs: 0, GPUs: 0, DiskSpace: 16 * eMiB},
 	},
 	sealtasks.TTCommit2: {
-		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 580 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 290 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 16 * eGiB, CPUs: 1, GPUs: 1, DiskSpace: 512 * eMiB},
-		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 32 * eKiB, CPUs: 1, GPUs: 0, DiskSpace: 2 * eMiB},
-		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 32 * eMiB, CPUs: 1, GPUs: 0, DiskSpace: 16 * eMiB},
+		abi.RegisteredSealProof_StackedDrg64GiBV1:  &eResources{Memory: 360 * eGiB, CPUs: 0, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg32GiBV1:  &eResources{Memory: 280 * eGiB, CPUs: 0, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg512MiBV1: &eResources{Memory: 16 * eGiB, CPUs: 0, GPUs: 1, DiskSpace: 512 * eMiB},
+		abi.RegisteredSealProof_StackedDrg2KiBV1:   &eResources{Memory: 32 * eKiB, CPUs: 0, GPUs: 0, DiskSpace: 2 * eMiB},
+		abi.RegisteredSealProof_StackedDrg8MiBV1:   &eResources{Memory: 32 * eMiB, CPUs: 0, GPUs: 0, DiskSpace: 16 * eMiB},
 	},
 }
 
