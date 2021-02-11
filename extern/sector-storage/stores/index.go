@@ -195,7 +195,6 @@ func (i *Index) StorageAttach(ctx context.Context, si StorageInfo, st fsutil.FsS
 		i.stores[si.ID].info.CanStore = si.CanStore
 		i.storageNotify(ctx)
 
-
 		return nil
 	}
 	i.stores[si.ID] = &storageEntry{
@@ -307,7 +306,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft storif
 		}
 
 		for _, id := range i.sectors[Decl{s, pathType}] {
-			log.Infof("%v/%v has %v", id, i.stores[id.storage].info.URLs, s)
+			log.Debugf("%v/%v has %v", id, i.stores[id.storage].info.URLs, s)
 			storageIDs[id.storage]++
 			isprimary[id.storage] = isprimary[id.storage] || id.primary
 		}
