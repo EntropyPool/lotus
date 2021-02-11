@@ -312,7 +312,7 @@ var eschedTaskHugePage = map[sealtasks.TaskType]bool{
 var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
 	sealtasks.TTAddPiece:   []sealtasks.TaskType{sealtasks.TTPreCommit1, sealtasks.TTPreCommit2},
 	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit2},
-	sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit1},
+	// sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit1},
 }
 
 var eschedTaskPeekByRuntimeLimit = map[sealtasks.TaskType]bool{
