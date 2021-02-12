@@ -1933,13 +1933,22 @@ func (sh *edispatcher) onTaskClean(clean *eWorkerTaskCleaning) {
 func (sh *edispatcher) onWorkerJobsQuery(param *eWorkerJobsParam) {
 	go func(param *eWorkerJobsParam) {
 		out := map[uuid.UUID][]storiface.WorkerJob{}
+		resps := make(chan map[uuid.UUID][]storiface.WorkerJob, len(sh.buckets))
 		for _, bucket := range sh.buckets {
-			resp := make(chan map[uuid.UUID][]storiface.WorkerJob)
+			resps[i] = make(chan map[uuid.UUID][]storiface.WorkerJob)
+		}
+		for i, bucket := range sh.buckets {
+			resp := resps[i]
 			queryParam := &eWorkerJobsParam{
 				command: param.command,
 				resp:    resp,
 			}
-			go func(bucket *eWorkerBucket) { bucket.workerJobsQuery <- queryParam }(bucket)
+			go func(bucket *eWorkerBucket, queryParam *eWorkerJobsParam) {
+				bucket.workerJobsQuery <- queryParam
+			}(bucket, queryParam)
+		}
+		for i, bucket := range sh.buckets {
+			resp := resps[i]
 			select {
 			case r := <-resp:
 				for k, v := range r {
@@ -1972,13 +1981,22 @@ func (sh *edispatcher) onWorkerJobsQuery(param *eWorkerJobsParam) {
 func (sh *edispatcher) onWorkerStatsQuery(param *eWorkerStatsParam) {
 	go func(param *eWorkerStatsParam) {
 		out := map[uuid.UUID]storiface.WorkerStats{}
+		resps := make([]chan map[uuid.UUID]storiface.WorkerStats, len(sh.buckets))
 		for _, bucket := range sh.buckets {
-			resp := make(chan map[uuid.UUID]storiface.WorkerStats)
+			resps[i] = make(chan map[uuid.UUID]storiface.WorkerStats)
+		}
+		for i, bucket := range sh.buckets {
+			resp := resps[i]
 			queryParam := &eWorkerStatsParam{
 				command: param.command,
 				resp:    resp,
 			}
-			go func(bucket *eWorkerBucket) { bucket.workerStatsQuery <- queryParam }(bucket)
+			go func(bucket *eWorkerBucket, queryParam *eWorkerStatsParam) {
+				bucket.workerStatsQuery <- queryParam
+			}(bucket, queryParam)
+		}
+		for i, bucket := range sh.buckets {
+			resp := resps[i]
 			select {
 			case r := <-resp:
 				for k, v := range r {
@@ -1993,12 +2011,21 @@ func (sh *edispatcher) onWorkerStatsQuery(param *eWorkerStatsParam) {
 func (sh *edispatcher) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 	go func(param *eBucketPledgedJobsParam) {
 		var jobs int = 0
+		resps := make([]chan int, len(sh.buckets))
 		for _, bucket := range sh.buckets {
-			resp := make(chan int)
+			resps[i] = make(chan int)
+		}
+		for i, bucket := range sh.buckets {
+			resp := resps[i]
 			jobsParam := &eBucketPledgedJobsParam{
 				resp: resp,
 			}
-			go func(bucket *eWorkerBucket) { bucket.bucketPledgedJobs <- jobsParam }(bucket)
+			go func(bucket *eWorkerBucket, jobsParam *eBucketPledgedJobsParam) {
+				bucket.bucketPledgedJobs <- jobsParam
+			}(bucket, jobsParam)
+		}
+		for i, bucket := range sh.buckets {
+			resp := resps[i]
 			select {
 			case count := <-resp:
 				jobs += count
