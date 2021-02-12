@@ -2100,25 +2100,6 @@ func (sh *edispatcher) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 				jobs += count
 			}
 		}
-		waitingJobs := 0
-
-		if reqs, ok := sh.reqQueue.reqs[sealtasks.TTPreCommit1]; ok {
-			waitingJobs += len(reqs)
-		}
-		if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
-			for _, taskType := range taskTypes {
-				if reqs, ok := sh.reqQueue.reqs[taskType]; ok {
-					waitingJobs += len(reqs)
-				}
-			}
-		}
-
-		if jobs < waitingJobs {
-			jobs = 0
-		} else {
-			jobs -= waitingJobs
-		}
-
 		param.resp <- jobs
 	}(param)
 }
