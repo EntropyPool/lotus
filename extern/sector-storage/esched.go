@@ -1390,6 +1390,35 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 		}
 		taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
 
+		bucket.reqQueue.mutex.Lock()
+		if reqs, ok := bucket.reqQueue.reqs[sealtasks.TTPreCommit1]; ok {
+			for _, req := range reqs {
+				bucket.taskWorkerBinder.mutex.Lock()
+				if address, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
+					if address == worker.info.Address {
+						taskCount += 1
+					}
+				}
+				bucket.taskWorkerBinder.mutex.Unlock()
+			}
+		}
+		if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
+			for _, taskType := range taskTypes {
+				if reqs, ok := bucket.reqQueue.reqs[taskType]; ok {
+					for _, req := range reqs {
+						bucket.taskWorkerBinder.mutex.Lock()
+						if address, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
+							if address == worker.info.Address {
+								taskCount += 1
+							}
+						}
+						bucket.taskWorkerBinder.mutex.Unlock()
+					}
+				}
+			}
+		}
+		bucket.reqQueue.mutex.Unlock()
+
 		if taskCount == 0 {
 			jobs += worker.maxRuntimeConcurrent[bucket.spt]
 		}
