@@ -1598,8 +1598,8 @@ func newExtScheduler() *edispatcher {
 		bucketPledgedJobs: make(chan *eBucketPledgedJobsParam, 0),
 		workerJobs:        make(map[uuid.UUID][]storiface.WorkerJob),
 		workerStats:       make(map[uuid.UUID]storiface.WorkerStats),
-		workerJobsResp:    make(chan map[uuid.UUID][]storiface.WorkerJob),
-		workerStatsResp:   make(chan map[uuid.UUID]storiface.WorkerStats),
+		workerJobsResp:    make(chan map[uuid.UUID][]storiface.WorkerJob, 10),
+		workerStatsResp:   make(chan map[uuid.UUID]storiface.WorkerStats, 10),
 		statsTicker:       time.NewTicker(2 * time.Minute),
 	}
 
@@ -2153,14 +2153,14 @@ func (sh *edispatcher) runSched() {
 			sh.onTaskUUID(uuid)
 		case sector := <-sh.abortTask:
 			sh.onAbortTask(sector)
-		case <-sh.closing:
-			sh.closeAllBuckets()
 		case <-sh.statsTicker.C:
 			sh.onStatsTick()
 		case jobs := <-sh.workerJobsResp:
 			sh.onWorkerJobsResp(jobs)
 		case stats := <-sh.workerStatsResp:
 			sh.onWorkerStatsResp(stats)
+		case <-sh.closing:
+			sh.closeAllBuckets()
 			return
 		}
 	}
