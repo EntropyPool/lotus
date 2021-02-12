@@ -364,6 +364,11 @@ type edispatcher struct {
 	workerStatsQuery  chan *eWorkerStatsParam
 	workerJobsQuery   chan *eWorkerJobsParam
 	bucketPledgedJobs chan *eBucketPledgedJobsParam
+	workerJobs        map[uuid.UUID][]storiface.WorkerJob
+	workerJobsResp    chan map[uuid.UUID]storiface.WorkerJob
+	workerStats       map[uuid.UUID]storiface.WorkerStats
+	workerStatsResp   chan map[uuid.UUID]storiface.WorkerStats
+	statsTicket       time.Ticker
 }
 
 const eschedWorkerBuckets = 10
@@ -1591,6 +1596,11 @@ func newExtScheduler() *edispatcher {
 		workerStatsQuery:  make(chan *eWorkerStatsParam, 10),
 		workerJobsQuery:   make(chan *eWorkerJobsParam, 10),
 		bucketPledgedJobs: make(chan *eBucketPledgedJobsParam, 0),
+		workerJobs:        make(map[uuid.UUID][]storiface.WorkerJob),
+		workerStats:       make(map[uuid.UUID][]storiface.WorkerStats),
+		workerJobsResp:    make(chan map[uuid.UUID]storiface.WorkerJob),
+		workerStatsResp:   make(chan map[uuid.UUID]storiface.WorkerStats),
+		statsTicker:       time.NewTicker(2 * time.Minute),
 	}
 
 	for i := range dispatcher.buckets {
@@ -2008,6 +2018,36 @@ func (sh *edispatcher) onWorkerStatsQuery(param *eWorkerStatsParam) {
 	}(param)
 }
 
+func (sh *edispatcher) onStatsTick() {
+	statsParam := &eWorkerStatsParam{
+		command: eschedWorkerStats,
+		resp:    sh.workerStatsResp,
+	}
+	sh.onWorkerStatsQuery(statsParam)
+
+	jobsParam := &eWorkerJobsParam{
+		command: eschedWorkerJobs,
+		resp:    sh.workerJobsResp,
+	}
+	sh.onWorkerJobsQuery(jobsParam)
+}
+
+func (sh *edispatcher) onWorkerJobsResp(jobs map[uuid.UUID]storiface.WorkerStats) {
+	sh.workerJobs = jobs
+}
+
+func (sh *edispatcher) onWorkerStatsResp(stats map[uuid.UUID]storiface.WorkerStats) {
+	sh.workerStats = stats
+}
+
+func (sh *edispatcher) onCmdWorkerJobsQuery(param *eWorkerJobsParam) {
+	go func() { param.resp <- sh.workerJobs }()
+}
+
+func (sh *edispatcher) onCmdWorkerStatsQuery(param *eWorkerStatsParam) {
+	go func() { param.resp <- sh.workerStats }()
+}
+
 func (sh *edispatcher) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 	go func(param *eBucketPledgedJobsParam) {
 		var jobs int = 0
@@ -2104,9 +2144,9 @@ func (sh *edispatcher) runSched() {
 		case clean := <-sh.taskCleaner:
 			sh.onTaskClean(clean)
 		case param := <-sh.workerStatsQuery:
-			sh.onWorkerStatsQuery(param)
+			sh.onCmdWorkerStatsQuery(param)
 		case param := <-sh.workerJobsQuery:
-			sh.onWorkerJobsQuery(param)
+			sh.onCmdWorkerJobsQuery(param)
 		case param := <-sh.bucketPledgedJobs:
 			sh.onBucketPledgedJobs(param)
 		case uuid := <-sh.taskUUID:
@@ -2115,6 +2155,12 @@ func (sh *edispatcher) runSched() {
 			sh.onAbortTask(sector)
 		case <-sh.closing:
 			sh.closeAllBuckets()
+		case <-sh.statsTicker.C:
+			sh.onStatsTick()
+		case jobs := <-sh.workerJobsResp:
+			sh.onWorkerJobsResp(jobs)
+		case stats := <-sh.workerStatsResp:
+			sh.onWorkerStatsResp(jobs)
 			return
 		}
 	}
