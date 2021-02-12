@@ -365,10 +365,10 @@ type edispatcher struct {
 	workerJobsQuery   chan *eWorkerJobsParam
 	bucketPledgedJobs chan *eBucketPledgedJobsParam
 	workerJobs        map[uuid.UUID][]storiface.WorkerJob
-	workerJobsResp    chan map[uuid.UUID]storiface.WorkerJob
+	workerJobsResp    chan map[uuid.UUID][]storiface.WorkerJob
 	workerStats       map[uuid.UUID]storiface.WorkerStats
 	workerStatsResp   chan map[uuid.UUID]storiface.WorkerStats
-	statsTicket       time.Ticker
+	statsTicker       *time.Ticker
 }
 
 const eschedWorkerBuckets = 10
@@ -1597,8 +1597,8 @@ func newExtScheduler() *edispatcher {
 		workerJobsQuery:   make(chan *eWorkerJobsParam, 10),
 		bucketPledgedJobs: make(chan *eBucketPledgedJobsParam, 0),
 		workerJobs:        make(map[uuid.UUID][]storiface.WorkerJob),
-		workerStats:       make(map[uuid.UUID][]storiface.WorkerStats),
-		workerJobsResp:    make(chan map[uuid.UUID]storiface.WorkerJob),
+		workerStats:       make(map[uuid.UUID]storiface.WorkerStats),
+		workerJobsResp:    make(chan map[uuid.UUID][]storiface.WorkerJob),
 		workerStatsResp:   make(chan map[uuid.UUID]storiface.WorkerStats),
 		statsTicker:       time.NewTicker(2 * time.Minute),
 	}
@@ -2032,7 +2032,7 @@ func (sh *edispatcher) onStatsTick() {
 	sh.onWorkerJobsQuery(jobsParam)
 }
 
-func (sh *edispatcher) onWorkerJobsResp(jobs map[uuid.UUID]storiface.WorkerStats) {
+func (sh *edispatcher) onWorkerJobsResp(jobs map[uuid.UUID][]storiface.WorkerJob) {
 	sh.workerJobs = jobs
 }
 
@@ -2160,7 +2160,7 @@ func (sh *edispatcher) runSched() {
 		case jobs := <-sh.workerJobsResp:
 			sh.onWorkerJobsResp(jobs)
 		case stats := <-sh.workerStatsResp:
-			sh.onWorkerStatsResp(jobs)
+			sh.onWorkerStatsResp(stats)
 			return
 		}
 	}
