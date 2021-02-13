@@ -1190,7 +1190,7 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 			cur[sealtasks.TTPreCommit2] = worker.diskConcurrentLimit[spt]
 		}
 
-		log.Infof("<%s> update max concurrent for (%v) %v = %v [%s]",
+		log.Debugf("<%s> update max concurrent for (%v) %v = %v [%s]",
 			eschedTag, spt,
 			sealtasks.TTPreCommit1,
 			cur[sealtasks.TTPreCommit1],
@@ -2006,9 +2006,9 @@ func (sh *edispatcher) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				out[eschedUnassignedWorker] = make([]storiface.WorkerJob, 0)
 			}
 			for _, req := range reqs {
-				bucket.taskWorkerBinder.mutex.Lock()
-				address, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]
-				bucket.taskWorkerBinder.mutex.Unlock()
+				sh.taskWorkerBinder.mutex.Lock()
+				address, _ := sh.taskWorkerBinder.binder[req.sector.ID.Number]
+				sh.taskWorkerBinder.mutex.Unlock()
 				out[eschedUnassignedWorker] = append(out[eschedUnassignedWorker], storiface.WorkerJob{
 					ID:       storiface.CallID{Sector: req.sector.ID, ID: req.uuid},
 					Sector:   req.sector.ID,
