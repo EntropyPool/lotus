@@ -91,11 +91,12 @@ type StorageMiner interface {
 	// SealingSchedDiag dumps internal sealing scheduler state
 	SealingSchedDiag(ctx context.Context, doSched bool) (interface{}, error)
 	ScheduleAbort(ctx context.Context, sector storage.SectorRef) error
+	SetWorkerMode(address string, mode string) error
 	SealingAbort(ctx context.Context, call storiface.CallID) error
 
-    SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error
-    SealingSetEnableAutoPledge(ctx context.Context, enable bool) error
-    SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error
+	SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error
+	SealingSetEnableAutoPledge(ctx context.Context, enable bool) error
+	SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error
 
 	stores.SectorIndex
 
@@ -145,8 +146,8 @@ type StorageMiner interface {
 	// the path specified when calling CreateBackup is within the base path
 	CreateBackup(ctx context.Context, fpath string) error
 
-    SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
-    SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
+	SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
+	SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
 
 	CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, expensive bool) (map[abi.SectorNumber]string, error)
 }

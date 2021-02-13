@@ -172,6 +172,7 @@ type eWorkerHandle struct {
 	w                     Worker
 	wt                    *workTracker
 	info                  storiface.WorkerInfo
+	maintaining           bool
 	memUsed               uint64
 	cpuUsed               int
 	gpuUsed               int
@@ -209,6 +210,11 @@ type eTaskUUID struct {
 	uuid   uuid.UUID
 }
 
+type eWorkerMode struct {
+	address string
+	mode    string
+}
+
 type eWorkerBucket struct {
 	spt                abi.RegisteredSealProof
 	id                 int
@@ -231,6 +237,7 @@ type eWorkerBucket struct {
 	workerStatsQuery   chan *eWorkerStatsParam
 	workerJobsQuery    chan *eWorkerJobsParam
 	bucketPledgedJobs  chan *eBucketPledgedJobsParam
+	setWorkerMode      chan eWorkerMode
 	closing            chan struct{}
 	ticker             *time.Ticker
 }
@@ -351,6 +358,7 @@ type edispatcher struct {
 	dropWorker        chan uuid.UUID
 	taskUUID          chan eTaskUUID
 	abortTask         chan storage.SectorRef
+	setWorkerMode     chan eWorkerMode
 	newRequest        chan *eWorkerRequest
 	buckets           []*eWorkerBucket
 	reqQueue          *eRequestQueue
@@ -714,6 +722,9 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	peekReqs := 0
 
 	for _, worker := range bucket.workers {
+		if worker.maintaining {
+			continue
+		}
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
 				bucket.reqQueue.mutex.Lock()
@@ -1564,6 +1575,18 @@ func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
 	}
 }
 
+func (bucket *eWorkerBucket) onSetWorkerMode(workerMode eWorkerMode) {
+	for _, worker := range bucket.workers {
+		if workerMode.address == worker.info.Address {
+			if "maintaining" == workerMode.mode {
+				worker.maintaining = true
+			} else {
+				worker.maintaining = false
+			}
+		}
+	}
+}
+
 func (bucket *eWorkerBucket) scheduler() {
 	log.Infof("<%s> run scheduler for bucket %d", eschedTag, bucket.id)
 
@@ -1583,6 +1606,8 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.setTaskUUID(uuid)
 		case sector := <-bucket.abortTask:
 			bucket.onAbortTask(sector)
+		case workerMode := <-bucket.setWorkerMode:
+			bucket.onSetWorkerMode(workerMode)
 		case wid := <-bucket.dropWorker:
 			bucket.removeWorkerFromBucket(wid)
 		case act := <-bucket.storageNotifier:
@@ -1616,13 +1641,14 @@ func (bucket *eWorkerBucket) addNewWorker(w *eWorkerHandle) {
 
 func newExtScheduler() *edispatcher {
 	dispatcher := &edispatcher{
-		nextWorker: 0,
-		newWorker:  make(chan *eWorkerHandle, 40),
-		dropWorker: make(chan uuid.UUID, 10),
-		taskUUID:   make(chan eTaskUUID, 10),
-		abortTask:  make(chan storage.SectorRef, 10),
-		newRequest: make(chan *eWorkerRequest, 1000),
-		buckets:    make([]*eWorkerBucket, eschedWorkerBuckets),
+		nextWorker:    0,
+		newWorker:     make(chan *eWorkerHandle, 40),
+		dropWorker:    make(chan uuid.UUID, 10),
+		taskUUID:      make(chan eTaskUUID, 10),
+		setWorkerMode: make(chan eWorkerMode, 10),
+		abortTask:     make(chan storage.SectorRef, 10),
+		newRequest:    make(chan *eWorkerRequest, 1000),
+		buckets:       make([]*eWorkerBucket, eschedWorkerBuckets),
 		reqQueue: &eRequestQueue{
 			reqs: make(map[sealtasks.TaskType][]*eWorkerRequest),
 		},
@@ -1656,6 +1682,7 @@ func newExtScheduler() *edispatcher {
 			notifier:           make(chan struct{}),
 			dropWorker:         make(chan uuid.UUID, 10),
 			taskUUID:           make(chan eTaskUUID, 10),
+			setWorkerMode:      make(chan eWorkerMode, 10),
 			abortTask:          make(chan storage.SectorRef, 10),
 			retRequest:         dispatcher.newRequest,
 			storageNotifier:    make(chan eStoreAction, 10),
@@ -2156,6 +2183,12 @@ func (sh *edispatcher) onAbortTask(sector storage.SectorRef) {
 	}
 }
 
+func (sh *edispatcher) onSetWorkerMode(workerMode eWorkerMode) {
+	for _, bucket := range sh.buckets {
+		go func(bucket *eWorkerBucket) { bucket.setWorkerMode <- workerMode }(bucket)
+	}
+}
+
 func (sh *edispatcher) runSched() {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
@@ -2187,6 +2220,8 @@ func (sh *edispatcher) runSched() {
 			sh.onTaskUUID(uuid)
 		case sector := <-sh.abortTask:
 			sh.onAbortTask(sector)
+		case workerMode := <-sh.setWorkerMode:
+			sh.onSetWorkerMode(workerMode)
 		case <-sh.statsTicker.C:
 			sh.onStatsTick()
 		case jobs := <-sh.workerJobsResp:
@@ -2276,6 +2311,11 @@ func (sh *edispatcher) SetTaskUUID(sector storage.SectorRef, uuid uuid.UUID) {
 
 func (sh *edispatcher) AbortTask(sector storage.SectorRef) error {
 	go func() { sh.abortTask <- sector }()
+	return nil
+}
+
+func (sh *edispatcher) SetWorkerMode(address string, mode string) error {
+	go func() { sh.setWorkerMode <- eWorkerMode{address: address, mode: mode} }()
 	return nil
 }
 

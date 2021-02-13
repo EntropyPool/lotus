@@ -420,3 +420,7 @@ func (m *Manager) Abort(ctx context.Context, call storiface.CallID) error {
 func (m *Manager) ScheduleAbort(ctx context.Context, sector storage.SectorRef) error {
 	return m.sched.esched.AbortTask(sector)
 }
+
+func (m *Manager) SetWorkerMode(address string, mode string) error {
+	return m.sched.esched.SetWorkerMode(address, mode)
+}

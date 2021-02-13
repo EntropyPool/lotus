@@ -272,8 +272,8 @@ type FullNodeStruct struct {
 
 		CreateBackup func(ctx context.Context, fpath string) error `perm:"admin"`
 
-		SetMaxPreCommitGasFee       func(context.Context, abi.TokenAmount) error                                               `perm:"admin"`
-		SetMaxCommitGasFee          func(context.Context, abi.TokenAmount) error                                               `perm:"admin"`
+		SetMaxPreCommitGasFee func(context.Context, abi.TokenAmount) error `perm:"admin"`
+		SetMaxCommitGasFee    func(context.Context, abi.TokenAmount) error `perm:"admin"`
 	}
 }
 
@@ -319,14 +319,14 @@ type StorageMinerStruct struct {
 		SectorGetExpectedSealDuration func(context.Context) (time.Duration, error)                                                  `perm:"read"`
 		SectorsUpdate                 func(context.Context, abi.SectorNumber, api.SectorState) error                                `perm:"admin"`
 
-		SetMaxPreCommitGasFee         func(context.Context, abi.TokenAmount) error                                               `perm:"admin"`
-		SetMaxCommitGasFee            func(context.Context, abi.TokenAmount) error                                               `perm:"admin"`
+		SetMaxPreCommitGasFee func(context.Context, abi.TokenAmount) error `perm:"admin"`
+		SetMaxCommitGasFee    func(context.Context, abi.TokenAmount) error `perm:"admin"`
 
-		SectorRemove                  func(context.Context, abi.SectorNumber) error                                                 `perm:"admin"`
-		SectorTerminate               func(context.Context, abi.SectorNumber) error                                                 `perm:"admin"`
-		SectorTerminateFlush          func(ctx context.Context) (*cid.Cid, error)                                                   `perm:"admin"`
-		SectorTerminatePending        func(ctx context.Context) ([]abi.SectorID, error)                                             `perm:"admin"`
-		SectorMarkForUpgrade          func(ctx context.Context, id abi.SectorNumber) error                                          `perm:"admin"`
+		SectorRemove           func(context.Context, abi.SectorNumber) error        `perm:"admin"`
+		SectorTerminate        func(context.Context, abi.SectorNumber) error        `perm:"admin"`
+		SectorTerminateFlush   func(ctx context.Context) (*cid.Cid, error)          `perm:"admin"`
+		SectorTerminatePending func(ctx context.Context) ([]abi.SectorID, error)    `perm:"admin"`
+		SectorMarkForUpgrade   func(ctx context.Context, id abi.SectorNumber) error `perm:"admin"`
 
 		WorkerConnect func(context.Context, string) error                                `perm:"admin" retry:"true"` // TODO: worker perm
 		WorkerStats   func(context.Context) (map[uuid.UUID]storiface.WorkerStats, error) `perm:"admin"`
@@ -344,12 +344,13 @@ type StorageMinerStruct struct {
 		ReturnReadPiece       func(ctx context.Context, callID storiface.CallID, ok bool, err *storiface.CallError) error                   `perm:"admin" retry:"true"`
 		ReturnFetch           func(ctx context.Context, callID storiface.CallID, err *storiface.CallError) error                            `perm:"admin" retry:"true"`
 
-		SealingSchedDiag func(context.Context, bool) (interface{}, error)          `perm:"admin"`
-		SealingAbort     func(ctx context.Context, call storiface.CallID) error    `perm:"admin"`
-		ScheduleAbort    func(ctx context.Context, sector storage.SectorRef) error `perm:"admin"`
-        SealingSetPreferSectorOnChain func(ctx context.Context, prefer bool) error `perm:"admin"`
-        SealingSetEnableAutoPledge func(ctx context.Context, enable bool) error    `perm:"admin"`
-        SealingSetAutoPledgeBalanceThreshold func(ctx context.Context, threshold abi.TokenAmount) error `perm:"admin"`
+		SealingSchedDiag                     func(context.Context, bool) (interface{}, error)           `perm:"admin"`
+		SealingAbort                         func(ctx context.Context, call storiface.CallID) error     `perm:"admin"`
+		ScheduleAbort                        func(ctx context.Context, sector storage.SectorRef) error  `perm:"admin"`
+		SetWorkerMode                        func(address string, mode string) error                    `perm:"admin"`
+		SealingSetPreferSectorOnChain        func(ctx context.Context, prefer bool) error               `perm:"admin"`
+		SealingSetEnableAutoPledge           func(ctx context.Context, enable bool) error               `perm:"admin"`
+		SealingSetAutoPledgeBalanceThreshold func(ctx context.Context, threshold abi.TokenAmount) error `perm:"admin"`
 
 		StorageList          func(context.Context) (map[stores.ID][]stores.Decl, error)                                                                                   `perm:"admin"`
 		StorageLocal         func(context.Context) (map[stores.ID]string, error)                                                                                          `perm:"admin"`
@@ -1337,7 +1338,7 @@ func (c *StorageMinerStruct) SectorGetExpectedSealDuration(ctx context.Context) 
 }
 
 func (c *StorageMinerStruct) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
-    return c.Internal.SetMaxPreCommitGasFee(ctx, fee)
+	return c.Internal.SetMaxPreCommitGasFee(ctx, fee)
 }
 
 func (c *StorageMinerStruct) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
@@ -1429,15 +1430,19 @@ func (c *StorageMinerStruct) SealingSchedDiag(ctx context.Context, doSched bool)
 }
 
 func (c *StorageMinerStruct) SealingSetEnableAutoPledge(ctx context.Context, enable bool) error {
-    return c.Internal.SealingSetEnableAutoPledge(ctx, enable)
+	return c.Internal.SealingSetEnableAutoPledge(ctx, enable)
 }
 
 func (c *StorageMinerStruct) SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error {
-    return c.Internal.SealingSetAutoPledgeBalanceThreshold(ctx, threshold)
+	return c.Internal.SealingSetAutoPledgeBalanceThreshold(ctx, threshold)
 }
 
 func (c *StorageMinerStruct) SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error {
-    return c.Internal.SealingSetPreferSectorOnChain(ctx, prefer)
+	return c.Internal.SealingSetPreferSectorOnChain(ctx, prefer)
+}
+
+func (c *StorageMinerStruct) SetWorkerMode(address string, mode string) error {
+	return c.Internal.SetWorkerMode(address, mode)
 }
 
 func (c *StorageMinerStruct) ScheduleAbort(ctx context.Context, sector storage.SectorRef) error {
