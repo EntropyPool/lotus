@@ -878,7 +878,7 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 	}
 }
 
-func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
+func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) bool {
 	scheduled := false
 	for _, pq := range worker.priorityTasksQueue {
 		for _, typedTasks := range pq.typedTasksQueue {
@@ -896,9 +896,10 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) {
 		}
 		if scheduled {
 			// Always run only one priority for each time
-			return
+			return true
 		}
 	}
+	return false
 }
 
 func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
@@ -986,8 +987,14 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 
 func (bucket *eWorkerBucket) scheduleBucketTask() {
 	log.Infof("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
+	scheduled := false
 	for _, worker := range bucket.workers {
-		bucket.scheduleTypedTasks(worker)
+		if bucket.scheduleTypedTasks(worker) == true {
+			scheduled = true
+		}
+	}
+	if scheduled {
+		go func() { bucket.notifier <- struct{}{} }()
 	}
 }
 
