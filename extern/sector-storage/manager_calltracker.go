@@ -421,6 +421,6 @@ func (m *Manager) ScheduleAbort(ctx context.Context, sector storage.SectorRef) e
 	return m.sched.esched.AbortTask(sector)
 }
 
-func (m *Manager) SetWorkerMode(address string, mode string) error {
+func (m *Manager) SetWorkerMode(ctx context.Context, address string, mode string) error {
 	return m.sched.esched.SetWorkerMode(address, mode)
 }

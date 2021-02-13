@@ -404,8 +404,8 @@ func (sm *StorageMinerAPI) SealingAbort(ctx context.Context, call storiface.Call
 	return sm.StorageMgr.Abort(ctx, call)
 }
 
-func (sm *StorageMinerAPI) SetWorkerMode(address string, mode string) error {
-	return sm.StorageMgr.SetWorkerMode(address, mode)
+func (sm *StorageMinerAPI) SetWorkerMode(ctx context.Context, address string, mode string) error {
+	return sm.StorageMgr.SetWorkerMode(ctx, address, mode)
 }
 
 func (sm *StorageMinerAPI) ScheduleAbort(ctx context.Context, sector sto.SectorRef) error {

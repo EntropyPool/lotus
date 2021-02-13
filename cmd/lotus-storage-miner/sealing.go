@@ -463,3 +463,32 @@ var sealingGasAdjustCmd = &cli.Command{
 		return nil
 	},
 }
+
+var sealingSetWorkerModeCmd = &cli.Command{
+	Name:  "set-worker-mode",
+	Usage: "Set worker mode",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name: "address",
+		},
+		&cli.StringFlag{
+			Name:  "mode",
+			Value: "maintaining",
+			Usage: "worker mode [maintaining | normal]",
+		},
+	},
+	Action: func(cctx *cli.Context) error {
+		address := cctx.String("address")
+		mode := cctx.String("mode")
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		ctx := lcli.ReqContext(cctx)
+
+		return nodeApi.SetWorkerMode(ctx, address, mode)
+	},
+}
