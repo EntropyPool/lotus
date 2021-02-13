@@ -1322,10 +1322,11 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 	for _, worker := range bucket.workers {
 		for _, task := range worker.runningTasks {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
-				ID:     storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
-				Sector: task.sector.ID,
-				Task:   task.taskType,
-				Start:  task.startRunTimeRaw,
+				ID:       storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
+				Sector:   task.sector.ID,
+				Task:     task.taskType,
+				Start:    task.startRunTimeRaw,
+				Hostname: worker.info.Address,
 			})
 		}
 
@@ -1333,11 +1334,12 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		worker.preparedTasks.mutex.Lock()
 		for _, task := range worker.preparedTasks.queue {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
-				ID:      storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
-				Sector:  task.sector.ID,
-				Task:    task.taskType,
-				RunWait: wi + 1,
-				Start:   task.inqueueTimeRaw,
+				ID:       storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
+				Sector:   task.sector.ID,
+				Task:     task.taskType,
+				RunWait:  wi + 1,
+				Start:    task.inqueueTimeRaw,
+				Hostname: worker.info.Address,
 			})
 			wi += 1
 		}
@@ -1346,11 +1348,12 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 		worker.preparingTasks.mutex.Lock()
 		for _, task := range worker.preparingTasks.queue {
 			out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
-				ID:      storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
-				Sector:  task.sector.ID,
-				Task:    task.taskType,
-				RunWait: wi + 1 + 1000,
-				Start:   task.inqueueTimeRaw,
+				ID:       storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
+				Sector:   task.sector.ID,
+				Task:     task.taskType,
+				RunWait:  wi + 1 + 1000,
+				Start:    task.inqueueTimeRaw,
+				Hostname: worker.info.Address,
 			})
 			wi += 1
 		}
@@ -1361,11 +1364,12 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 			for _, tq := range pq.typedTasksQueue {
 				for _, task := range tq.tasks {
 					out[worker.wid] = append(out[worker.wid], storiface.WorkerJob{
-						ID:      storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
-						Sector:  task.sector.ID,
-						Task:    task.taskType,
-						RunWait: 100000*(pq.priority+1) + 1 + wi,
-						Start:   task.inqueueTimeRaw,
+						ID:       storiface.CallID{Sector: task.sector.ID, ID: task.uuid},
+						Sector:   task.sector.ID,
+						Task:     task.taskType,
+						RunWait:  100000*(pq.priority+1) + 1 + wi,
+						Start:    task.inqueueTimeRaw,
+						Hostname: worker.info.Address,
 					})
 					wi += 1
 				}
@@ -2002,12 +2006,16 @@ func (sh *edispatcher) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				out[eschedUnassignedWorker] = make([]storiface.WorkerJob, 0)
 			}
 			for _, req := range reqs {
+				bucket.taskWorkerBinder.mutex.Lock()
+				address, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]
+				bucket.taskWorkerBinder.mutex.Unlock()
 				out[eschedUnassignedWorker] = append(out[eschedUnassignedWorker], storiface.WorkerJob{
-					ID:      storiface.CallID{Sector: req.sector.ID, ID: req.uuid},
-					Sector:  req.sector.ID,
-					Task:    taskType,
-					RunWait: wi + 1,
-					Start:   req.requestTimeRaw,
+					ID:       storiface.CallID{Sector: req.sector.ID, ID: req.uuid},
+					Sector:   req.sector.ID,
+					Task:     taskType,
+					RunWait:  wi + 1,
+					Start:    req.requestTimeRaw,
+					Hostname: address,
 				})
 				wi += 1
 			}
