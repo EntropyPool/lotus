@@ -1688,6 +1688,15 @@ func newExtScheduler() *edispatcher {
 }
 
 func (sh *edispatcher) Schedule(ctx context.Context, sector storage.SectorRef, taskType sealtasks.TaskType, sel WorkerSelector, prepare WorkerAction, work WorkerAction) error {
+	if sealtasks.TTPreCommit1 == taskType {
+		sh.taskWorkerBinder.mutex.Lock()
+		if _, ok := sh.taskWorkerBinder.binder[sector.ID.Number]; !ok {
+			sh.taskWorkerBinder.mutex.Unlock()
+			return xerrors.Errorf("not binded to any worker")
+		}
+		sh.taskWorkerBinder.mutex.Unlock()
+	}
+
 	ret := make(chan workerResponse)
 
 	select {
