@@ -512,6 +512,8 @@ func (w *eWorkerHandle) acquireRequestResource(req *eWorkerRequest, resType stri
 	case eschedResStagePrepare:
 		w.diskUsed += req.diskUsed
 	case eschedResStageRuntime:
+		log.Infof("<%s> acquire runtime resource %v, gpu %v, cpu %v [%v]",
+			eschedTag, req.sector, req.gpuUsed, req.cpuUsed, w.info.Address)
 		w.cpuUsed += req.cpuUsed
 		w.gpuUsed += req.gpuUsed
 		hugepage, ok := eschedTaskHugePage[req.taskType]
@@ -528,8 +530,8 @@ func (w *eWorkerHandle) releaseRequestResource(req *eWorkerRequest, resType stri
 	case eschedResStagePrepare:
 		w.diskUsed -= req.diskUsed
 	case eschedResStageRuntime:
-		log.Infof("<%s> release runtime resource %v, gpu %v, cpu %v",
-			eschedTag, req.sector, req.gpuUsed, req.cpuUsed)
+		log.Infof("<%s> release runtime resource %v, gpu %v, cpu %v [%v]",
+			eschedTag, req.sector, req.gpuUsed, req.cpuUsed, w.info.Address)
 		w.cpuUsed -= req.cpuUsed
 		w.gpuUsed -= req.gpuUsed
 		hugepage, ok := eschedTaskHugePage[req.taskType]
