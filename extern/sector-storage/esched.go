@@ -322,6 +322,11 @@ var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
 	// sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit1},
 }
 
+var eschedTaskMaintainingReject = map[sealtasks.TaskType]bool {
+	sealtasks.TTAddPiece:   true,
+	sealtasks.TTPreCommit1: true,
+}
+
 var eschedTaskPeekByRuntimeLimit = map[sealtasks.TaskType]bool{
 	sealtasks.TTAddPiece:   true,
 	sealtasks.TTPreCommit1: true,
@@ -722,11 +727,13 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	peekReqs := 0
 
 	for _, worker := range bucket.workers {
-		if worker.maintaining {
-			continue
-		}
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
+				if worker.maintaining {
+					if _, ok := eschedTaskMaintainingReject[taskType]; ok {
+						continue
+					}
+				}
 				bucket.reqQueue.mutex.Lock()
 				if _, ok := bucket.reqQueue.reqs[taskType]; ok {
 					if 0 < len(bucket.reqQueue.reqs[taskType]) {
