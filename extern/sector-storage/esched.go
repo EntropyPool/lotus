@@ -732,7 +732,7 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	for _, worker := range bucket.workers {
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
-				if worker.rejectNewTask {
+				if worker.rejectNewTask || worker.maintaining {
 					if _, ok := eschedTaskMaintainingReject[taskType]; ok {
 						continue
 					}
@@ -1418,7 +1418,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 	var jobs int = 0
 	for _, worker := range bucket.workers {
-		if eschedWorkerStateWaving == worker.state || worker.rejectNewTask {
+		if eschedWorkerStateWaving == worker.state || worker.rejectNewTask || worker.maintaining {
 			continue
 		}
 		taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
@@ -1597,7 +1597,6 @@ func (bucket *eWorkerBucket) onSetWorkerMode(workerMode eWorkerMode) {
 		if workerMode.address == worker.info.Address {
 			if "maintaining" == workerMode.mode {
 				worker.maintaining = true
-				worker.rejectNewTask = true
 			} else {
 				worker.maintaining = false
 			}
