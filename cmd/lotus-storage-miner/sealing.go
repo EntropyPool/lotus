@@ -34,6 +34,7 @@ var sealingCmd = &cli.Command{
 		sealingAbortCmd,
 		scheduleAbortCmd,
 		sealingGasAdjustCmd,
+		sealingSetWorkerModeCmd,
 	},
 }
 
