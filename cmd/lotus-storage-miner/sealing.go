@@ -82,7 +82,9 @@ var sealingWorkersCmd = &cli.Command{
 			}
 
 			var disabled string
-			if !stat.Enabled {
+			if stat.Maintaining {
+				disabled = color.RedString(" (maintaining)")
+			} else if !stat.Enabled {
 				disabled = color.RedString(" (disabled)")
 			}
 

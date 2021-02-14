@@ -1289,11 +1289,12 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 
 	for _, worker := range bucket.workers {
 		out[worker.wid] = storiface.WorkerStats{
-			Info:    worker.info,
-			GpuUsed: 0 < worker.gpuUsed,
-			CpuUse:  uint64(worker.cpuUsed),
-			Tasks:   make(map[sealtasks.TaskType]storiface.TasksInfo),
-			State:   worker.state,
+			Info:        worker.info,
+			GpuUsed:     0 < worker.gpuUsed,
+			CpuUse:      uint64(worker.cpuUsed),
+			Tasks:       make(map[sealtasks.TaskType]storiface.TasksInfo),
+			State:       worker.state,
+			Maintaining: worker.maintaining,
 		}
 		for _, taskType := range worker.info.SupportTasks {
 			out[worker.wid].Tasks[taskType] = storiface.TasksInfo{
