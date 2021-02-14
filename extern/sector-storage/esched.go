@@ -1837,7 +1837,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 		}
 	}
 
-	w.maintaining = true
+	w.maintaining = false
 	w.rejectNewTask = true
 
 	w.storeIDs = make(map[stores.ID]eStoreStat)
