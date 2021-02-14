@@ -160,6 +160,7 @@ const eschedWorkerStateWaving = "waving"
 const eschedWorkerStateReady = "ready"
 
 type eStoreStat struct {
+	total int64
 	space int64
 	URLs  []string
 	local bool
@@ -173,6 +174,7 @@ type eWorkerHandle struct {
 	wt                    *workTracker
 	info                  storiface.WorkerInfo
 	maintaining           bool
+	rejectNewTask         bool
 	memUsed               uint64
 	cpuUsed               int
 	gpuUsed               int
@@ -322,7 +324,7 @@ var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
 	// sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit1},
 }
 
-var eschedTaskMaintainingReject = map[sealtasks.TaskType]bool {
+var eschedTaskMaintainingReject = map[sealtasks.TaskType]bool{
 	sealtasks.TTAddPiece:   true,
 	sealtasks.TTPreCommit1: true,
 }
@@ -450,6 +452,7 @@ func (sh *edispatcher) checkStorageUpdate() {
 		}
 
 		stat := eStoreStat{
+			total: stor.FsStat().Capacity,
 			space: stor.FsStat().Available,
 			URLs:  stor.Info().URLs,
 			local: sh.isLocalStorage(id),
@@ -729,7 +732,7 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	for _, worker := range bucket.workers {
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
-				if worker.maintaining {
+				if worker.rejectNewTask {
 					if _, ok := eschedTaskMaintainingReject[taskType]; ok {
 						continue
 					}
@@ -1195,8 +1198,14 @@ func (bucket *eWorkerBucket) findWorkerByStoreURL(urls []string) *eWorkerHandle 
 func (worker *eWorkerHandle) caculateTaskLimit() {
 	for _, spt := range eSealProofType {
 		limit := 0
+		max := 0
 		for _, stat := range worker.storeIDs {
 			limit += int(stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
+			max += int(stat.total / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
+		}
+
+		if max-limit < 2 {
+			worker.rejectNewTask = false
 		}
 
 		worker.diskConcurrentLimit[spt] = limit
@@ -1409,7 +1418,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 	var jobs int = 0
 	for _, worker := range bucket.workers {
-		if eschedWorkerStateWaving == worker.state || worker.maintaining {
+		if eschedWorkerStateWaving == worker.state || worker.rejectNewTask {
 			continue
 		}
 		taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
@@ -1588,6 +1597,7 @@ func (bucket *eWorkerBucket) onSetWorkerMode(workerMode eWorkerMode) {
 		if workerMode.address == worker.info.Address {
 			if "maintaining" == workerMode.mode {
 				worker.maintaining = true
+				worker.rejectNewTask = true
 			} else {
 				worker.maintaining = false
 			}
@@ -1827,6 +1837,9 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 			tasks:    make([]*eWorkerRequest, 0),
 		}
 	}
+
+	w.maintaining = true
+	w.rejectNewTask = true
 
 	w.storeIDs = make(map[stores.ID]eStoreStat)
 	w.runningTasks = make([]*eWorkerRequest, 0)
