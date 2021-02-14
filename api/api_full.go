@@ -557,8 +557,8 @@ type FullNode interface {
 	// the path specified when calling CreateBackup is within the base path
 	CreateBackup(ctx context.Context, fpath string) error
 
-    SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
-    SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
+	SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
+	SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
 }
 
 type FileRef struct {
