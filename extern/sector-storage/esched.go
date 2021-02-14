@@ -1401,7 +1401,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 	var jobs int = 0
 	for _, worker := range bucket.workers {
-		if eschedWorkerStateWaving == worker.state {
+		if eschedWorkerStateWaving == worker.state || worker.maintaining {
 			continue
 		}
 		taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
