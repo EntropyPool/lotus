@@ -955,7 +955,11 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 						eschedTag, res.GPUs+worker.gpuUsed, res.GPUs, worker.gpuUsed,
 						len(worker.info.Resources.GPUs)-worker.gpuUsed, task.sector.ID,
 						taskType, worker.info.Address)
-					break
+					worker.preparedTasks.mutex.Lock()
+					worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
+					worker.preparedTasks.mutex.Unlock()
+					remainReqs = append(remainReqs, task)
+					continue
 				}
 			} else {
 				needCPUs = int(worker.info.Resources.CPUs) - idleCpus
@@ -966,7 +970,11 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 				eschedTag, needCPUs+worker.cpuUsed, needCPUs, worker.cpuUsed,
 				int(worker.info.Resources.CPUs)-idleCpus, task.sector.ID,
 				taskType, worker.info.Address)
-			break
+			worker.preparedTasks.mutex.Lock()
+			worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
+			worker.preparedTasks.mutex.Unlock()
+			remainReqs = append(remainReqs, task)
+			continue
 		}
 		hugepage, ok := eschedTaskHugePage[taskType]
 		if ok && hugepage && 0 < worker.hugePageBytes {
@@ -974,7 +982,11 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 				log.Infof("<%s> need %d = %d + %d hugepage but only %d available [%v / %v] [%s]",
 					eschedTag, res.Memory+worker.hugePageUsed, res.Memory, worker.hugePageUsed,
 					worker.hugePageBytes, task.sector.ID, taskType, worker.info.Address)
-				break
+				worker.preparedTasks.mutex.Lock()
+				worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
+				worker.preparedTasks.mutex.Unlock()
+				remainReqs = append(remainReqs, task)
+				continue
 			}
 		} else {
 			var extraMem uint64 = 0
@@ -986,7 +998,11 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 					eschedTag, res.Memory+worker.memUsed, res.Memory, worker.memUsed,
 					worker.info.Resources.MemPhysical+extraMem, task.sector.ID,
 					taskType, worker.info.Address)
-				break
+				worker.preparedTasks.mutex.Lock()
+				worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
+				worker.preparedTasks.mutex.Unlock()
+				remainReqs = append(remainReqs, task)
+				continue
 			}
 		}
 
