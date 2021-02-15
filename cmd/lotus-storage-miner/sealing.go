@@ -86,7 +86,7 @@ var sealingWorkersCmd = &cli.Command{
 			if stat.Maintaining {
 				flags += color.RedString("M")
 			}
-			if !stat.RejectNewTask {
+			if stat.RejectNewTask {
 				flags += color.RedString("R")
 			}
 			flags += ")"
