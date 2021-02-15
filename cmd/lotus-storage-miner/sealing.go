@@ -82,12 +82,14 @@ var sealingWorkersCmd = &cli.Command{
 				gpuUse = ""
 			}
 
-			var disabled string
+			var flags string = " ("
 			if stat.Maintaining {
-				disabled = color.RedString(" (maintaining)")
-			} else if !stat.Enabled {
-				disabled = color.RedString(" (disabled)")
+				flags += color.RedString("M")
 			}
+			if !stat.RejectNewTask {
+				flags += color.RedString("R")
+			}
+			flags += ")"
 
 			addressStr := stat.Info.Address
 			if 0 == len(addressStr) {
@@ -95,7 +97,7 @@ var sealingWorkersCmd = &cli.Command{
 			}
 			fmt.Printf("Worker %s (%s), host %s/%s%s\n", stat.id, stat.State,
 				color.MagentaString(stat.Info.Hostname),
-				color.MagentaString(addressStr), disabled)
+				color.MagentaString(addressStr), flags)
 
 			taskTypes := ""
 			sort.Slice(stat.Info.SupportTasks, func(i, j int) bool {

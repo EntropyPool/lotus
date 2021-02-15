@@ -46,13 +46,14 @@ type WorkerStats struct {
 	Info    WorkerInfo
 	Enabled bool
 
-	MemUsedMin  uint64
-	MemUsedMax  uint64
-	GpuUsed     bool   // nolint
-	CpuUse      uint64 // nolint
-	Tasks       map[sealtasks.TaskType]TasksInfo
-	State       string
-	Maintaining bool
+	MemUsedMin    uint64
+	MemUsedMax    uint64
+	GpuUsed       bool   // nolint
+	CpuUse        uint64 // nolint
+	Tasks         map[sealtasks.TaskType]TasksInfo
+	State         string
+	Maintaining   bool
+	RejectNewTask bool
 }
 
 const (
