@@ -122,6 +122,8 @@ var eSealProofType = []abi.RegisteredSealProof{
 }
 
 var eTaskTimeout = map[sealtasks.TaskType]int64{
+	sealtasks.TTPreCommit1:   24 * 60 * 60 * 1000000000,
+	sealtasks.TTPreCommit2:   36 * 60 * 60 * 1000000000,
 	sealtasks.TTFinalize:     5 * 60 * 60 * 1000000000,
 	sealtasks.TTFetch:        5 * 60 * 60 * 1000000000,
 	sealtasks.TTCommit1:      1 * 60 * 60 * 1000000000,
