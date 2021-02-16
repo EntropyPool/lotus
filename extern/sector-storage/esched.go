@@ -1092,7 +1092,8 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 				bucket.addCleaningTask(finisher.wid, finisher.req)
 			}
 		} else {
-			log.Warnf("<%s> cannot find sector %v in running queue [%v]", eschedTag, finisher.req.id, w.info.Address)
+			log.Warnf("<%s> cannot find sector %v / %v in running queue [%v]",
+				eschedTag, finisher.req.id, finisher.req.sector, w.info.Address)
 		}
 	}
 
@@ -1539,7 +1540,6 @@ func (bucket *eWorkerBucket) setTaskUUID(uuid eTaskUUID) {
 
 func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
 	for _, worker := range bucket.workers {
-		remainReqs := make([]*eWorkerRequest, 0)
 		for _, task := range worker.runningTasks {
 			if task.sector.ID == sector.ID {
 				go func(worker *eWorkerHandle, task *eWorkerRequest) {
@@ -1551,11 +1551,9 @@ func (bucket *eWorkerBucket) onAbortTask(sector storage.SectorRef) {
 				}(worker, task)
 				continue
 			}
-			remainReqs = append(remainReqs, task)
 		}
-		worker.runningTasks = remainReqs
 
-		remainReqs = make([]*eWorkerRequest, 0)
+		remainReqs := make([]*eWorkerRequest, 0)
 		worker.preparedTasks.mutex.Lock()
 		for _, task := range worker.preparedTasks.queue {
 			if task.sector.ID == sector.ID {
