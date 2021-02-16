@@ -459,12 +459,12 @@ func (m *Manager) SealPreCommit1(ctx context.Context, sector storage.SectorRef, 
 }
 
 func (m *Manager) MovingCache(ctx context.Context, sector storage.SectorRef) error {
-	log.Infof("try to move sector %d's cache to 2layer cache", sector)
+	log.Infof("try to move sector %v's cache to 2layer cache", sector)
 	if err := m.storage.MoveCache(ctx, sector, storiface.FTCache, true); err != nil {
-		return xerrors.Errorf("manager moving sector %d cache to hdd error: %v", sector, err)
+		return xerrors.Errorf("manager moving sector %v cache to hdd error: %v", sector, err)
 	}
 	m.sched.MoveCacheDone(sector)
-	log.Infof("success to move sector %d's cache to 2layer cache", sector)
+	log.Infof("success to move sector %v's cache to 2layer cache", sector)
 	return nil
 }
 
