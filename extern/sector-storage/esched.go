@@ -1227,14 +1227,17 @@ func (bucket *eWorkerBucket) findWorkerByStoreURL(urls []string) *eWorkerHandle 
 func (worker *eWorkerHandle) caculateTaskLimit() {
 	for _, spt := range eSealProofType {
 		limit := 0
-		max := 0
+		var space int64 = 0
+		var total int64 = 0
+
 		for _, stat := range worker.storeIDs {
 			limit += int(stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
-			max += int(stat.total / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
+			space += stat.space
+			total += stat.total
 		}
 
-		log.Infof("max tasks %v, limit tasks %v [%v]", max, limit, worker.info.Address)
-		if max-limit < 2 {
+		log.Infof("total %v, space %v [%v]", total, space, worker.info.Address)
+		if total - space < 200 * eGiB {
 			worker.rejectNewTask = false
 		} else {
 			worker.rejectNewTask = true
