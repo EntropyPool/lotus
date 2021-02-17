@@ -1233,6 +1233,7 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 			max += int(stat.total / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
 		}
 
+		log.Infof("max tasks %v, limit tasks %v [%v]", max, limit, worker.info.Address)
 		if max-limit < 2 {
 			worker.rejectNewTask = false
 		} else {
