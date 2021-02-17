@@ -808,7 +808,7 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 
 	for _, req := range worker.preparedTasks.queue {
 		lPriority := getTaskPriority(req.taskType)
-		if priority < lPriority {
+		if priority < lPriority && !inserted {
 			queue[idx] = task
 			idx += 1
 			inserted = true
