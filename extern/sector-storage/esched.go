@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -798,25 +799,12 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	task.preparedTime = time.Now().UnixNano()
 	task.preparedTimeRaw = time.Now()
 
-	priority := eTaskPriority[task.taskType]
-
 	worker.preparedTasks.mutex.Lock()
-	pos := 0
-	for idx, req := range worker.preparedTasks.queue {
-		lPriority := eTaskPriority[req.taskType]
-		if lPriority <= priority {
-			continue
-		}
-		pos = idx
-		break
-	}
-
-	queue := make([]*eWorkerRequest, 0)
-	queue = append(queue, worker.preparedTasks.queue[:pos]...)
-	queue = append(queue, task)
-	queue = append(queue, worker.preparedTasks.queue[pos:]...)
-	worker.preparedTasks.queue = queue
-
+	sort.Slice(worker.preparedTasks.queue, func(i, j int) bool {
+		req1 := worker.preparedTasks.queue[i]
+		req2 := worker.preparedTasks.queue[j]
+		return eTaskPriority[req1.taskType] < eTaskPriority[req2.taskType]
+	})
 	worker.preparedTasks.mutex.Unlock()
 	go func() { bucket.schedulerRunner <- struct{}{} }()
 
