@@ -1217,6 +1217,8 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 
 		if max-limit < 2 {
 			worker.rejectNewTask = false
+		} else {
+			worker.rejectNewTask = true
 		}
 
 		worker.diskConcurrentLimit[spt] = limit
