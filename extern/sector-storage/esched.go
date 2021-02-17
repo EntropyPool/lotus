@@ -804,14 +804,21 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	queue := make([]*eWorkerRequest, len(worker.preparedTasks.queue)+1)
 
 	idx := 0
+	inserted := false
+
 	for _, req := range worker.preparedTasks.queue {
 		lPriority := getTaskPriority(req.taskType)
 		if priority < lPriority {
 			queue[idx] = task
 			idx += 1
+			inserted = true
 		}
 		queue[idx] = req
 		idx += 1
+	}
+
+	if !inserted {
+		queue[idx] = task
 	}
 
 	worker.preparedTasks.queue = queue
