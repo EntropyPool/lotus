@@ -589,9 +589,8 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 
 	from, _, err = m.addrSel(ctx.Context(), mi, api.CommitAddr, goodFunds, collateral)
 	if err != nil {
-		log.Errorf("no good address to send commit %v message (%v / %v) from: %w", sector.SectorNumber, err, goodFunds, collateral)
-		return ctx.Send(SectorRetrySubmitCommit{})
-		// return ctx.Send(SectorCommitFailed{xerrors.Errorf("no good address to send commit message from: %w", err)})
+		// return ctx.Send(SectorRetrySubmitCommit{})
+		return ctx.Send(SectorCommitFailed{xerrors.Errorf("no good address to send commit message from: %w", err)})
 	}
 
 	// TODO: check seed / ticket / deals are up to date
