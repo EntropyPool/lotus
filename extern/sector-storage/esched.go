@@ -95,6 +95,7 @@ type eWorkerRequest struct {
 	endTime         int64
 	startRunTimeRaw time.Time
 	sel             WorkerSelector
+	priority        int
 }
 
 var eTaskPriority = map[sealtasks.TaskType]int{
@@ -800,10 +801,8 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	task.preparedTimeRaw = time.Now()
 
 	worker.preparedTasks.mutex.Lock()
-	sort.Slice(worker.preparedTasks.queue, func(i, j int) bool {
-		req1 := worker.preparedTasks.queue[i]
-		req2 := worker.preparedTasks.queue[j]
-		return eTaskPriority[req1.taskType] < eTaskPriority[req2.taskType]
+	sort.SliceStable(worker.preparedTasks.queue, func(i, j int) bool {
+		return worker.preparedTasks.queue[i].priority < worker.preparedTasks.queue[j].priority
 	})
 	worker.preparedTasks.mutex.Unlock()
 	go func() { bucket.schedulerRunner <- struct{}{} }()
@@ -1758,6 +1757,7 @@ func (sh *edispatcher) Schedule(ctx context.Context, sector storage.SectorRef, t
 		ret:      ret,
 		ctx:      ctx,
 		sel:      sel,
+		priority: getTaskPriority(taskType),
 	}:
 	}
 
