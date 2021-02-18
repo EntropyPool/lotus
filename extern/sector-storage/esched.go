@@ -1229,15 +1229,17 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 		limit := 0
 		var space int64 = 0
 		var total int64 = 0
+		count := 0
 
 		for _, stat := range worker.storeIDs {
 			limit += int(stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
 			space += stat.space
 			total += stat.total
+			count += 1
 		}
 
 		log.Infof("total %v, space %v [%v]", total, space, worker.info.Address)
-		if total - space < 200 * eGiB {
+		if total-space < 100*count*eGiB {
 			worker.rejectNewTask = false
 		} else {
 			worker.rejectNewTask = true
