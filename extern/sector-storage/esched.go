@@ -1229,7 +1229,7 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 		limit := 0
 		var space int64 = 0
 		var total int64 = 0
-		count := 0
+		var count int64 = 0
 
 		for _, stat := range worker.storeIDs {
 			limit += int(stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
