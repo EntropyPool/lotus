@@ -387,6 +387,7 @@ type edispatcher struct {
 	workerStats       map[uuid.UUID]storiface.WorkerStats
 	workerStatsResp   chan map[uuid.UUID]storiface.WorkerStats
 	statsTicker       *time.Ticker
+	state             string
 }
 
 const eschedWorkerBuckets = 10
@@ -2233,47 +2234,90 @@ func (sh *edispatcher) onSetWorkerMode(workerMode eWorkerMode) {
 	}
 }
 
+func (sh *edispatcher) statePrinter() {
+	ticker := time.NewTicker(3 * time.Minute)
+	for {
+		select {
+		case <-ticker.C:
+			log.Infof("<%s> dispatcher state %s", eschedTag, sh.state)
+		}
+	}
+}
+
 func (sh *edispatcher) runSched() {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
+	go sh.statePrinter()
 	sh.ctx = ctx
 
 	for {
 		select {
 		case req := <-sh.newRequest:
+			sh.state = "newRequestStart"
 			sh.addNewWorkerRequestToBucketWorker(req)
+			sh.state = "newRequestEnd"
 		case w := <-sh.newWorker:
+			sh.state = "newWorkerStart"
 			sh.addWorkerClosingWatcher(w)
 			sh.addNewWorkerToBucket(w)
+			sh.state = "newWorkerEnd"
 		case wid := <-sh.dropWorker:
+			sh.state = "dropWorkerStart"
 			sh.dropWorkerFromBucket(wid)
+			sh.state = "dropWorkerEnd"
 		case act := <-sh.storageNotifier:
+			sh.state = "storageNotifierStart"
 			sh.onStorageNotify(act)
+			sh.state = "storageNotifierEnd"
 		case address := <-sh.droppedWorker:
+			sh.state = "droppedWorkerStart"
 			sh.onWorkerDropped(address)
+			sh.state = "droppedWorkerEnd"
 		case clean := <-sh.taskCleaner:
+			sh.state = "taskCleanerStart"
 			sh.onTaskClean(clean)
+			sh.state = "taskCleanerEnd"
 		case param := <-sh.workerStatsQuery:
+			sh.state = "workerStatsQueryStart"
 			sh.onCmdWorkerStatsQuery(param)
+			sh.state = "workerStatsQueryEnd"
 		case param := <-sh.workerJobsQuery:
+			sh.state = "workerJobsQueryStart"
 			sh.onCmdWorkerJobsQuery(param)
+			sh.state = "workerJobsQueryEnd"
 		case param := <-sh.bucketPledgedJobs:
+			sh.state = "bucketPledgedJobsStart"
 			sh.onBucketPledgedJobs(param)
+			sh.state = "bucketPledgedJobsEnd"
 		case uuid := <-sh.taskUUID:
+			sh.state = "taskUUIDStart"
 			sh.onTaskUUID(uuid)
+			sh.state = "taskUUIDEnd"
 		case sector := <-sh.abortTask:
+			sh.state = "abortTaskStart"
 			sh.onAbortTask(sector)
+			sh.state = "abortTaskEnd"
 		case workerMode := <-sh.setWorkerMode:
+			sh.state = "abortTaskStart"
 			sh.onSetWorkerMode(workerMode)
+			sh.state = "abortTaskEnd"
 		case <-sh.statsTicker.C:
+			sh.state = "statsTickerStart"
 			sh.onStatsTick()
+			sh.state = "statsTickerEnd"
 		case jobs := <-sh.workerJobsResp:
+			sh.state = "workerJobsRespStart"
 			sh.onWorkerJobsResp(jobs)
+			sh.state = "workerJobsRespEnd"
 		case stats := <-sh.workerStatsResp:
+			sh.state = "workerJobsStatsStart"
 			sh.onWorkerStatsResp(stats)
+			sh.state = "workerJobsStatsEnd"
 		case <-sh.closing:
+			sh.state = "closingStart"
 			sh.closeAllBuckets()
+			sh.state = "closingEnd"
 			return
 		}
 	}
