@@ -493,7 +493,7 @@ func (l *LocalWorker) Paths(ctx context.Context) ([]stores.StoragePath, error) {
 	return l.localStore.Local(ctx)
 }
 
-func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
+func (l *LocalWorker) Info(ctx context.Context) (storiface.WorkerInfo, error) {
 	hostname, err := os.Hostname() // TODO: allow overriding from config
 	if err != nil {
 		panic(err)
@@ -539,12 +539,19 @@ func (l *LocalWorker) Info(context.Context) (storiface.WorkerInfo, error) {
 		cpus = runtime.NumCPU()
 	}
 
+	storageCount := 0
+	paths, err := l.Paths(ctx)
+	if err == nil {
+		storageCount = len(paths)
+	}
+
 	return storiface.WorkerInfo{
 		Hostname:     hostname,
 		Address:      l.Address,
 		GroupName:    l.GroupName,
 		SupportTasks: supportTasks,
 		BigCache:     bigCache,
+		StorageCount: storageCount,
 		Resources: storiface.WorkerResources{
 			MemPhysical:  mem.Total,
 			MemSwap:      memSwap,

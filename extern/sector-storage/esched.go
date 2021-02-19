@@ -163,11 +163,12 @@ const eschedWorkerStateWaving = "waving"
 const eschedWorkerStateReady = "ready"
 
 type eStoreStat struct {
-	total int64
-	space int64
-	URLs  []string
-	local bool
-	id    stores.ID
+	total      int64
+	space      int64
+	URLs       []string
+	local      bool
+	id         stores.ID
+	maxReached bool
 }
 
 type eWorkerHandle struct {
@@ -1228,19 +1229,22 @@ func (bucket *eWorkerBucket) findWorkerByStoreURL(urls []string) *eWorkerHandle 
 func (worker *eWorkerHandle) caculateTaskLimit() {
 	for _, spt := range eSealProofType {
 		limit := 0
-		var space int64 = 0
-		var total int64 = 0
-		var count int64 = 0
+		maxReached := 0
 
 		for _, stat := range worker.storeIDs {
 			limit += int(stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
-			space += stat.space
-			total += stat.total
-			count += 1
+			if stat.total-stat.space < 100*eGiB {
+				stat.maxReached = true
+			}
 		}
 
-		log.Infof("total %v, space %v [%v]", total, space, worker.info.Address)
-		if total-space < 100*count*eGiB {
+		for _, stat := range worker.storeIDs {
+			if !stat.maxReached {
+				maxReached += 1
+			}
+		}
+
+		if maxReached == worker.info.StorageCount {
 			worker.rejectNewTask = false
 		} else {
 			worker.rejectNewTask = true
@@ -1278,6 +1282,7 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 		if stat.space < act.stat.space {
 			log.Infof("<%s> store %v is updating %v -> %v", eschedTag, act.id, stat.space, act.stat.space)
 			w.storeIDs[act.id] = act.stat
+			act.stat.maxReached = stat.maxReached
 		}
 	} else {
 		log.Infof("<%s> store %v is adding %v", eschedTag, act.id, act.stat.space)

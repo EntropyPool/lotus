@@ -21,6 +21,7 @@ type WorkerInfo struct {
 	GroupName    string
 	Address      string
 	BigCache     bool
+	StorageCount int
 	SupportTasks []sealtasks.TaskType
 	Resources    WorkerResources
 }
