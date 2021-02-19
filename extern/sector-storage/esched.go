@@ -1227,27 +1227,33 @@ func (bucket *eWorkerBucket) findWorkerByStoreURL(urls []string) *eWorkerHandle 
 }
 
 func (worker *eWorkerHandle) caculateTaskLimit() {
+	maxReached := 0
+
+	for key, stat := range worker.storeIDs {
+		if stat.total-stat.space < 100*eGiB {
+			stat.maxReached = true
+			worker.storeIDs[key] = stat
+		}
+	}
+
+	for _, stat := range worker.storeIDs {
+		if stat.maxReached {
+			maxReached += 1
+		}
+	}
+
+	log.Infof("<%s> storage count %v, max reached %v [%v]", eschedTag, worker.info.StorageCount, maxReached, worker.info.Address)
+	if maxReached == worker.info.StorageCount {
+		worker.rejectNewTask = false
+	} else {
+		worker.rejectNewTask = true
+	}
+
 	for _, spt := range eSealProofType {
 		limit := 0
-		maxReached := 0
 
 		for _, stat := range worker.storeIDs {
 			limit += int(stat.space / eResourceTable[sealtasks.TTPreCommit1][spt].DiskSpace)
-			if stat.total-stat.space < 100*eGiB {
-				stat.maxReached = true
-			}
-		}
-
-		for _, stat := range worker.storeIDs {
-			if stat.maxReached {
-				maxReached += 1
-			}
-		}
-
-		if maxReached == worker.info.StorageCount {
-			worker.rejectNewTask = false
-		} else {
-			worker.rejectNewTask = true
 		}
 
 		worker.diskConcurrentLimit[spt] = limit
@@ -1280,12 +1286,13 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 	if _, ok := w.storeIDs[act.id]; ok {
 		stat := w.storeIDs[act.id]
 		if stat.space < act.stat.space {
-			log.Infof("<%s> store %v is updating %v -> %v", eschedTag, act.id, stat.space, act.stat.space)
-			w.storeIDs[act.id] = act.stat
+			log.Infof("<%s> store %v is updating %v -> %v (%v | %v)",
+				eschedTag, act.id, stat.space, act.stat.space, stat.maxReached, act.stat.total)
 			act.stat.maxReached = stat.maxReached
+			w.storeIDs[act.id] = act.stat
 		}
 	} else {
-		log.Infof("<%s> store %v is adding %v", eschedTag, act.id, act.stat.space)
+		log.Infof("<%s> store %v is adding %v | %v", eschedTag, act.id, act.stat.space, act.stat.total)
 		w.storeIDs[act.id] = act.stat
 	}
 
@@ -2043,7 +2050,7 @@ func (sh *edispatcher) closeAllBuckets() {
 
 func (sh *edispatcher) watchWorkerClosing(w *eWorkerHandle) {
 	for {
-		ctx, cancel := context.WithTimeout(context.TODO(), 6*time.Second)
+		ctx, cancel := context.WithTimeout(context.TODO(), 3*time.Second)
 		session, err := w.w.Session(ctx)
 		cancel()
 		if nil != err || ClosedWorkerID == session {
@@ -2051,7 +2058,7 @@ func (sh *edispatcher) watchWorkerClosing(w *eWorkerHandle) {
 			sh.dropWorker <- w.wid
 			return
 		}
-		time.Sleep(3 * time.Second)
+		time.Sleep(100 * time.Second)
 	}
 }
 
