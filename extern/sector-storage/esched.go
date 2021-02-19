@@ -2039,9 +2039,9 @@ func (sh *edispatcher) closeAllBuckets() {
 func (sh *edispatcher) watchWorkerClosing(w *eWorkerHandle) {
 	for {
 		ctx, cancel := context.WithTimeout(context.TODO(), 6*time.Second)
-		_, err := w.w.Session(ctx)
+		session, err := w.w.Session(ctx)
 		cancel()
-		if nil != err {
+		if nil != err || ClosedWorkerID == session {
 			log.Warnf("drop worker %v by [%v]", w.wid, err)
 			sh.dropWorker <- w.wid
 			return
