@@ -1239,7 +1239,7 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 		}
 
 		for _, stat := range worker.storeIDs {
-			if !stat.maxReached {
+			if stat.maxReached {
 				maxReached += 1
 			}
 		}
