@@ -2037,7 +2037,7 @@ func (sh *edispatcher) closeAllBuckets() {
 
 func (sh *edispatcher) watchWorkerClosing(w *eWorkerHandle) {
 	for {
-		ctx, cancel := context.WithTimeout(context.TODO(), 300*time.Second)
+		ctx, cancel := context.WithTimeout(context.TODO(), 6*time.Second)
 		_, err := w.w.Session(ctx)
 		cancel()
 		if nil != err {
