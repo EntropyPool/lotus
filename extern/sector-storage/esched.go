@@ -676,7 +676,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			if binder.address == worker.info.Address && binder.wid == worker.wid {
 				bucket.taskWorkerBinder.mutex.Unlock()
 				log.Debugf("<%s> task %v/%v is binded to %s, skip by %s",
-					eschedTag, req.sector.ID, req.taskType, address, worker.info.Address)
+					eschedTag, req.sector.ID, req.taskType, binder.address, worker.info.Address)
 				reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
 				continue
 			}
@@ -1490,7 +1490,7 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 		if reqs, ok := bucket.reqQueue.reqs[sealtasks.TTPreCommit1]; ok {
 			for _, req := range reqs {
 				bucket.taskWorkerBinder.mutex.Lock()
-				if address, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
+				if binder, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
 					if binder.address == worker.info.Address && binder.wid == worker.wid {
 						taskCount += 1
 					}
