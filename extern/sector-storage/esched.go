@@ -206,9 +206,14 @@ type eRequestFinisher struct {
 	wid  uuid.UUID
 }
 
+type eTaskWorkerBindParam struct {
+	address string
+	wid     uuid.UUID
+}
+
 type eTaskWorkerBinder struct {
 	mutex  sync.Mutex
-	binder map[abi.SectorNumber]string
+	binder map[abi.SectorNumber]eTaskWorkerBindParam
 }
 
 type eTaskUUID struct {
@@ -236,7 +241,7 @@ type eWorkerBucket struct {
 	taskUUID           chan eTaskUUID
 	retRequest         chan *eWorkerRequest
 	storageNotifier    chan eStoreAction
-	droppedWorker      chan string
+	droppedWorker      chan eTaskWorkerBindParam
 	taskWorkerBinder   *eTaskWorkerBinder
 	taskCleaner        chan *eWorkerTaskCleaning
 	taskCleanerHandler chan *eWorkerTaskCleaning
@@ -375,7 +380,7 @@ type edispatcher struct {
 	reqQueue          *eRequestQueue
 	storage           *EStorage
 	storageNotifier   chan eStoreAction
-	droppedWorker     chan string
+	droppedWorker     chan eTaskWorkerBindParam
 	taskCleaner       chan *eWorkerTaskCleaning
 	closing           chan struct{}
 	ctx               context.Context
@@ -666,9 +671,9 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		}
 
 		bucket.taskWorkerBinder.mutex.Lock()
-		address, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]
+		binder, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]
 		if ok {
-			if address != worker.info.Address {
+			if binder.address == worker.info.Address && binder.wid == worker.wid {
 				bucket.taskWorkerBinder.mutex.Unlock()
 				log.Debugf("<%s> task %v/%v is binded to %s, skip by %s",
 					eschedTag, req.sector.ID, req.taskType, address, worker.info.Address)
@@ -840,7 +845,8 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 
 	bucket.taskWorkerBinder.mutex.Lock()
 	if canBindTaskType {
-		bucket.taskWorkerBinder.binder[task.sector.ID.Number] = worker.info.Address
+		bucket.taskWorkerBinder.binder[task.sector.ID.Number] =
+			eTaskWorkerBindParam{address: worker.info.Address, wid: worker.wid}
 	} else {
 		delete(bucket.taskWorkerBinder.binder, task.sector.ID.Number)
 	}
@@ -1193,7 +1199,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 	index := bucket.findBucketWorkerIndexByID(wid)
 	if 0 <= index {
 		bucket.workers = append(bucket.workers[:index], bucket.workers[index+1:]...)
-		go func() { bucket.droppedWorker <- worker.info.Address }()
+		go func() { bucket.droppedWorker <- eTaskWorkerBindParam{address: worker.info.Address, wid: worker.wid} }()
 		log.Infof("<%s> drop worker %v from bucket %d", eschedTag, worker.info.Address, bucket.id)
 	}
 	log.Infof("<%s> dropped worker %v from bucket %d", eschedTag, wid, bucket.id)
@@ -1485,7 +1491,7 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 			for _, req := range reqs {
 				bucket.taskWorkerBinder.mutex.Lock()
 				if address, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
-					if address == worker.info.Address {
+					if binder.address == worker.info.Address && binder.wid == worker.wid {
 						taskCount += 1
 					}
 				}
@@ -1497,8 +1503,8 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 				if reqs, ok := bucket.reqQueue.reqs[taskType]; ok {
 					for _, req := range reqs {
 						bucket.taskWorkerBinder.mutex.Lock()
-						if address, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
-							if address == worker.info.Address {
+						if binder, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
+							if binder.address == worker.info.Address && binder.wid == worker.wid {
 								taskCount += 1
 							}
 						}
@@ -1706,11 +1712,11 @@ func newExtScheduler() *edispatcher {
 			reqs: make(map[sealtasks.TaskType][]*eWorkerRequest),
 		},
 		storageNotifier: make(chan eStoreAction, 10),
-		droppedWorker:   make(chan string, 10),
+		droppedWorker:   make(chan eTaskWorkerBindParam, 10),
 		taskCleaner:     make(chan *eWorkerTaskCleaning, 10),
 		closing:         make(chan struct{}, 2),
 		taskWorkerBinder: &eTaskWorkerBinder{
-			binder: make(map[abi.SectorNumber]string),
+			binder: make(map[abi.SectorNumber]eTaskWorkerBindParam),
 		},
 		workerStatsQuery:  make(chan *eWorkerStatsParam, 10),
 		workerJobsQuery:   make(chan *eWorkerJobsParam, 10),
@@ -2032,10 +2038,10 @@ func (sh *edispatcher) onStorageNotify(act eStoreAction) {
 	}
 }
 
-func (sh *edispatcher) onWorkerDropped(address string) {
+func (sh *edispatcher) onWorkerDropped(param eTaskWorkerBindParam) {
 	sh.taskWorkerBinder.mutex.Lock()
 	for sector, binder := range sh.taskWorkerBinder.binder {
-		if binder == address {
+		if binder.address == param.address && binder.wid == param.wid {
 			delete(sh.taskWorkerBinder.binder, sector)
 		}
 	}
@@ -2050,15 +2056,15 @@ func (sh *edispatcher) closeAllBuckets() {
 
 func (sh *edispatcher) watchWorkerClosing(w *eWorkerHandle) {
 	for {
-		ctx, cancel := context.WithTimeout(context.TODO(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.TODO(), 180*time.Second)
 		session, err := w.w.Session(ctx)
 		cancel()
-		if nil != err || ClosedWorkerID == session {
+		if nil != err || ClosedWorkerID == session || w.wid != session {
 			log.Warnf("drop worker %v by [%v]", w.wid, err)
 			sh.dropWorker <- w.wid
 			return
 		}
-		time.Sleep(100 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 }
 
@@ -2106,8 +2112,11 @@ func (sh *edispatcher) onWorkerJobsQuery(param *eWorkerJobsParam) {
 				out[eschedUnassignedWorker] = make([]storiface.WorkerJob, 0)
 			}
 			for _, req := range reqs {
+				address := "unbinded"
 				sh.taskWorkerBinder.mutex.Lock()
-				address, _ := sh.taskWorkerBinder.binder[req.sector.ID.Number]
+				if binder, ok := sh.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
+					address = binder.address
+				}
 				sh.taskWorkerBinder.mutex.Unlock()
 				out[eschedUnassignedWorker] = append(out[eschedUnassignedWorker], storiface.WorkerJob{
 					ID:       storiface.CallID{Sector: req.sector.ID, ID: req.uuid},
@@ -2282,9 +2291,9 @@ func (sh *edispatcher) runSched() {
 			sh.state = "storageNotifierStart"
 			sh.onStorageNotify(act)
 			sh.state = "storageNotifierEnd"
-		case address := <-sh.droppedWorker:
+		case param := <-sh.droppedWorker:
 			sh.state = "droppedWorkerStart"
-			sh.onWorkerDropped(address)
+			sh.onWorkerDropped(param)
 			sh.state = "droppedWorkerEnd"
 		case clean := <-sh.taskCleaner:
 			sh.state = "taskCleanerStart"
