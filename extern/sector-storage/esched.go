@@ -1144,7 +1144,9 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 					task := tq.tasks[0]
 					log.Infof("<%s> return typed task %v/%v to reqQueue", task.sector.ID, task.taskType)
 					tq.tasks, _ = safeRemoveWorkerRequest(tq.tasks, nil, task)
-					go func() { bucket.retRequest <- task }()
+					go func(task *eWorkerRequest) {
+						task.ret <- workerResponse{err: xerrors.Errorf("worker dropped unexpected")}
+					}(task)
 				}
 			}
 		}
@@ -1159,13 +1161,9 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 			worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
 			worker.preparedTasks.mutex.Unlock()
 
-			go func(worker *eWorkerHandle, task *eWorkerRequest) {
-				bucket.reqFinisher <- &eRequestFinisher{
-					req:  task,
-					resp: &workerResponse{err: xerrors.Errorf("worker dropped unexpected")},
-					wid:  worker.wid,
-				}
-			}(worker, task)
+			go func(task *eWorkerRequest) {
+				task.ret <- workerResponse{err: xerrors.Errorf("worker dropped unexpected")}
+			}(task)
 		}
 		for {
 			worker.preparingTasks.mutex.Lock()
@@ -1178,13 +1176,9 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 			worker.preparingTasks.queue, _ = safeRemoveWorkerRequest(worker.preparingTasks.queue, nil, task)
 			worker.preparingTasks.mutex.Unlock()
 
-			go func(worker *eWorkerHandle, task *eWorkerRequest) {
-				bucket.reqFinisher <- &eRequestFinisher{
-					req:  task,
-					resp: &workerResponse{err: xerrors.Errorf("worker dropped unexpected")},
-					wid:  worker.wid,
-				}
-			}(worker, task)
+			go func(task *eWorkerRequest) {
+				task.ret <- workerResponse{err: xerrors.Errorf("worker dropped unexpected")}
+			}(task)
 		}
 		for {
 			if 0 == len(worker.runningTasks) {
