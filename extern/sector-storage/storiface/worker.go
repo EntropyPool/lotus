@@ -40,6 +40,7 @@ type TasksInfo struct {
 	Running       int
 	Prepared      int
 	Waiting       int
+	Cleaning      int
 	MaxConcurrent int
 }
 

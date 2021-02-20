@@ -1352,6 +1352,8 @@ func (bucket *eWorkerBucket) onTaskClean(clean *eWorkerTaskCleaning) {
 					worker.info.Address, worker.info.BigCache)
 				worker.cleaningTasks = append(worker.cleaningTasks[:idx], worker.cleaningTasks[idx+1:]...)
 				go func() { bucket.notifier <- struct{}{} }()
+				go func() { bucket.schedulerWaker <- struct{}{} }()
+				go func() { bucket.schedulerRunner <- struct{}{} }()
 				return
 			}
 		}
@@ -1403,6 +1405,11 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 		for _, task := range worker.runningTasks {
 			info := out[worker.wid].Tasks[task.taskType]
 			info.Running += 1
+			out[worker.wid].Tasks[task.taskType] = info
+		}
+		for _, task := range worker.cleaningTasks {
+			info := out[worker.wid].Tasks[task.taskType]
+			info.Cleaning += 1
 			out[worker.wid].Tasks[task.taskType] = info
 		}
 	}
