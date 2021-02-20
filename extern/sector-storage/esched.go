@@ -744,8 +744,16 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	peekReqs := 0
 
 	for _, worker := range bucket.workers {
+		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
+
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
+				if taskType == sealtasks.TTAddPiece {
+					if 0 < waitingJobs {
+						continue
+					}
+				}
+
 				if worker.rejectNewTask || worker.maintaining {
 					if _, ok := eschedTaskMaintainingReject[taskType]; ok {
 						continue
@@ -1472,12 +1480,38 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 	go func() { param.resp <- out }()
 }
 
+func (bucket *eWorkerBucket) waitingJobs(worker *eWorkerHandle, taskType sealtasks.TaskType) int {
+	waitingJobs := 0
+	bucket.reqQueue.mutex.Lock()
+	if reqs, ok := bucket.reqQueue.reqs[sealtasks.TTPreCommit1]; ok {
+		for _, req := range reqs {
+			bucket.taskWorkerBinder.mutex.Lock()
+			if binder, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
+				if binder.address == worker.info.Address && binder.wid == worker.wid {
+					waitingJobs += 1
+				}
+			}
+			bucket.taskWorkerBinder.mutex.Unlock()
+		}
+	}
+	bucket.reqQueue.mutex.Unlock()
+	return waitingJobs
+}
+
 func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam) {
 	var jobs int = 0
 	for _, worker := range bucket.workers {
 		if eschedWorkerStateWaving == worker.state || worker.rejectNewTask || worker.maintaining {
 			continue
 		}
+
+		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
+		waitingJobs += bucket.waitingJobs(worker, sealtasks.TTAddPiece)
+
+		if 0 < waitingJobs {
+			continue
+		}
+
 		taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
 		if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
 			for _, lTaskType := range taskTypes {
@@ -1486,7 +1520,6 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 		}
 		taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
 
-		waitingJobs := 0
 		bucket.reqQueue.mutex.Lock()
 		if reqs, ok := bucket.reqQueue.reqs[sealtasks.TTPreCommit1]; ok {
 			for _, req := range reqs {
@@ -1494,12 +1527,12 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 				if binder, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
 					if binder.address == worker.info.Address && binder.wid == worker.wid {
 						taskCount += 1
-						waitingJobs += 1
 					}
 				}
 				bucket.taskWorkerBinder.mutex.Unlock()
 			}
 		}
+
 		if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
 			for _, taskType := range taskTypes {
 				if reqs, ok := bucket.reqQueue.reqs[taskType]; ok {
@@ -1508,9 +1541,6 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 						if binder, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
 							if binder.address == worker.info.Address && binder.wid == worker.wid {
 								taskCount += 1
-								if taskType == sealtasks.TTAddPiece {
-									waitingJobs += 1
-								}
 							}
 						}
 						bucket.taskWorkerBinder.mutex.Unlock()
@@ -1519,10 +1549,6 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 			}
 		}
 		bucket.reqQueue.mutex.Unlock()
-
-		if 0 < waitingJobs {
-			continue
-		}
 
 		if taskCount == 0 {
 			jobs += worker.maxRuntimeConcurrent[bucket.spt]
