@@ -1484,7 +1484,7 @@ func (bucket *eWorkerBucket) onWorkerJobsQuery(param *eWorkerJobsParam) {
 func (bucket *eWorkerBucket) waitingJobs(worker *eWorkerHandle, taskType sealtasks.TaskType) int {
 	waitingJobs := 0
 	bucket.reqQueue.mutex.Lock()
-	if reqs, ok := bucket.reqQueue.reqs[sealtasks.TTPreCommit1]; ok {
+	if reqs, ok := bucket.reqQueue.reqs[taskType]; ok {
 		for _, req := range reqs {
 			bucket.taskWorkerBinder.mutex.Lock()
 			if binder, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
@@ -1507,7 +1507,9 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 		}
 
 		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
-		waitingJobs += bucket.waitingJobs(worker, sealtasks.TTAddPiece)
+		bucket.reqQueue.mutex.Lock()
+		waitingJobs += len(bucket.reqQueue.reqs[ealtasks.TTAddPiece])
+		bucket.reqQueue.mutex.Unlock()
 
 		if 0 < waitingJobs {
 			continue
