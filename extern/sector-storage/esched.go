@@ -673,7 +673,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		bucket.taskWorkerBinder.mutex.Lock()
 		binder, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]
 		if ok {
-			if binder.address == worker.info.Address && binder.wid == worker.wid {
+			if binder.address != worker.info.Address || binder.wid != worker.wid {
 				bucket.taskWorkerBinder.mutex.Unlock()
 				log.Debugf("<%s> task %v/%v is binded to %s, skip by %s",
 					eschedTag, req.sector.ID, req.taskType, binder.address, worker.info.Address)
