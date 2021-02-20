@@ -1508,7 +1508,7 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 
 		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
 		bucket.reqQueue.mutex.Lock()
-		waitingJobs += len(bucket.reqQueue.reqs[ealtasks.TTAddPiece])
+		waitingJobs += len(bucket.reqQueue.reqs[sealtasks.TTAddPiece])
 		bucket.reqQueue.mutex.Unlock()
 
 		if 0 < waitingJobs {
