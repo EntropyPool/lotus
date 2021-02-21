@@ -972,21 +972,6 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		idleCpus = 4
 	}
 
-	halfTasks := 0
-	if taskTypes, ok := eschedTaskRuntimeLimitHalf[req.taskType]; ok {
-		for _, lTaskType := range taskTypes {
-			halfTasks += worker.typedTaskCount(lTaskType, false)
-		}
-	}
-
-	leastIdleCpus := 10
-	if 0 < halfTasks {
-		idleCpus = worker.info.Resources.CPUs / 2
-		if leastIdleCpus < idleCpus {
-			idleCpus = worker.info.Resources.CPUs - leastIdleCpus
-		}
-	}
-
 	remainReqs := make([]*eWorkerRequest, 0)
 
 	for {
@@ -997,6 +982,21 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		}
 		task := worker.preparedTasks.queue[0]
 		worker.preparedTasks.mutex.Unlock()
+
+		halfTasks := 0
+		if taskTypes, ok := eschedTaskRuntimeLimitHalf[task.taskType]; ok {
+			for _, lTaskType := range taskTypes {
+				halfTasks += worker.typedTaskCount(lTaskType, false)
+			}
+		}
+
+		leastIdleCpus := 10
+		if 0 < halfTasks {
+			idleCpus = int(worker.info.Resources.CPUs / 2)
+			if leastIdleCpus < idleCpus {
+				idleCpus = int(worker.info.Resources.CPUs - leastIdleCpus)
+			}
+		}
 
 		taskType := task.taskType
 		res := findTaskResource(task.sector.ProofType, taskType)
