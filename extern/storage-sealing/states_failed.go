@@ -215,6 +215,7 @@ func (m *Sealing) handleCommitFailed(ctx statemachine.Context, sector SectorInfo
 			return ctx.Send(SectorRetryCommitWait{})
 		case exitcode.SysErrOutOfGas:
 			// API error in CommitWait AND gas estimator guessed a wrong number in SubmitCommit
+			log.Errorf("handleCommitting: sector %d goto retry submit by out of gas", sector.SectorNumber)
 			return ctx.Send(SectorRetrySubmitCommit{})
 		default:
 			// something else went wrong

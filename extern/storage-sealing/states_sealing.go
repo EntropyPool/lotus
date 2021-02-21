@@ -503,7 +503,7 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 		switch err := err.(type) {
 		case *ErrExpiredTicket:
 			return ctx.Send(SectorSealPreCommit1Failed{xerrors.Errorf("precommit check error: ticket expired: %w", err)})
-        }
+		}
 	}
 
 	if err := m.checkCommit(ctx.Context(), sector, sector.Proof, tok); err != nil {
@@ -621,8 +621,10 @@ func (m *Sealing) handleCommitWait(ctx statemachine.Context, sector SectorInfo) 
 	case exitcode.Ok:
 		// this is what we expect
 	case exitcode.SysErrInsufficientFunds:
+		log.Warnf("sector %d goto retry submit commit by insufficient funds", sector.SectorNumber)
 		fallthrough
 	case exitcode.SysErrOutOfGas:
+		log.Warnf("sector %d goto retry submit commit by out of gas", sector.SectorNumber)
 		// gas estimator guessed a wrong number / out of funds
 		return ctx.Send(SectorRetrySubmitCommit{})
 	default:
