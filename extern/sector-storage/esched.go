@@ -581,11 +581,20 @@ func safeRemoveWorkerRequest(slice []*eWorkerRequest, accepter []*eWorkerRequest
 	return slice, accepter
 }
 
+func (worker *eWorkerHandle) taskCleaning(task *eWorkerRequest) bool {
+	for _, req := range worker.cleaningTasks {
+		if task.sector.ID.Number == req.sector.ID.Number {
+			return true
+		}
+	}
+	return false
+}
+
 func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType, includeCleaning bool) int {
 	taskCount := 0
 	worker.preparingTasks.mutex.Lock()
 	for _, task := range worker.preparingTasks.queue {
-		if task.taskType == taskType {
+		if task.taskType == taskType && !worker.taskCleaning(task) {
 			taskCount += 1
 		}
 	}
@@ -593,14 +602,14 @@ func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType, include
 
 	worker.preparedTasks.mutex.Lock()
 	for _, task := range worker.preparedTasks.queue {
-		if task.taskType == taskType {
+		if task.taskType == taskType && !worker.taskCleaning(task) {
 			taskCount += 1
 		}
 	}
 	worker.preparedTasks.mutex.Unlock()
 
 	for _, task := range worker.runningTasks {
-		if task.taskType == taskType {
+		if task.taskType == taskType && !worker.taskCleaning(task) {
 			taskCount += 1
 		}
 	}
@@ -616,7 +625,7 @@ func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType, include
 	for _, pq := range worker.priorityTasksQueue {
 		for _, tq := range pq.typedTasksQueue {
 			for _, task := range tq.tasks {
-				if task.taskType == taskType {
+				if task.taskType == taskType && !worker.taskCleaning(task) {
 					taskCount += 1
 				}
 			}
