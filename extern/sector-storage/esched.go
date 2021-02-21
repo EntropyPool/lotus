@@ -329,6 +329,7 @@ var eschedTaskHugePage = map[sealtasks.TaskType]bool{
 
 var eschedTaskRuntimeLimitHalf = map[sealtasks.TaskType][]sealtasks.TaskType{
 	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTCommit2, sealtasks.TTPreCommit2},
+	sealtasks.TTAddPiece:   []sealtasks.TaskType{sealtasks.TTCommit2, sealtasks.TTPreCommit2, sealtasks.TTPreCommit1},
 }
 
 var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
@@ -982,7 +983,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 	if 0 < halfTasks {
 		idleCpus = worker.info.Resources.CPUs / 2
 		if leastIdleCpus < idleCpus {
-			idleCpus = leaseIdleCPus
+			idleCpus = worker.info.Resources.CPUs - leastIdleCpus
 		}
 	}
 
