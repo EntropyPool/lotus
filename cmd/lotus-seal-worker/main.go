@@ -161,6 +161,11 @@ var runCmd = &cli.Command{
 			Usage: "used when 'listen' is unspecified. must be a valid duration recognized by golang's time.ParseDuration function",
 			Value: "30m",
 		},
+		&cli.StringFlag{
+			Name:  "username",
+			Usage: "username used for software license check of entropy worker",
+			Value: "",
+		},
 	},
 	Before: func(cctx *cli.Context) error {
 		if cctx.IsSet("address") {
@@ -180,6 +185,8 @@ var runCmd = &cli.Command{
 				return xerrors.Errorf("could not set no-gpu env: %+v", err)
 			}
 		}
+
+		go LicenseChecker(cctx.String("username"))
 
 		// Connect to storage-miner
 		ctx := lcli.ReqContext(cctx)
