@@ -327,6 +327,10 @@ var eschedTaskHugePage = map[sealtasks.TaskType]bool{
 	sealtasks.TTPreCommit1: true,
 }
 
+var eschedTaskRuntimeLimitHalf = map[sealtasks.TaskType][]sealtasks.TaskType{
+	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTCommit2, sealtasks.TTPreCommit2},
+}
+
 var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
 	sealtasks.TTAddPiece:   []sealtasks.TaskType{sealtasks.TTPreCommit1, sealtasks.TTPreCommit2},
 	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit2},
@@ -667,6 +671,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 
 		curConcurrentLimit := worker.maxConcurrent[req.sector.ProofType]
 		taskRuntimeLimit := curConcurrentLimit[req.taskType]
+
 		if byRuntimeLimit, ok := eschedTaskPeekByRuntimeLimit[req.taskType]; ok && byRuntimeLimit {
 			taskRuntimeLimit = worker.maxRuntimeConcurrent[req.sector.ProofType]
 		}
@@ -963,7 +968,22 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) bool {
 func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 	idleCpus := int(worker.info.Resources.CPUs * 4 / 100)
 	if 0 == idleCpus {
-		idleCpus = 1
+		idleCpus = 4
+	}
+
+	halfTasks := 0
+	if taskTypes, ok := eschedTaskRuntimeLimitHalf[req.taskType]; ok {
+		for _, lTaskType := range taskTypes {
+			halfTasks += worker.typedTaskCount(lTaskType, false)
+		}
+	}
+
+	leastIdleCpus := 10
+	if 0 < halfTasks {
+		idleCpus = worker.info.Resources.CPUs / 2
+		if leastIdleCpus < idleCpus {
+			idleCpus = leaseIdleCPus
+		}
 	}
 
 	remainReqs := make([]*eWorkerRequest, 0)
