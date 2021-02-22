@@ -229,6 +229,7 @@ type eWorkerMode struct {
 type eWorkerBucket struct {
 	spt                abi.RegisteredSealProof
 	id                 int
+	idleCpus           int
 	newWorker          chan *eWorkerHandle
 	workers            []*eWorkerHandle
 	reqQueue           *eRequestQueue
@@ -987,6 +988,9 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		}
 
 		maxRuntimeConcurrentTasks := 14
+		if 0 < bucket.idleCpus {
+			maxRuntimeConcurrentTasks = int(worker.info.Resources.CPUs - uint64(bucket.idleCpus))
+		}
 		if 0 < halfTasks {
 			runningTasks := int(worker.info.Resources.CPUs / 2)
 			if maxRuntimeConcurrentTasks < runningTasks {
@@ -2487,6 +2491,13 @@ func (sh *edispatcher) SetTaskUUID(sector storage.SectorRef, uuid uuid.UUID) {
 
 func (sh *edispatcher) AbortTask(sector storage.SectorRef) error {
 	go func() { sh.abortTask <- sector }()
+	return nil
+}
+
+func (sh *edispatcher) SetScheduleIdleCpus(idleCpus int) error {
+	for _, bucket := range sh.buckets {
+		bucket.idleCpus = idleCpus
+	}
 	return nil
 }
 

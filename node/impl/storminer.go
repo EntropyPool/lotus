@@ -408,6 +408,10 @@ func (sm *StorageMinerAPI) SetWorkerMode(ctx context.Context, address string, mo
 	return sm.StorageMgr.SetWorkerMode(ctx, address, mode)
 }
 
+func (sm *StorageMinerAPI) SetScheduleIdleCpus(ctx context.Context, idleCpus int) error {
+	return sm.StorageMgr.SetScheduleIdleCpus(ctx, idleCpus)
+}
+
 func (sm *StorageMinerAPI) ScheduleAbort(ctx context.Context, sector sto.SectorRef) error {
 	return sm.StorageMgr.ScheduleAbort(ctx, sector)
 }
