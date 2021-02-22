@@ -992,10 +992,11 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 
 		maxRuntimeConcurrentTasks := 14
 		if 0 < halfTasks {
-			idleCpus = int(worker.info.Resources.CPUs / 2)
-			if int(worker.info.Resources.CPUs) < idleCpus+maxRuntimeConcurrentTasks {
-				idleCpus = int(worker.info.Resources.CPUs - uint64(worker.info.Resources.CPUs))
+			runningTasks := int(worker.info.Resources.CPUs / 2)
+			if maxRuntimeConcurrentTasks < runningTasks {
+				runningTasks = maxRuntimeConcurrentTasks
 			}
+			idleCpus = int(worker.info.Resources.CPUs - uint64(runningTasks))
 		}
 
 		taskType := task.taskType
