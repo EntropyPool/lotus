@@ -967,11 +967,7 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) bool {
 }
 
 func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
-	idleCpus := int(worker.info.Resources.CPUs * 4 / 100)
-	if 0 == idleCpus {
-		idleCpus = 4
-	}
-
+	idleCpus := int(worker.info.Resources.CPUs / 2)
 	remainReqs := make([]*eWorkerRequest, 0)
 
 	for {
