@@ -990,11 +990,11 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			}
 		}
 
-		leastIdleCpus := 10
+		maxRuntimeConcurrentTasks := 14
 		if 0 < halfTasks {
 			idleCpus = int(worker.info.Resources.CPUs / 2)
-			if leastIdleCpus < idleCpus {
-				idleCpus = int(worker.info.Resources.CPUs - uint64(leastIdleCpus))
+			if int(worker.info.Resources.CPUs) < idleCpus+maxRuntimeConcurrentTasks {
+				idleCpus = int(worker.info.Resources.CPUs - uint64(worker.info.Resources.CPUs))
 			}
 		}
 
