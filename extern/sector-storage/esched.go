@@ -760,9 +760,10 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	peekReqs := 0
 
 	for _, worker := range bucket.workers {
-		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
-		waitingJobs += bucket.waitingJobs(worker, sealtasks.TTPreCommit2)
+		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit2)
 		waitingJobs += bucket.waitingJobs(worker, sealtasks.TTCommit2)
+		waitingJobs += worker.typedTaskCount(sealtasks.TTPreCommit2, false)
+		waitingJobs += worker.typedTaskCount(sealtasks.TTCommit2, false)
 
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
