@@ -1596,7 +1596,9 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 }
 
 func (bucket *eWorkerBucket) onScheduleTick() {
-	// go func() { bucket.notifier <- struct{}{} }()
+	go func() { bucket.notifier <- struct{}{} }()
+	go func() { bucket.schedulerWaker <- struct{}{} }()
+	go func() { bucket.schedulerRunner <- struct{}{} }()
 }
 
 func (bucket *eWorkerBucket) setTaskUUID(uuid eTaskUUID) {
