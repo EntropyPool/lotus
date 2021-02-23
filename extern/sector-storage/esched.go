@@ -230,6 +230,7 @@ type eWorkerBucket struct {
 	spt                abi.RegisteredSealProof
 	id                 int
 	idleCpus           int
+	usableCpus         int
 	newWorker          chan *eWorkerHandle
 	workers            []*eWorkerHandle
 	reqQueue           *eRequestQueue
@@ -760,15 +761,20 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	peekReqs := 0
 
 	for _, worker := range bucket.workers {
-		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit2)
+		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
+		waitingJobs += bucket.waitingJobs(worker, sealtasks.TTPreCommit2)
 		waitingJobs += bucket.waitingJobs(worker, sealtasks.TTCommit2)
+		waitingJobs += worker.typedTaskCount(sealtasks.TTPreCommit1, false)
 		waitingJobs += worker.typedTaskCount(sealtasks.TTPreCommit2, false)
 		waitingJobs += worker.typedTaskCount(sealtasks.TTCommit2, false)
+
+		apCount := worker.typedTaskCount(sealtasks.TTAddPiece, false)
+		apConcurrent := 4
 
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
 				if taskType == sealtasks.TTAddPiece {
-					if 0 < waitingJobs {
+					if 0 < waitingJobs && apConcurrent <= apCount {
 						continue
 					}
 				}
@@ -990,7 +996,10 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			}
 		}
 
-		maxRuntimeConcurrentTasks := 14
+		maxRuntimeConcurrentTasks := 11
+		if 0 < bucket.usableCpus {
+			maxRuntimeConcurrentTasks = bucket.usableCpus
+		}
 		if 0 < bucket.idleCpus {
 			maxRuntimeConcurrentTasks = int(worker.info.Resources.CPUs - uint64(bucket.idleCpus))
 		}
@@ -2497,9 +2506,10 @@ func (sh *edispatcher) AbortTask(sector storage.SectorRef) error {
 	return nil
 }
 
-func (sh *edispatcher) SetScheduleIdleCpus(idleCpus int) error {
+func (sh *edispatcher) SetScheduleIdleCpus(idleCpus int, usableCpus int) error {
 	for _, bucket := range sh.buckets {
 		bucket.idleCpus = idleCpus
+		bucket.usableCpus = usableCpus
 	}
 	return nil
 }

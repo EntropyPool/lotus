@@ -421,8 +421,8 @@ func (m *Manager) ScheduleAbort(ctx context.Context, sector storage.SectorRef) e
 	return m.sched.esched.AbortTask(sector)
 }
 
-func (m *Manager) SetScheduleIdleCpus(ctx context.Context, idleCpus int) error {
-	return m.sched.esched.SetScheduleIdleCpus(idleCpus)
+func (m *Manager) SetScheduleIdleCpus(ctx context.Context, idleCpus int, usableCpus int) error {
+	return m.sched.esched.SetScheduleIdleCpus(idleCpus, usableCpus)
 }
 
 func (m *Manager) SetWorkerMode(ctx context.Context, address string, mode string) error {

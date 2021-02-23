@@ -419,6 +419,10 @@ var sealingGasAdjustCmd = &cli.Command{
 			Name:  "sched-idle-cpus",
 			Value: 0,
 		},
+		&cli.IntFlag{
+			Name:  "sched-usable-cpus",
+			Value: 0,
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		preferSectorOnChain := cctx.Bool("prefer-sector-on-chain")
@@ -427,6 +431,7 @@ var sealingGasAdjustCmd = &cli.Command{
 		autoPledgeBalanceThreshold := cctx.Int("auto-pledge-balance-threshold")
 		enableAutoPledge := cctx.Bool("enable-auto-pledge")
 		schedIdleCpus := cctx.Int("sched-idle-cpus")
+		schedUsableCpus := cctx.Int("sched-usable-cpus")
 
 		ctx := lcli.ReqContext(cctx)
 
@@ -464,7 +469,7 @@ var sealingGasAdjustCmd = &cli.Command{
 			return err
 		}
 
-		err = nodeApi.SetScheduleIdleCpus(ctx, schedIdleCpus)
+		err = nodeApi.SetScheduleIdleCpus(ctx, schedIdleCpus, schedUsableCpus)
 		if err != nil {
 			return err
 		}
@@ -475,7 +480,7 @@ var sealingGasAdjustCmd = &cli.Command{
 		fmt.Printf("  Prefer Sector On Chain:    %v\n", preferSectorOnChain)
 		fmt.Printf("  Enable Auto Pledge:        %v\n", enableAutoPledge)
 		fmt.Printf("  Auto Pledge Threshold:     %v FIL\n", autoPledgeBalanceThreshold)
-		fmt.Printf("  Sched Idle CPUs:           %v\n", schedIdleCpus)
+		fmt.Printf("  Sched CPUs:                I %v / U %v\n", schedIdleCpus, schedUsableCpus)
 
 		return nil
 	},
