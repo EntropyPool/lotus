@@ -342,8 +342,8 @@ var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
 }
 
 var eschedTaskMaintainingReject = map[sealtasks.TaskType]bool{
-	sealtasks.TTAddPiece:   true,
-	sealtasks.TTPreCommit1: true,
+	sealtasks.TTAddPiece: true,
+	// sealtasks.TTPreCommit1: true,
 }
 
 var eschedTaskPeekByRuntimeLimit = map[sealtasks.TaskType]bool{
