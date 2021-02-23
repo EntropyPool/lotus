@@ -782,6 +782,9 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 					if 0 < waitingJobs && apConcurrent <= apCount {
 						continue
 					}
+					if apConcurrent*2 < apCount {
+						continue
+					}
 				}
 
 				if worker.rejectNewTask || worker.maintaining {
