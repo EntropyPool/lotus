@@ -360,7 +360,7 @@ var eschedTaskStableRunning = map[sealtasks.TaskType]struct{}{
 
 var eschedTaskSingleRunning = map[sealtasks.TaskType][]sealtasks.TaskType{
 	sealtasks.TTPreCommit2: {sealtasks.TTCommit2},
-	sealtasks.TTCommit2:    {sealtasks.TTPreCommit2},
+	// sealtasks.TTCommit2:    {sealtasks.TTPreCommit2},
 }
 
 const eschedWorkerJobs = "worker_jobs"
