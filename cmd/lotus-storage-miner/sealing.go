@@ -423,6 +423,10 @@ var sealingGasAdjustCmd = &cli.Command{
 			Name:  "sched-usable-cpus",
 			Value: 0,
 		},
+		&cli.BoolFlag{
+			Name:  "sched-single-gpu-task",
+			Value: false,
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		preferSectorOnChain := cctx.Bool("prefer-sector-on-chain")
@@ -432,6 +436,7 @@ var sealingGasAdjustCmd = &cli.Command{
 		enableAutoPledge := cctx.Bool("enable-auto-pledge")
 		schedIdleCpus := cctx.Int("sched-idle-cpus")
 		schedUsableCpus := cctx.Int("sched-usable-cpus")
+		schedSingleGpuTask := cctx.Bool("sched-single-gpu-task")
 
 		ctx := lcli.ReqContext(cctx)
 
@@ -474,6 +479,11 @@ var sealingGasAdjustCmd = &cli.Command{
 			return err
 		}
 
+		err = nodeApi.SetScheduleGpuSingleTask(ctx, schedSingleGpuTask)
+		if err != nil {
+			return err
+		}
+
 		fmt.Printf("Sealing Adjust ---\n")
 		fmt.Printf("  PreCommit GAS:             %v FIL\n", maxPrecommitGasFee)
 		fmt.Printf("  Commit GAS:                %v FIL\n", maxCommitGasFee)
@@ -481,6 +491,7 @@ var sealingGasAdjustCmd = &cli.Command{
 		fmt.Printf("  Enable Auto Pledge:        %v\n", enableAutoPledge)
 		fmt.Printf("  Auto Pledge Threshold:     %v FIL\n", autoPledgeBalanceThreshold)
 		fmt.Printf("  Sched CPUs:                I %v / U %v\n", schedIdleCpus, schedUsableCpus)
+		fmt.Printf("  Sched Single GPU Task:     %v\n", schedSingleGpuTask)
 
 		return nil
 	},

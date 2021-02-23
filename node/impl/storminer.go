@@ -412,6 +412,10 @@ func (sm *StorageMinerAPI) SetScheduleIdleCpus(ctx context.Context, idleCpus int
 	return sm.StorageMgr.SetScheduleIdleCpus(ctx, idleCpus, usableCpus)
 }
 
+func (sm *StorageMinerAPI) SetScheduleGpuSingleTask(ctx context.Context, singleGpuTask bool) error {
+	return sm.StorageMgr.SetScheduleGpuSingleTask(ctx, singleGpuTask)
+}
+
 func (sm *StorageMinerAPI) ScheduleAbort(ctx context.Context, sector sto.SectorRef) error {
 	return sm.StorageMgr.ScheduleAbort(ctx, sector)
 }

@@ -421,6 +421,10 @@ func (m *Manager) ScheduleAbort(ctx context.Context, sector storage.SectorRef) e
 	return m.sched.esched.AbortTask(sector)
 }
 
+func (m *Manager) SetScheduleGpuSingleTask(ctx context.Context, singleGpuTask bool) error {
+	return m.sched.esched.SetScheduleGpuSingleTask(singleGpuTask)
+}
+
 func (m *Manager) SetScheduleIdleCpus(ctx context.Context, idleCpus int, usableCpus int) error {
 	return m.sched.esched.SetScheduleIdleCpus(idleCpus, usableCpus)
 }

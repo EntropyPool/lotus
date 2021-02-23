@@ -231,6 +231,7 @@ type eWorkerBucket struct {
 	id                 int
 	idleCpus           int
 	usableCpus         int
+	singleGpuTask      bool
 	newWorker          chan *eWorkerHandle
 	workers            []*eWorkerHandle
 	reqQueue           *eRequestQueue
@@ -1030,17 +1031,19 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			idleCpus = int(worker.info.Resources.CPUs - uint64(runningTasks))
 		}
 
-		if taskTypes, ok := eschedTaskSingleRunning[task.taskType]; ok {
-			runningTasks := worker.typedRunningTasks(task.taskType)
-			for _, lTaskType := range taskTypes {
-				runningTasks += worker.typedRunningTasks(lTaskType)
-			}
-			if 0 < runningTasks {
-				worker.preparedTasks.mutex.Lock()
-				worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
-				worker.preparedTasks.mutex.Unlock()
-				remainReqs = append(remainReqs, task)
-				continue
+		if bucket.singleGpuTask {
+			if taskTypes, ok := eschedTaskSingleRunning[task.taskType]; ok {
+				runningTasks := worker.typedRunningTasks(task.taskType)
+				for _, lTaskType := range taskTypes {
+					runningTasks += worker.typedRunningTasks(lTaskType)
+				}
+				if 0 < runningTasks {
+					worker.preparedTasks.mutex.Lock()
+					worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
+					worker.preparedTasks.mutex.Unlock()
+					remainReqs = append(remainReqs, task)
+					continue
+				}
 			}
 		}
 
@@ -2543,6 +2546,13 @@ func (sh *edispatcher) SetScheduleIdleCpus(idleCpus int, usableCpus int) error {
 	for _, bucket := range sh.buckets {
 		bucket.idleCpus = idleCpus
 		bucket.usableCpus = usableCpus
+	}
+	return nil
+}
+
+func (sh *edispatcher) SetScheduleGpuSingleTask(singleGpuTask bool) error {
+	for _, bucket := range sh.buckets {
+		bucket.singleGpuTask = singleGpuTask
 	}
 	return nil
 }

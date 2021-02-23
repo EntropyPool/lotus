@@ -347,6 +347,7 @@ type StorageMinerStruct struct {
 		SealingSchedDiag                     func(context.Context, bool) (interface{}, error)              `perm:"admin"`
 		SealingAbort                         func(ctx context.Context, call storiface.CallID) error        `perm:"admin"`
 		ScheduleAbort                        func(ctx context.Context, sector storage.SectorRef) error     `perm:"admin"`
+		SetScheduleGpuSingleTask             func(ctx context.Context, singleGpuTask bool) error           `perm:"admin"`
 		SetScheduleIdleCpus                  func(ctx context.Context, idleCpus int, usableCpus int) error `perm:"admin"`
 		SetWorkerMode                        func(ctx context.Context, address string, mode string) error  `perm:"admin"`
 		SealingSetPreferSectorOnChain        func(ctx context.Context, prefer bool) error                  `perm:"admin"`
@@ -1448,6 +1449,10 @@ func (c *StorageMinerStruct) SetWorkerMode(ctx context.Context, address string, 
 
 func (c *StorageMinerStruct) SetScheduleIdleCpus(ctx context.Context, idleCpus int, usableCpus int) error {
 	return c.Internal.SetScheduleIdleCpus(ctx, idleCpus, usableCpus)
+}
+
+func (c *StorageMinerStruct) SetScheduleGpuSingleTask(ctx context.Context, singleGpuTask bool) error {
+	return c.Internal.SetScheduleGpuSingleTask(ctx, singleGpuTask)
 }
 
 func (c *StorageMinerStruct) ScheduleAbort(ctx context.Context, sector storage.SectorRef) error {
