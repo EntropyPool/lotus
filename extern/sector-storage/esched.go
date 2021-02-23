@@ -357,6 +357,11 @@ var eschedTaskStableRunning = map[sealtasks.TaskType]struct{}{
 	sealtasks.TTPreCommit2: struct{}{},
 }
 
+var eschedTaskSingleRunning = map[sealtasks.TaskType]struct{}{
+	sealtasks.TTPreCommit2: struct{}{},
+	sealtasks.TTCommit2:    struct{}{},
+}
+
 const eschedWorkerJobs = "worker_jobs"
 const eschedWorkerStats = "worker_stats"
 
@@ -976,6 +981,17 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) bool {
 	return false
 }
 
+func (worker *eWorkerHandle) typedRunningTasks(taskType sealtasks.TaskType) int {
+	running := 0
+
+	for _, task := range worker.runningTasks {
+		if task.taskType == taskType {
+			running += 1
+		}
+	}
+	return running
+}
+
 func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 	idleCpus := int(worker.info.Resources.CPUs / 2)
 	remainReqs := make([]*eWorkerRequest, 0)
@@ -1009,6 +1025,16 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 				runningTasks = maxRuntimeConcurrentTasks
 			}
 			idleCpus = int(worker.info.Resources.CPUs - uint64(runningTasks))
+		}
+
+		if _, ok := eschedTaskSingleRunning[task.taskType]; ok {
+			if 0 < worker.typedRunningTasks(task.taskType) {
+				worker.preparedTasks.mutex.Lock()
+				worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
+				worker.preparedTasks.mutex.Unlock()
+				remainReqs = append(remainReqs, task)
+				continue
+			}
 		}
 
 		taskType := task.taskType
