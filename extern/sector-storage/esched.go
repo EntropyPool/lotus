@@ -694,6 +694,16 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			continue
 		}
 
+		apConcurrent := 2
+		if 0 < bucket.concurrentAP {
+			apConcurrent = bucket.concurrentAP
+		}
+		apCount := worker.typedTaskCount(sealtasks.TTAddPiece, false)
+		if req.taskType == sealtasks.TTAddPiece && apConcurrent <= apCount {
+			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
+			continue
+		}
+
 		bucket.taskWorkerBinder.mutex.Lock()
 		binder, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]
 		if ok {
@@ -809,8 +819,8 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 				}
 				bucket.reqQueue.mutex.Unlock()
 
-				log.Infof("<%s> peek %v %v reqs (waiting %v, ap count %v, pc1 count %v)",
-					eschedTag, peekReqs, taskType, waitingJobs, apCount, pc1Count)
+				log.Infof("<%s> peek %v %v reqs (waiting %v, ap count %v, pc1 count %v) [%s]",
+					eschedTag, peekReqs, taskType, waitingJobs, apCount, pc1Count, worker.info.Address)
 			}
 		}
 	}
