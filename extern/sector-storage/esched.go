@@ -694,12 +694,8 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			continue
 		}
 
-		apConcurrent := 2
-		if 0 < bucket.concurrentAP {
-			apConcurrent = bucket.concurrentAP
-		}
 		apCount := worker.typedTaskCount(sealtasks.TTAddPiece, false)
-		if req.taskType == sealtasks.TTAddPiece && apConcurrent <= apCount {
+		if req.taskType == sealtasks.TTAddPiece && bucket.concurrentAP <= apCount {
 			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
 			continue
 		}
@@ -791,15 +787,10 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 		pc1Count := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
 		pc1Count += worker.typedTaskCount(sealtasks.TTPreCommit1, false)
 
-		apConcurrent := 2
-		if 0 < bucket.concurrentAP {
-			apConcurrent = bucket.concurrentAP
-		}
-
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
 				if taskType == sealtasks.TTAddPiece {
-					if apConcurrent <= apCount {
+					if bucket.concurrentAP <= apCount {
 						if 0 < waitingJobs || curConcurrentLimit <= pc1Count {
 							continue
 						}
@@ -1876,6 +1867,7 @@ func newExtScheduler() *edispatcher {
 			workers:            make([]*eWorkerHandle, 0),
 			reqQueue:           dispatcher.reqQueue,
 			singleGpuTask:      true,
+			concurrentAP:       1,
 			schedulerWaker:     make(chan struct{}, 20),
 			schedulerRunner:    make(chan struct{}, 20000),
 			reqFinisher:        make(chan *eRequestFinisher),
