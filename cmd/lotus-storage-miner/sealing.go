@@ -495,7 +495,7 @@ var sealingGasAdjustCmd = &cli.Command{
 		fmt.Printf("  Prefer Sector On Chain:    %v\n", preferSectorOnChain)
 		fmt.Printf("  Enable Auto Pledge:        %v\n", enableAutoPledge)
 		fmt.Printf("  Auto Pledge Threshold:     %v FIL\n", autoPledgeBalanceThreshold)
-		fmt.Printf("  Sched CPUs:                I %v / U %v\n", schedIdleCpus, schedUsableCpus)
+		fmt.Printf("  Sched CPUs:                I %v / U %v / AP %v\n", schedIdleCpus, schedUsableCpus, schedConcurrentAddPiece)
 		fmt.Printf("  Sched Single GPU Task:     %v\n", schedSingleGpuTask)
 
 		return nil
