@@ -427,6 +427,10 @@ var sealingGasAdjustCmd = &cli.Command{
 			Name:  "sched-single-gpu-task",
 			Value: false,
 		},
+		&cli.IntFlag{
+			Name:  "sched-concurrent-add-piece",
+			Value: 0,
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		preferSectorOnChain := cctx.Bool("prefer-sector-on-chain")
@@ -437,6 +441,7 @@ var sealingGasAdjustCmd = &cli.Command{
 		schedIdleCpus := cctx.Int("sched-idle-cpus")
 		schedUsableCpus := cctx.Int("sched-usable-cpus")
 		schedSingleGpuTask := cctx.Bool("sched-single-gpu-task")
+		schedConcurrentAddPiece := cctx.Int("sched-concurrent-add-piece")
 
 		ctx := lcli.ReqContext(cctx)
 
@@ -474,7 +479,7 @@ var sealingGasAdjustCmd = &cli.Command{
 			return err
 		}
 
-		err = nodeApi.SetScheduleIdleCpus(ctx, schedIdleCpus, schedUsableCpus)
+		err = nodeApi.SetScheduleConcurrent(ctx, schedIdleCpus, schedUsableCpus, schedConcurrentAddPiece)
 		if err != nil {
 			return err
 		}

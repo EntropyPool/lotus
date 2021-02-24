@@ -408,8 +408,8 @@ func (sm *StorageMinerAPI) SetWorkerMode(ctx context.Context, address string, mo
 	return sm.StorageMgr.SetWorkerMode(ctx, address, mode)
 }
 
-func (sm *StorageMinerAPI) SetScheduleIdleCpus(ctx context.Context, idleCpus int, usableCpus int) error {
-	return sm.StorageMgr.SetScheduleIdleCpus(ctx, idleCpus, usableCpus)
+func (sm *StorageMinerAPI) SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error {
+	return sm.StorageMgr.SetScheduleConcurrent(ctx, idleCpus, usableCpus, apConcurrent)
 }
 
 func (sm *StorageMinerAPI) SetScheduleGpuSingleTask(ctx context.Context, singleGpuTask bool) error {

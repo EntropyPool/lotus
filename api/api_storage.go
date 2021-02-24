@@ -91,7 +91,7 @@ type StorageMiner interface {
 	// SealingSchedDiag dumps internal sealing scheduler state
 	SealingSchedDiag(ctx context.Context, doSched bool) (interface{}, error)
 	ScheduleAbort(ctx context.Context, sector storage.SectorRef) error
-	SetScheduleIdleCpus(ctx context.Context, idleCpus int, usableCpus int) error
+	SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error
 	SetScheduleGpuSingleTask(ctx context.Context, singleGpuTask bool) error
 	SetWorkerMode(ctx context.Context, address string, mode string) error
 	SealingAbort(ctx context.Context, call storiface.CallID) error

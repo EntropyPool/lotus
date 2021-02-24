@@ -425,8 +425,8 @@ func (m *Manager) SetScheduleGpuSingleTask(ctx context.Context, singleGpuTask bo
 	return m.sched.esched.SetScheduleGpuSingleTask(singleGpuTask)
 }
 
-func (m *Manager) SetScheduleIdleCpus(ctx context.Context, idleCpus int, usableCpus int) error {
-	return m.sched.esched.SetScheduleIdleCpus(idleCpus, usableCpus)
+func (m *Manager) SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error {
+	return m.sched.esched.SetScheduleConcurrent(idleCpus, usableCpus, apConcurrent)
 }
 
 func (m *Manager) SetWorkerMode(ctx context.Context, address string, mode string) error {

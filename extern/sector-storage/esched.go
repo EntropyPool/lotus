@@ -232,6 +232,7 @@ type eWorkerBucket struct {
 	idleCpus           int
 	usableCpus         int
 	singleGpuTask      bool
+	concurrentAP       int
 	newWorker          chan *eWorkerHandle
 	workers            []*eWorkerHandle
 	reqQueue           *eRequestQueue
@@ -767,24 +768,31 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	peekReqs := 0
 
 	for _, worker := range bucket.workers {
-		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
-		waitingJobs += bucket.waitingJobs(worker, sealtasks.TTPreCommit2)
+		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit2)
 		waitingJobs += bucket.waitingJobs(worker, sealtasks.TTCommit2)
-		waitingJobs += worker.typedTaskCount(sealtasks.TTPreCommit1, false)
 		waitingJobs += worker.typedTaskCount(sealtasks.TTPreCommit2, false)
 		waitingJobs += worker.typedTaskCount(sealtasks.TTCommit2, false)
 
-		apCount := worker.typedTaskCount(sealtasks.TTAddPiece, false)
-		apConcurrent := 4
+		apCount := bucket.waitingJobs(worker, sealtasks.TTAddPiece)
+		apCount += worker.typedTaskCount(sealtasks.TTAddPiece, false)
+
+		curConcurrentLimit := worker.maxConcurrent[bucket.spt][sealtasks.TTPreCommit1]
+
+		pc1Count := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
+		pc1Count += worker.typedTaskCount(sealtasks.TTPreCommit1, false)
+
+		apConcurrent := 2
+		if 0 < bucket.concurrentAP {
+			apConcurrent = bucket.concurrentAP
+		}
 
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
 				if taskType == sealtasks.TTAddPiece {
-					if 0 < waitingJobs && apConcurrent <= apCount {
-						continue
-					}
-					if apConcurrent*2 < apCount {
-						continue
+					if apConcurrent <= apCount {
+						if 0 < waitingJobs || curConcurrentLimit <= pc1Count {
+							continue
+						}
 					}
 				}
 
@@ -800,6 +808,9 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 					}
 				}
 				bucket.reqQueue.mutex.Unlock()
+
+				log.Infof("peek %v %v reqs (waiting %v, ap count %v, pc1 count %v)",
+					peekReqs, taskType, waitingJobs, apCount, pc1Count)
 			}
 		}
 	}
@@ -2542,10 +2553,11 @@ func (sh *edispatcher) AbortTask(sector storage.SectorRef) error {
 	return nil
 }
 
-func (sh *edispatcher) SetScheduleIdleCpus(idleCpus int, usableCpus int) error {
+func (sh *edispatcher) SetScheduleConcurrent(idleCpus int, usableCpus int, apConcurrent int) error {
 	for _, bucket := range sh.buckets {
 		bucket.idleCpus = idleCpus
 		bucket.usableCpus = usableCpus
+		bucket.concurrentAP = apConcurrent
 	}
 	return nil
 }
