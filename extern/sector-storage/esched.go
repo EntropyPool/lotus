@@ -1865,6 +1865,7 @@ func newExtScheduler() *edispatcher {
 			newWorker:          make(chan *eWorkerHandle),
 			workers:            make([]*eWorkerHandle, 0),
 			reqQueue:           dispatcher.reqQueue,
+			singleGpuTask:      true,
 			schedulerWaker:     make(chan struct{}, 20),
 			schedulerRunner:    make(chan struct{}, 20000),
 			reqFinisher:        make(chan *eRequestFinisher),
