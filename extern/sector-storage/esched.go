@@ -809,8 +809,8 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 				}
 				bucket.reqQueue.mutex.Unlock()
 
-				log.Infof("peek %v %v reqs (waiting %v, ap count %v, pc1 count %v)",
-					peekReqs, taskType, waitingJobs, apCount, pc1Count)
+				log.Infof("<%s> peek %v %v reqs (waiting %v, ap count %v, pc1 count %v)",
+					eschedTag, peekReqs, taskType, waitingJobs, apCount, pc1Count)
 			}
 		}
 	}
