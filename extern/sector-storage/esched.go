@@ -2562,7 +2562,7 @@ func (sh *edispatcher) AbortTask(sector storage.SectorRef) error {
 
 func (sh *edispatcher) SetScheduleConcurrent(idleCpus int, usableCpus int, apConcurrent int) error {
 	for _, bucket := range sh.buckets {
-		if o < idleCpus {
+		if 0 < idleCpus {
 			bucket.idleCpus = idleCpus
 		}
 		if 0 < usableCpus {
