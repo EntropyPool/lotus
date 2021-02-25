@@ -7,7 +7,7 @@ import (
 	lcli "github.com/filecoin-project/lotus/cli"
 )
 
-var setCmd = &cli.Command{
+var setEnvCmd = &cli.Command{
 	Name:  "set-env",
 	Usage: "Set environment value at runtime",
 	Flags: []cli.Flag{

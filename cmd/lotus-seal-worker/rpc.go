@@ -49,6 +49,7 @@ func (w *worker) StorageAddLocal(ctx context.Context, path string) error {
 
 func (w *worker) SetEnvironment(ctx context.Context, envName string, envVal string) error {
 	os.Setenv(envName, envVal)
+	return nil
 }
 
 func (w *worker) SetEnabled(ctx context.Context, enabled bool) error {
