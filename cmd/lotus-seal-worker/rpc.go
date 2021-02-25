@@ -53,7 +53,7 @@ func (w *worker) SetEnvironment(ctx context.Context, envName string, envVal stri
 }
 
 func (w *worker) UnsetEnvironment(ctx context.Context, envName string) error {
-	os.Unsetenv(envName, envVal)
+	os.Unsetenv(envName)
 	return nil
 }
 
