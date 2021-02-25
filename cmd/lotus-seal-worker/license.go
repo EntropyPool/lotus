@@ -49,7 +49,7 @@ func LicenseChecker(username string) {
 		select {
 		case <-ticker.C:
 			checkLicense(cli)
-		case <-timer.C:
+		case <-killTimer.C:
 			if shouldStop {
 				os.Exit(-1)
 			}
