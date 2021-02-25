@@ -423,7 +423,7 @@ var sealingGasAdjustCmd = &cli.Command{
 			Name:  "sched-usable-cpus",
 			Value: 0,
 		},
-		&cli.BoolFlag{
+		&cli.IntFlag{
 			Name:  "sched-gpu-tasks",
 			Value: 0,
 		},
@@ -440,7 +440,7 @@ var sealingGasAdjustCmd = &cli.Command{
 		enableAutoPledge := cctx.Bool("enable-auto-pledge")
 		schedIdleCpus := cctx.Int("sched-idle-cpus")
 		schedUsableCpus := cctx.Int("sched-usable-cpus")
-		schedGpuTasks := cctx.Bool("sched-gpu-tasks")
+		schedGpuTasks := cctx.Int("sched-gpu-tasks")
 		schedConcurrentAddPiece := cctx.Int("sched-concurrent-add-piece")
 
 		ctx := lcli.ReqContext(cctx)
@@ -496,7 +496,7 @@ var sealingGasAdjustCmd = &cli.Command{
 		fmt.Printf("  Enable Auto Pledge:        %v\n", enableAutoPledge)
 		fmt.Printf("  Auto Pledge Threshold:     %v FIL\n", autoPledgeBalanceThreshold)
 		fmt.Printf("  Sched CPUs:                I %v / U %v / AP %v\n", schedIdleCpus, schedUsableCpus, schedConcurrentAddPiece)
-		fmt.Printf("  Sched Single GPU Task:     %v\n", schedSingleGpuTask)
+		fmt.Printf("  Sched GPU Tasks:           %v\n", schedGpuTasks)
 
 		return nil
 	},
