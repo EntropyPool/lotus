@@ -1047,7 +1047,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			idleCpus = int(worker.info.Resources.CPUs - uint64(runningTasks))
 		}
 
-		gpuTasks = worker.info.Resources.GPUs
+		gpuTasks := len(worker.info.Resources.GPUs)
 		if 0 < bucket.gpuTasks {
 			gpuTasks = bucket.gpuTasks
 		}
@@ -1059,11 +1059,8 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		taskType := task.taskType
 		res := findTaskResource(task.sector.ProofType, taskType)
 
-		if 0 < res.GPUs && gpuTasks < worker.info.Resources.GPUs {
+		if 0 < res.GPUs && gpuTasks < len(worker.info.Resources.GPUs) {
 			runningTasks := worker.typedRunningTasks(task.taskType)
-			for _, lTaskType := range taskTypes {
-				runningTasks += worker.typedRunningTasks(lTaskType)
-			}
 			if gpuTasks <= runningTasks {
 				worker.preparedTasks.mutex.Lock()
 				worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
