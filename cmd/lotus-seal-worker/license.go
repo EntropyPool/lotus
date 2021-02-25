@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+var shouldStop = false
+
 func startLicenseClient(username string) *lic.GuardClient {
 	spec := machspec.NewMachineSpec()
 	spec.PrepareLowLevel()
@@ -24,13 +26,16 @@ func startLicenseClient(username string) *lic.GuardClient {
 }
 
 func checkLicense(cli *lic.GuardClient) {
+	shouldStop = false
+
 	validate := cli.Validate()
 	if validate {
+		shouldStop = true
 		return
 	}
 	shouldStop := cli.ShouldStop()
 	if shouldStop {
-		os.Exit(-1)
+		shouldStop = true
 	}
 }
 
@@ -38,10 +43,16 @@ func LicenseChecker(username string) {
 	cli := startLicenseClient(username)
 
 	ticker := time.NewTicker(10 * time.Minute)
+	killTimer := time.NewTimer(60 * time.Minute)
+
 	for {
 		select {
 		case <-ticker.C:
 			checkLicense(cli)
+		case <-timer.C:
+			if shouldStop {
+				os.Exit(-1)
+			}
 		}
 	}
 }
