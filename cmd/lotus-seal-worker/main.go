@@ -61,6 +61,7 @@ func main() {
 		waitQuietCmd,
 		tasksCmd,
 		setEnvCmd,
+		unsetEnvCmd,
 	}
 
 	app := &cli.App{

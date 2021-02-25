@@ -52,6 +52,11 @@ func (w *worker) SetEnvironment(ctx context.Context, envName string, envVal stri
 	return nil
 }
 
+func (w *worker) UnsetEnvironment(ctx context.Context, envName string) error {
+	os.Unsetenv(envName, envVal)
+	return nil
+}
+
 func (w *worker) SetEnabled(ctx context.Context, enabled bool) error {
 	disabled := int64(1)
 	if enabled {

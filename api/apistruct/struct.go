@@ -422,9 +422,10 @@ type WorkerStruct struct {
 		TaskDisable func(ctx context.Context, tt sealtasks.TaskType) error `perm:"admin"`
 		TaskEnable  func(ctx context.Context, tt sealtasks.TaskType) error `perm:"admin"`
 
-		Remove          func(ctx context.Context, sector abi.SectorID) error           `perm:"admin"`
-		StorageAddLocal func(ctx context.Context, path string) error                   `perm:"admin"`
-		SetEnvironment  func(ctx context.Context, envName string, envVal string) error `perm:"admin"`
+		Remove           func(ctx context.Context, sector abi.SectorID) error           `perm:"admin"`
+		StorageAddLocal  func(ctx context.Context, path string) error                   `perm:"admin"`
+		SetEnvironment   func(ctx context.Context, envName string, envVal string) error `perm:"admin"`
+		UnsetEnvironment func(ctx context.Context, envName string) error                `perm:"admin"`
 
 		SetEnabled func(ctx context.Context, enabled bool) error `perm:"admin"`
 		Enabled    func(ctx context.Context) (bool, error)       `perm:"admin"`
@@ -1740,6 +1741,10 @@ func (w *WorkerStruct) StorageAddLocal(ctx context.Context, path string) error {
 
 func (w *WorkerStruct) SetEnvironment(ctx context.Context, envName string, envVal string) error {
 	return w.Internal.SetEnvironment(ctx, envName, envVal)
+}
+
+func (w *WorkerStruct) UnsetEnvironment(ctx context.Context, envName string) error {
+	return w.Internal.UnsetEnvironment(ctx, envName)
 }
 
 func (w *WorkerStruct) SetEnabled(ctx context.Context, enabled bool) error {
