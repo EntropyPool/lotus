@@ -1047,24 +1047,31 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			idleCpus = int(worker.info.Resources.CPUs - uint64(runningTasks))
 		}
 
+		gpuTasks = worker.info.Resources.GPUs
 		if 0 < bucket.gpuTasks {
-			if taskTypes, ok := eschedTaskSingleRunning[task.taskType]; ok {
-				runningTasks := worker.typedRunningTasks(task.taskType)
-				for _, lTaskType := range taskTypes {
-					runningTasks += worker.typedRunningTasks(lTaskType)
-				}
-				if bucket.gpuTasks <= runningTasks {
-					worker.preparedTasks.mutex.Lock()
-					worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
-					worker.preparedTasks.mutex.Unlock()
-					remainReqs = append(remainReqs, task)
-					continue
-				}
-			}
+			gpuTasks = bucket.gpuTasks
+		}
+
+		if taskTypes, ok := eschedTaskSingleRunning[task.taskType]; ok {
+			gpuTasks = 1
 		}
 
 		taskType := task.taskType
 		res := findTaskResource(task.sector.ProofType, taskType)
+
+		if 0 < res.GPUs && gpuTasks < worker.info.Resources.GPUs {
+			runningTasks := worker.typedRunningTasks(task.taskType)
+			for _, lTaskType := range taskTypes {
+				runningTasks += worker.typedRunningTasks(lTaskType)
+			}
+			if gpuTasks <= runningTasks {
+				worker.preparedTasks.mutex.Lock()
+				worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
+				worker.preparedTasks.mutex.Unlock()
+				remainReqs = append(remainReqs, task)
+				continue
+			}
+		}
 
 		needCPUs := res.CPUs
 		if 0 < res.GPUs {
