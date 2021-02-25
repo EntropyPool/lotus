@@ -1052,7 +1052,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			gpuTasks = bucket.gpuTasks
 		}
 
-		if taskTypes, ok := eschedTaskSingleRunning[task.taskType]; ok {
+		if _, ok := eschedTaskSingleRunning[task.taskType]; ok {
 			gpuTasks = 1
 		}
 
@@ -1877,7 +1877,6 @@ func newExtScheduler() *edispatcher {
 			newWorker:          make(chan *eWorkerHandle),
 			workers:            make([]*eWorkerHandle, 0),
 			reqQueue:           dispatcher.reqQueue,
-			gpuTasks:           1,
 			concurrentAP:       1,
 			schedulerWaker:     make(chan struct{}, 20),
 			schedulerRunner:    make(chan struct{}, 20000),
