@@ -412,8 +412,8 @@ func (sm *StorageMinerAPI) SetScheduleConcurrent(ctx context.Context, idleCpus i
 	return sm.StorageMgr.SetScheduleConcurrent(ctx, idleCpus, usableCpus, apConcurrent)
 }
 
-func (sm *StorageMinerAPI) SetScheduleGpuSingleTask(ctx context.Context, singleGpuTask bool) error {
-	return sm.StorageMgr.SetScheduleGpuSingleTask(ctx, singleGpuTask)
+func (sm *StorageMinerAPI) SetScheduleGpuConcurrentTasks(ctx context.Context, gpuTasks int) error {
+	return sm.StorageMgr.SetScheduleGpuConcurrentTasks(ctx, gpuTasks)
 }
 
 func (sm *StorageMinerAPI) ScheduleAbort(ctx context.Context, sector sto.SectorRef) error {

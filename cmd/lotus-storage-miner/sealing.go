@@ -424,8 +424,8 @@ var sealingGasAdjustCmd = &cli.Command{
 			Value: 0,
 		},
 		&cli.BoolFlag{
-			Name:  "sched-single-gpu-task",
-			Value: false,
+			Name:  "sched-gpu-tasks",
+			Value: 0,
 		},
 		&cli.IntFlag{
 			Name:  "sched-concurrent-add-piece",
@@ -440,7 +440,7 @@ var sealingGasAdjustCmd = &cli.Command{
 		enableAutoPledge := cctx.Bool("enable-auto-pledge")
 		schedIdleCpus := cctx.Int("sched-idle-cpus")
 		schedUsableCpus := cctx.Int("sched-usable-cpus")
-		schedSingleGpuTask := cctx.Bool("sched-single-gpu-task")
+		schedGpuTasks := cctx.Bool("sched-gpu-tasks")
 		schedConcurrentAddPiece := cctx.Int("sched-concurrent-add-piece")
 
 		ctx := lcli.ReqContext(cctx)
@@ -484,7 +484,7 @@ var sealingGasAdjustCmd = &cli.Command{
 			return err
 		}
 
-		err = nodeApi.SetScheduleGpuSingleTask(ctx, schedSingleGpuTask)
+		err = nodeApi.SetScheduleGpuConcurrentTasks(ctx, schedGpuTasks)
 		if err != nil {
 			return err
 		}

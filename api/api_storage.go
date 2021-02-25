@@ -92,7 +92,7 @@ type StorageMiner interface {
 	SealingSchedDiag(ctx context.Context, doSched bool) (interface{}, error)
 	ScheduleAbort(ctx context.Context, sector storage.SectorRef) error
 	SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error
-	SetScheduleGpuSingleTask(ctx context.Context, singleGpuTask bool) error
+	SetScheduleGpuConcurrentTasks(ctx context.Context, gpuTasks int) error
 	SetWorkerMode(ctx context.Context, address string, mode string) error
 	SealingAbort(ctx context.Context, call storiface.CallID) error
 

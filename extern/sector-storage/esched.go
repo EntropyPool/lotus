@@ -231,7 +231,7 @@ type eWorkerBucket struct {
 	id                 int
 	idleCpus           int
 	usableCpus         int
-	singleGpuTask      bool
+	gpuTasks           int
 	concurrentAP       int
 	newWorker          chan *eWorkerHandle
 	workers            []*eWorkerHandle
@@ -1047,13 +1047,13 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			idleCpus = int(worker.info.Resources.CPUs - uint64(runningTasks))
 		}
 
-		if bucket.singleGpuTask {
+		if 0 < bucket.gpuTasks {
 			if taskTypes, ok := eschedTaskSingleRunning[task.taskType]; ok {
 				runningTasks := worker.typedRunningTasks(task.taskType)
 				for _, lTaskType := range taskTypes {
 					runningTasks += worker.typedRunningTasks(lTaskType)
 				}
-				if 0 < runningTasks {
+				if bucket.gpuTasks <= runningTasks {
 					worker.preparedTasks.mutex.Lock()
 					worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
 					worker.preparedTasks.mutex.Unlock()
@@ -1870,7 +1870,7 @@ func newExtScheduler() *edispatcher {
 			newWorker:          make(chan *eWorkerHandle),
 			workers:            make([]*eWorkerHandle, 0),
 			reqQueue:           dispatcher.reqQueue,
-			singleGpuTask:      false,
+			gpuTasks:           0,
 			concurrentAP:       1,
 			schedulerWaker:     make(chan struct{}, 20),
 			schedulerRunner:    make(chan struct{}, 20000),
@@ -2562,16 +2562,24 @@ func (sh *edispatcher) AbortTask(sector storage.SectorRef) error {
 
 func (sh *edispatcher) SetScheduleConcurrent(idleCpus int, usableCpus int, apConcurrent int) error {
 	for _, bucket := range sh.buckets {
-		bucket.idleCpus = idleCpus
-		bucket.usableCpus = usableCpus
-		bucket.concurrentAP = apConcurrent
+		if o < idleCpus {
+			bucket.idleCpus = idleCpus
+		}
+		if 0 < usableCpus {
+			bucket.usableCpus = usableCpus
+		}
+		if 0 < apConcurrent {
+			bucket.concurrentAP = apConcurrent
+		}
 	}
 	return nil
 }
 
-func (sh *edispatcher) SetScheduleGpuSingleTask(singleGpuTask bool) error {
+func (sh *edispatcher) SetScheduleGpuConcurrentTasks(gpuTasks int) error {
 	for _, bucket := range sh.buckets {
-		bucket.singleGpuTask = singleGpuTask
+		if 0 < gpuTasks {
+			bucket.gpuTasks = gpuTasks
+		}
 	}
 	return nil
 }
