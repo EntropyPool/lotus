@@ -47,7 +47,8 @@ func (sb *Sealer) NewSector(ctx context.Context, sector storage.SectorRef) error
 func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existingPieceSizes []abi.UnpaddedPieceSize, pieceSize abi.UnpaddedPieceSize, file storage.Data) (abi.PieceInfo, error) {
 	// TODO: allow tuning those:
 	chunk := abi.PaddedPieceSize(4 << 20)
-	parallel := runtime.NumCPU()
+	// parallel := runtime.NumCPU()
+	parallel := 4
 
 	var offset abi.UnpaddedPieceSize
 	for _, size := range existingPieceSizes {
