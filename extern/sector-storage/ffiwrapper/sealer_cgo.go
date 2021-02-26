@@ -290,11 +290,11 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 	}
 	stagedFile = nil
 
-	if !fromPattern {
-		if len(piecePromises) == 1 {
-			return piecePromises[0]()
-		}
+	if len(piecePromises) == 1 {
+		return piecePromises[0]()
+	}
 
+	if !fromPattern {
 		pieceCids = make([]abi.PieceInfo, len(piecePromises))
 		for i, promise := range piecePromises {
 			pieceCids[i], err = promise()
