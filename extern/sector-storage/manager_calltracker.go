@@ -13,6 +13,7 @@ import (
 
 	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
+	"github.com/filecoin-project/specs-storage/storage"
 )
 
 type WorkID struct {
@@ -414,4 +415,20 @@ func (m *Manager) returnResult(callID storiface.CallID, r interface{}, cerr *sto
 func (m *Manager) Abort(ctx context.Context, call storiface.CallID) error {
 	// TODO: Allow temp error
 	return m.returnResult(call, nil, storiface.Err(storiface.ErrUnknown, xerrors.New("task aborted")))
+}
+
+func (m *Manager) ScheduleAbort(ctx context.Context, sector storage.SectorRef) error {
+	return m.sched.esched.AbortTask(sector)
+}
+
+func (m *Manager) SetScheduleGpuConcurrentTasks(ctx context.Context, gpuTasks int) error {
+	return m.sched.esched.SetScheduleGpuConcurrentTasks(gpuTasks)
+}
+
+func (m *Manager) SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error {
+	return m.sched.esched.SetScheduleConcurrent(idleCpus, usableCpus, apConcurrent)
+}
+
+func (m *Manager) SetWorkerMode(ctx context.Context, address string, mode string) error {
+	return m.sched.esched.SetWorkerMode(address, mode)
 }

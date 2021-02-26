@@ -217,6 +217,41 @@ func StorageMinerUseHttp(opts *GetStorageMinerOptions) {
 	opts.PreferHttp = true
 }
 
+func GetBackNodeAPI(ctx *cli.Context) (api.FullNode, jsonrpc.ClientCloser, context.Context, error) {
+	backs, ok := os.LookupEnv("BACKNODE_API_INFO")
+	if !ok {
+		return nil, nil, nil, xerrors.Errorf("could not get BACKNODE_API_INFO")
+	}
+
+	infos := strings.Split(backs, ";")
+	for i := 0; i < len(infos); i++ {
+		ainfo := cliutil.ParseApiInfo(infos[i])
+		addr, err := ainfo.DialArgs()
+		if err != nil {
+			log.Warnf("dial back node args error(i=%d): %w", i, err)
+			continue
+		}
+
+		nodeApi, ncloser, err := client.NewFullNodeRPC(ctx.Context, addr, ainfo.AuthHeader())
+		if err != nil {
+			log.Warnf("new back node rpc error(i=%d): %w", i, err)
+			continue
+		}
+
+		dctx := DaemonContext(ctx)
+		ver, err := nodeApi.Version(dctx)
+		if err != nil {
+			log.Warnf("get back node api version error(i=%d): %w", i, err)
+			continue
+		}
+		ctx.Set("back-api-info", infos[i])
+		log.Warnw("use back node", "info", ainfo, "address", addr, "version", ver)
+		return nodeApi, ncloser, dctx, nil
+	}
+
+	return nil, nil, nil, xerrors.Errorf("could not get useful back node")
+}
+
 func GetStorageMinerAPI(ctx *cli.Context, opts ...GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {
 	var options GetStorageMinerOptions
 	for _, opt := range opts {

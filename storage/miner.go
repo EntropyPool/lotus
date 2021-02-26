@@ -99,8 +99,10 @@ type storageMinerApi interface {
 	GasEstimateMessageGas(context.Context, *types.Message, *api.MessageSendSpec, types.TipSetKey) (*types.Message, error)
 	GasEstimateFeeCap(context.Context, *types.Message, int64, types.TipSetKey) (types.BigInt, error)
 	GasEstimateGasPremium(_ context.Context, nblocksincl uint64, sender address.Address, gaslimit int64, tsk types.TipSetKey) (types.BigInt, error)
+	GasEstimateGasLimit(context.Context, *types.Message, types.TipSetKey) (int64, error)
 
 	ChainHead(context.Context) (*types.TipSet, error)
+	ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error)
 	ChainNotify(context.Context) (<-chan []*api.HeadChange, error)
 	ChainGetRandomnessFromTickets(ctx context.Context, tsk types.TipSetKey, personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) (abi.Randomness, error)
 	ChainGetRandomnessFromBeacon(ctx context.Context, tsk types.TipSetKey, personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) (abi.Randomness, error)
@@ -114,6 +116,9 @@ type storageMinerApi interface {
 	WalletSign(context.Context, address.Address, []byte) (*crypto.Signature, error)
 	WalletBalance(context.Context, address.Address) (types.BigInt, error)
 	WalletHas(context.Context, address.Address) (bool, error)
+
+    SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
+    SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
 }
 
 func NewMiner(api storageMinerApi, maddr address.Address, h host.Host, ds datastore.Batching, sealer sectorstorage.SectorManager, sc sealing.SectorIDCounter, verif ffiwrapper.Verifier, gsd dtypes.GetSealingConfigFunc, feeCfg config.MinerFeeConfig, journal journal.Journal, as *AddressSelector) (*Miner, error) {
@@ -147,9 +152,9 @@ func (m *Miner) Run(ctx context.Context) error {
 	}
 
 	fc := sealing.FeeConfig{
-		MaxPreCommitGasFee: abi.TokenAmount(m.feeCfg.MaxPreCommitGasFee),
-		MaxCommitGasFee:    abi.TokenAmount(m.feeCfg.MaxCommitGasFee),
-		MaxTerminateGasFee: abi.TokenAmount(m.feeCfg.MaxTerminateGasFee),
+		MaxPreCommitGasFee:  abi.TokenAmount(m.feeCfg.MaxPreCommitGasFee),
+		MaxCommitGasFee:     abi.TokenAmount(m.feeCfg.MaxCommitGasFee),
+		MaxTerminateGasFee:  abi.TokenAmount(m.feeCfg.MaxTerminateGasFee),
 	}
 
 	evts := events.NewEvents(ctx, m.api)

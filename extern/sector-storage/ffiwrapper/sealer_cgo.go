@@ -47,7 +47,8 @@ func (sb *Sealer) NewSector(ctx context.Context, sector storage.SectorRef) error
 func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existingPieceSizes []abi.UnpaddedPieceSize, pieceSize abi.UnpaddedPieceSize, file storage.Data) (abi.PieceInfo, error) {
 	// TODO: allow tuning those:
 	chunk := abi.PaddedPieceSize(4 << 20)
-	parallel := runtime.NumCPU()
+	// parallel := runtime.NumCPU()
+	parallel := 4
 
 	var offset abi.UnpaddedPieceSize
 	for _, size := range existingPieceSizes {
@@ -536,6 +537,11 @@ func (sb *Sealer) SealPreCommit2(ctx context.Context, sector storage.SectorRef, 
 	}, nil
 }
 
+func (sb *Sealer) MovingCache(ctx context.Context, sector storage.SectorRef) error {
+	log.Warnw("sealer moving.")
+	return nil
+}
+
 func (sb *Sealer) SealCommit1(ctx context.Context, sector storage.SectorRef, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (storage.Commit1Out, error) {
 	paths, done, err := sb.sectors.AcquireSector(ctx, sector, storiface.FTSealed|storiface.FTCache, 0, storiface.PathSealing)
 	if err != nil {
@@ -594,6 +600,7 @@ func (sb *Sealer) FinalizeSector(ctx context.Context, sector storage.SectorRef, 
 
 		paths, done, err := sb.sectors.AcquireSector(ctx, sector, storiface.FTUnsealed, 0, storiface.PathStorage)
 		if err != nil {
+			log.Errorf("fail finalize sector %v [%v]", sector.ID.Number, err)
 			return xerrors.Errorf("acquiring sector cache path: %w", err)
 		}
 		defer done()
@@ -634,11 +641,18 @@ func (sb *Sealer) FinalizeSector(ctx context.Context, sector storage.SectorRef, 
 
 	paths, done, err := sb.sectors.AcquireSector(ctx, sector, storiface.FTCache, 0, storiface.PathStorage)
 	if err != nil {
+		log.Errorf("fail finalize sector %v [%v]", sector.ID.Number, err)
 		return xerrors.Errorf("acquiring sector cache path: %w", err)
 	}
 	defer done()
 
-	return ffi.ClearCache(uint64(ssize), paths.Cache)
+	err = ffi.ClearCache(uint64(ssize), paths.Cache)
+	if nil != err {
+		return &ErrCacheInconsistent{xerrors.Errorf("fail finalize sector %v(%v) [%v]", sector.ID.Number, paths.Cache, err)}
+	} else {
+		log.Infof("success finalize sector %v(%v)", sector.ID.Number, paths.Cache)
+	}
+	return err
 }
 
 func (sb *Sealer) ReleaseUnsealed(ctx context.Context, sector storage.SectorRef, safeToFree []storage.Range) error {

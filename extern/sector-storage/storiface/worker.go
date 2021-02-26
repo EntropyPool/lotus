@@ -17,29 +17,45 @@ import (
 )
 
 type WorkerInfo struct {
-	Hostname string
-
-	Resources WorkerResources
+	Hostname     string
+	GroupName    string
+	Address      string
+	BigCache     bool
+	StorageCount int
+	SupportTasks []sealtasks.TaskType
+	Resources    WorkerResources
 }
 
 type WorkerResources struct {
-	MemPhysical uint64
-	MemSwap     uint64
+	MemPhysical  uint64
+	MemSwap      uint64
+	HugePages    int
+	HugePageSize uint64
+	MemReserved  uint64 // Used by system / other processes
+	CPUs         uint64 // Logical cores
+	GPUs         []string
+}
 
-	MemReserved uint64 // Used by system / other processes
-
-	CPUs uint64 // Logical cores
-	GPUs []string
+type TasksInfo struct {
+	Running       int
+	Prepared      int
+	Waiting       int
+	Cleaning      int
+	MaxConcurrent int
 }
 
 type WorkerStats struct {
 	Info    WorkerInfo
 	Enabled bool
 
-	MemUsedMin uint64
-	MemUsedMax uint64
-	GpuUsed    bool   // nolint
-	CpuUse     uint64 // nolint
+	MemUsedMin    uint64
+	MemUsedMax    uint64
+	GpuUsed       bool   // nolint
+	CpuUse        uint64 // nolint
+	Tasks         map[sealtasks.TaskType]TasksInfo
+	State         string
+	Maintaining   bool
+	RejectNewTask bool
 }
 
 const (

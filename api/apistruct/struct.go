@@ -83,6 +83,7 @@ type FullNodeStruct struct {
 	Internal struct {
 		ChainNotify                   func(context.Context) (<-chan []*api.HeadChange, error)                                                            `perm:"read"`
 		ChainHead                     func(context.Context) (*types.TipSet, error)                                                                       `perm:"read"`
+		ChainComputeBaseFee           func(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error)                                               `perm:"read"`
 		ChainGetRandomnessFromTickets func(context.Context, types.TipSetKey, crypto.DomainSeparationTag, abi.ChainEpoch, []byte) (abi.Randomness, error) `perm:"read"`
 		ChainGetRandomnessFromBeacon  func(context.Context, types.TipSetKey, crypto.DomainSeparationTag, abi.ChainEpoch, []byte) (abi.Randomness, error) `perm:"read"`
 		ChainGetBlock                 func(context.Context, cid.Cid) (*types.BlockHeader, error)                                                         `perm:"read"`
@@ -271,6 +272,9 @@ type FullNodeStruct struct {
 		PaychVoucherSubmit          func(context.Context, address.Address, *paych.SignedVoucher, []byte, []byte) (cid.Cid, error)             `perm:"sign"`
 
 		CreateBackup func(ctx context.Context, fpath string) error `perm:"admin"`
+
+		SetMaxPreCommitGasFee func(context.Context, abi.TokenAmount) error `perm:"admin"`
+		SetMaxCommitGasFee    func(context.Context, abi.TokenAmount) error `perm:"admin"`
 	}
 }
 
@@ -317,11 +321,15 @@ type StorageMinerStruct struct {
 		SectorSetExpectedSealDuration func(context.Context, time.Duration) error                                                    `perm:"write"`
 		SectorGetExpectedSealDuration func(context.Context) (time.Duration, error)                                                  `perm:"read"`
 		SectorsUpdate                 func(context.Context, abi.SectorNumber, api.SectorState) error                                `perm:"admin"`
-		SectorRemove                  func(context.Context, abi.SectorNumber) error                                                 `perm:"admin"`
-		SectorTerminate               func(context.Context, abi.SectorNumber) error                                                 `perm:"admin"`
-		SectorTerminateFlush          func(ctx context.Context) (*cid.Cid, error)                                                   `perm:"admin"`
-		SectorTerminatePending        func(ctx context.Context) ([]abi.SectorID, error)                                             `perm:"admin"`
-		SectorMarkForUpgrade          func(ctx context.Context, id abi.SectorNumber) error                                          `perm:"admin"`
+
+		SetMaxPreCommitGasFee func(context.Context, abi.TokenAmount) error `perm:"admin"`
+		SetMaxCommitGasFee    func(context.Context, abi.TokenAmount) error `perm:"admin"`
+
+		SectorRemove           func(context.Context, abi.SectorNumber) error        `perm:"admin"`
+		SectorTerminate        func(context.Context, abi.SectorNumber) error        `perm:"admin"`
+		SectorTerminateFlush   func(ctx context.Context) (*cid.Cid, error)          `perm:"admin"`
+		SectorTerminatePending func(ctx context.Context) ([]abi.SectorID, error)    `perm:"admin"`
+		SectorMarkForUpgrade   func(ctx context.Context, id abi.SectorNumber) error `perm:"admin"`
 
 		WorkerConnect func(context.Context, string) error                                `perm:"admin" retry:"true"` // TODO: worker perm
 		WorkerStats   func(context.Context) (map[uuid.UUID]storiface.WorkerStats, error) `perm:"admin"`
@@ -339,8 +347,15 @@ type StorageMinerStruct struct {
 		ReturnReadPiece       func(ctx context.Context, callID storiface.CallID, ok bool, err *storiface.CallError) error                   `perm:"admin" retry:"true"`
 		ReturnFetch           func(ctx context.Context, callID storiface.CallID, err *storiface.CallError) error                            `perm:"admin" retry:"true"`
 
-		SealingSchedDiag func(context.Context, bool) (interface{}, error)       `perm:"admin"`
-		SealingAbort     func(ctx context.Context, call storiface.CallID) error `perm:"admin"`
+		SealingSchedDiag                     func(context.Context, bool) (interface{}, error)                                `perm:"admin"`
+		SealingAbort                         func(ctx context.Context, call storiface.CallID) error                          `perm:"admin"`
+		ScheduleAbort                        func(ctx context.Context, sector storage.SectorRef) error                       `perm:"admin"`
+		SetScheduleGpuConcurrentTasks        func(ctx context.Context, gpuTasks int) error                                   `perm:"admin"`
+		SetScheduleConcurrent                func(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error `perm:"admin"`
+		SetWorkerMode                        func(ctx context.Context, address string, mode string) error                    `perm:"admin"`
+		SealingSetPreferSectorOnChain        func(ctx context.Context, prefer bool) error                                    `perm:"admin"`
+		SealingSetEnableAutoPledge           func(ctx context.Context, enable bool) error                                    `perm:"admin"`
+		SealingSetAutoPledgeBalanceThreshold func(ctx context.Context, threshold abi.TokenAmount) error                      `perm:"admin"`
 
 		StorageList          func(context.Context) (map[stores.ID][]stores.Decl, error)                                                                                   `perm:"admin"`
 		StorageLocal         func(context.Context) (map[stores.ID]string, error)                                                                                          `perm:"admin"`
@@ -410,8 +425,10 @@ type WorkerStruct struct {
 		TaskDisable func(ctx context.Context, tt sealtasks.TaskType) error `perm:"admin"`
 		TaskEnable  func(ctx context.Context, tt sealtasks.TaskType) error `perm:"admin"`
 
-		Remove          func(ctx context.Context, sector abi.SectorID) error `perm:"admin"`
-		StorageAddLocal func(ctx context.Context, path string) error         `perm:"admin"`
+		Remove           func(ctx context.Context, sector abi.SectorID) error           `perm:"admin"`
+		StorageAddLocal  func(ctx context.Context, path string) error                   `perm:"admin"`
+		SetEnvironment   func(ctx context.Context, envName string, envVal string) error `perm:"admin"`
+		UnsetEnvironment func(ctx context.Context, envName string) error                `perm:"admin"`
 
 		SetEnabled func(ctx context.Context, enabled bool) error `perm:"admin"`
 		Enabled    func(ctx context.Context) (bool, error)       `perm:"admin"`
@@ -431,6 +448,7 @@ type GatewayStruct struct {
 		ChainGetTipSetByHeight            func(ctx context.Context, h abi.ChainEpoch, tsk types.TipSetKey) (*types.TipSet, error)
 		ChainHasObj                       func(context.Context, cid.Cid) (bool, error)
 		ChainHead                         func(ctx context.Context) (*types.TipSet, error)
+		ChainComputeBaseFee               func(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error)
 		ChainNotify                       func(ctx context.Context) (<-chan []*api.HeadChange, error)
 		ChainReadObj                      func(context.Context, cid.Cid) ([]byte, error)
 		GasEstimateMessageGas             func(ctx context.Context, msg *types.Message, spec *api.MessageSendSpec, tsk types.TipSetKey) (*types.Message, error)
@@ -738,6 +756,10 @@ func (c *FullNodeStruct) MinerCreateBlock(ctx context.Context, bt *api.BlockTemp
 
 func (c *FullNodeStruct) ChainHead(ctx context.Context) (*types.TipSet, error) {
 	return c.Internal.ChainHead(ctx)
+}
+
+func (c *FullNodeStruct) ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error) {
+	return c.Internal.ChainComputeBaseFee(ctx, ts)
 }
 
 func (c *FullNodeStruct) ChainGetRandomnessFromTickets(ctx context.Context, tsk types.TipSetKey, personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) (abi.Randomness, error) {
@@ -1256,6 +1278,14 @@ func (c *FullNodeStruct) CreateBackup(ctx context.Context, fpath string) error {
 	return c.Internal.CreateBackup(ctx, fpath)
 }
 
+func (c *FullNodeStruct) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return c.Internal.SetMaxPreCommitGasFee(ctx, fee)
+}
+
+func (c *FullNodeStruct) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return c.Internal.SetMaxCommitGasFee(ctx, fee)
+}
+
 // StorageMinerStruct
 
 func (c *StorageMinerStruct) ActorAddress(ctx context.Context) (address.Address, error) {
@@ -1318,6 +1348,14 @@ func (c *StorageMinerStruct) SectorSetExpectedSealDuration(ctx context.Context, 
 
 func (c *StorageMinerStruct) SectorGetExpectedSealDuration(ctx context.Context) (time.Duration, error) {
 	return c.Internal.SectorGetExpectedSealDuration(ctx)
+}
+
+func (c *StorageMinerStruct) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return c.Internal.SetMaxPreCommitGasFee(ctx, fee)
+}
+
+func (c *StorageMinerStruct) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return c.Internal.SetMaxCommitGasFee(ctx, fee)
 }
 
 func (c *StorageMinerStruct) SectorsUpdate(ctx context.Context, id abi.SectorNumber, state api.SectorState) error {
@@ -1402,6 +1440,34 @@ func (c *StorageMinerStruct) ReturnFetch(ctx context.Context, callID storiface.C
 
 func (c *StorageMinerStruct) SealingSchedDiag(ctx context.Context, doSched bool) (interface{}, error) {
 	return c.Internal.SealingSchedDiag(ctx, doSched)
+}
+
+func (c *StorageMinerStruct) SealingSetEnableAutoPledge(ctx context.Context, enable bool) error {
+	return c.Internal.SealingSetEnableAutoPledge(ctx, enable)
+}
+
+func (c *StorageMinerStruct) SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error {
+	return c.Internal.SealingSetAutoPledgeBalanceThreshold(ctx, threshold)
+}
+
+func (c *StorageMinerStruct) SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error {
+	return c.Internal.SealingSetPreferSectorOnChain(ctx, prefer)
+}
+
+func (c *StorageMinerStruct) SetWorkerMode(ctx context.Context, address string, mode string) error {
+	return c.Internal.SetWorkerMode(ctx, address, mode)
+}
+
+func (c *StorageMinerStruct) SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error {
+	return c.Internal.SetScheduleConcurrent(ctx, idleCpus, usableCpus, apConcurrent)
+}
+
+func (c *StorageMinerStruct) SetScheduleGpuConcurrentTasks(ctx context.Context, gpuTasks int) error {
+	return c.Internal.SetScheduleGpuConcurrentTasks(ctx, gpuTasks)
+}
+
+func (c *StorageMinerStruct) ScheduleAbort(ctx context.Context, sector storage.SectorRef) error {
+	return c.Internal.ScheduleAbort(ctx, sector)
 }
 
 func (c *StorageMinerStruct) SealingAbort(ctx context.Context, call storiface.CallID) error {
@@ -1634,6 +1700,10 @@ func (w *WorkerStruct) SealPreCommit1(ctx context.Context, sector storage.Sector
 	return w.Internal.SealPreCommit1(ctx, sector, ticket, pieces)
 }
 
+func (w *WorkerStruct) MovingCache(ctx context.Context, sector storage.SectorRef) error {
+	return nil //w.Internal.Moving(ctx, sector)
+}
+
 func (w *WorkerStruct) SealPreCommit2(ctx context.Context, sector storage.SectorRef, pc1o storage.PreCommit1Out) (storiface.CallID, error) {
 	return w.Internal.SealPreCommit2(ctx, sector, pc1o)
 }
@@ -1686,6 +1756,14 @@ func (w *WorkerStruct) StorageAddLocal(ctx context.Context, path string) error {
 	return w.Internal.StorageAddLocal(ctx, path)
 }
 
+func (w *WorkerStruct) SetEnvironment(ctx context.Context, envName string, envVal string) error {
+	return w.Internal.SetEnvironment(ctx, envName, envVal)
+}
+
+func (w *WorkerStruct) UnsetEnvironment(ctx context.Context, envName string) error {
+	return w.Internal.UnsetEnvironment(ctx, envName)
+}
+
 func (w *WorkerStruct) SetEnabled(ctx context.Context, enabled bool) error {
 	return w.Internal.SetEnabled(ctx, enabled)
 }
@@ -1728,6 +1806,10 @@ func (g GatewayStruct) ChainHasObj(ctx context.Context, c cid.Cid) (bool, error)
 
 func (g GatewayStruct) ChainHead(ctx context.Context) (*types.TipSet, error) {
 	return g.Internal.ChainHead(ctx)
+}
+
+func (c *GatewayStruct) ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error) {
+	return c.Internal.ChainComputeBaseFee(ctx, ts)
 }
 
 func (g GatewayStruct) ChainNotify(ctx context.Context) (<-chan []*api.HeadChange, error) {

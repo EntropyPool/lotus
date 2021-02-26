@@ -257,8 +257,8 @@ func SetupStorageMiners(ctx context.Context, cs *store.ChainStore, sroot cid.Cid
 
 				// we've added fake power for this sector above, remove it now
 				err = vm.MutateState(ctx, power.Address, func(cst cbor.IpldStore, st *power0.State) error {
-					st.TotalQualityAdjPower = types.BigSub(st.TotalQualityAdjPower, sectorWeight) //nolint:scopelint
-					st.TotalRawBytePower = types.BigSub(st.TotalRawBytePower, types.NewInt(uint64(m.SectorSize)))
+					// st.TotalQualityAdjPower = types.BigSub(st.TotalQualityAdjPower, sectorWeight) //nolint:scopelint
+					// st.TotalRawBytePower = types.BigSub(st.TotalRawBytePower, types.NewInt(uint64(m.SectorSize)))
 					return nil
 				})
 				if err != nil {
@@ -310,11 +310,11 @@ func SetupStorageMiners(ctx context.Context, cs *store.ChainStore, sroot cid.Cid
 	// Sanity-check total network power
 	err = vm.MutateState(ctx, power.Address, func(cst cbor.IpldStore, st *power0.State) error {
 		if !st.TotalRawBytePower.Equals(rawPow) {
-			return xerrors.Errorf("st.TotalRawBytePower doesn't match previously calculated rawPow")
+			return xerrors.Errorf("st.TotalRawBytePower [%v] doesn't match previously calculated rawPow [%v]", st.TotalRawBytePower, rawPow)
 		}
 
 		if !st.TotalQualityAdjPower.Equals(qaPow) {
-			return xerrors.Errorf("st.TotalQualityAdjPower doesn't match previously calculated qaPow")
+			return xerrors.Errorf("st.TotalQualityAdjPower [%v] doesn't match previously calculated qaPow [%v]", st.TotalQualityAdjPower, qaPow)
 		}
 
 		return nil

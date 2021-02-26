@@ -12,6 +12,7 @@ import (
 	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
+	"os"
 )
 
 type worker struct {
@@ -43,6 +44,16 @@ func (w *worker) StorageAddLocal(ctx context.Context, path string) error {
 		return xerrors.Errorf("get storage config: %w", err)
 	}
 
+	return nil
+}
+
+func (w *worker) SetEnvironment(ctx context.Context, envName string, envVal string) error {
+	os.Setenv(envName, envVal)
+	return nil
+}
+
+func (w *worker) UnsetEnvironment(ctx context.Context, envName string) error {
+	os.Unsetenv(envName)
 	return nil
 }
 

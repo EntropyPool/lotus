@@ -88,7 +88,7 @@ func infoCmdAct(cctx *cli.Context) error {
 	case basefee.GreaterThan(big.NewInt(100_000_000)): // 100 uFIL
 		gasCol = []color.Attribute{color.FgGreen}
 	}
-	fmt.Printf(" [basefee %s]", color.New(gasCol...).Sprint(types.FIL(basefee).Short()))
+	fmt.Printf(" [basefee %s [%v]]", color.New(gasCol...).Sprint(types.FIL(basefee).Short()), basefee)
 
 	fmt.Println()
 

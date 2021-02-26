@@ -50,9 +50,15 @@ BUILD_DEPS+=ffi-version-check
 
 $(MODULES): build/.update-modules ;
 # dummy file that marks the last time modules were updated
+ifeq ($(FETCH_LOCAL), true)
+build/.update-modules:
+	touch $@
+else
 build/.update-modules:
 	git submodule update --init --recursive
+	git submodule update --init --recursive --remote --merge
 	touch $@
+endif
 
 # end git modules
 

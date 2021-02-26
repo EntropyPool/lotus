@@ -13,7 +13,11 @@ import (
 	gopath "path"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
+
+	"github.com/hashicorp/go-multierror"
 
 	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
@@ -22,7 +26,7 @@ import (
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/specs-storage/storage"
 
-	"github.com/hashicorp/go-multierror"
+	files "github.com/ipfs/go-ipfs-files"
 	"golang.org/x/xerrors"
 )
 
@@ -186,10 +190,13 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 		return si[i].Weight < si[j].Weight
 	})
 
+	for _, info := range si {
+		log.Infow("acquire from remote", "URLs", info.URLs)
+	}
 	var merr error
 	for _, info := range si {
 		// TODO: see what we have local, prefer that
-
+		log.Debugw("acquire from remote", "URLs", info.URLs)
 		for _, url := range info.URLs {
 			tempDest, err := tempFetchDest(dest, true)
 			if err != nil {
@@ -200,10 +207,13 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 				return "", xerrors.Errorf("removing dest: %w", err)
 			}
 
-			err = r.fetch(ctx, url, tempDest)
-			if err != nil {
-				merr = multierror.Append(merr, xerrors.Errorf("fetch error %s (storage %s) -> %s: %w", url, info.ID, tempDest, err))
-				continue
+			if e := r.fetchex(ctx, url, tempDest); e != nil {
+				log.Warnw("fetch ex error", "url", url, "storage", info.ID, "error", e)
+				err = r.fetch(ctx, url, tempDest)
+				if err != nil {
+					merr = multierror.Append(merr, xerrors.Errorf("fetch error %s (storage %s) -> %s: %w", url, info.ID, tempDest, err))
+					continue
+				}
 			}
 
 			if err := move(tempDest, dest); err != nil {
@@ -211,8 +221,9 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 			}
 
 			if merr != nil {
-				log.Warnw("acquireFromRemote encountered errors when fetching sector from remote", "errors", merr)
+				return "", xerrors.Errorf("acquireFromRemote encountered errors when fetching sector from remote", "errors", merr)
 			}
+			log.Infof("fetch move over (storage %s) %s -> %s", info.ID, tempDest, dest)
 			return url, nil
 		}
 	}
@@ -221,10 +232,10 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 }
 
 func (r *Remote) fetch(ctx context.Context, url, outname string) error {
-	log.Infof("Fetch %s -> %s", url, outname)
+	log.Debugf("Fetch %s -> %s", url, outname)
 
 	if len(r.limit) >= cap(r.limit) {
-		log.Infof("Throttling fetch, %d already running", len(r.limit))
+		log.Debugf("Throttling fetch, %d already running", len(r.limit))
 	}
 
 	// TODO: Smarter throttling
@@ -288,6 +299,141 @@ func (r *Remote) fetch(ctx context.Context, url, outname string) error {
 			return err
 		}
 		return f.Close()
+	default:
+		return xerrors.Errorf("unknown content type: '%s'", mediatype)
+	}
+}
+
+func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
+	log.Debugf("FetchEx %s -> %s", url, outname)
+
+	if len(r.limit) >= cap(r.limit) {
+		log.Debugf("Throttling fetch, %d already running", len(r.limit))
+	}
+
+	select {
+	case r.limit <- struct{}{}:
+		defer func() { <-r.limit }()
+	case <-ctx.Done():
+		return xerrors.Errorf("context error while waiting for fetch limiter: %w", ctx.Err())
+	}
+
+	req, err := http.NewRequest("LIST", url, nil)
+	if err != nil {
+		return xerrors.Errorf("request: %w", err)
+	}
+	req.Header = r.auth
+	req = req.WithContext(ctx)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return xerrors.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close() // nolint
+
+	if resp.StatusCode != 200 {
+		return xerrors.Errorf("non-200 code: %d", resp.StatusCode)
+	}
+
+	if err := os.RemoveAll(outname); err != nil {
+		return xerrors.Errorf("removing dest: %w", err)
+	}
+
+	flists := resp.Header.Get("Files-List")
+	log.Debugw("FetchEx get remote Files-List", "files", flists)
+	targets := strings.Split(flists, ";")
+	if len(targets) == 0 {
+		return xerrors.Errorf("There is no file to fetch")
+	}
+
+	//TODO: check bandwith
+	parallel := int(3)
+	env := os.Getenv("LOTUS_FETCH_PARALLEL")
+	if n, err := strconv.Atoi(env); err == nil {
+		parallel = n
+	}
+
+	type remoteFileDesc struct {
+		url string
+		out string
+	}
+
+	taskCh := make(chan remoteFileDesc, parallel)
+	var wg sync.WaitGroup
+	wg.Add(parallel)
+
+	for i := 0; i < parallel; i++ {
+		go func(ctx context.Context) {
+			for {
+				select {
+				case remoteFile, ok := <-taskCh:
+					if !ok {
+						wg.Done()
+						return
+					}
+					if err = r.fetchFile(ctx, remoteFile.url, remoteFile.out); err != nil {
+						log.Errorw("fetch file err", "url", remoteFile.url, "outname", remoteFile.out, "error", err)
+						wg.Done()
+						return
+					}
+					log.Debugw("fetch file", "url", remoteFile.url, "outname", remoteFile.out)
+				}
+			}
+		}(ctx)
+	}
+
+	for _, target := range targets {
+		targetUrl := url
+		outName := outname
+		if strings.HasSuffix(target, ".fp") {
+			continue
+		}
+		if 0 != len(target) {
+			if err = os.MkdirAll(outname, 0755); err != nil { // nolint
+				return xerrors.Errorf("mkdir: %w", err)
+			}
+			targetUrl += string(os.PathSeparator) + target
+			outName += string(os.PathSeparator) + target
+		}
+		taskCh <- remoteFileDesc{url: targetUrl, out: outName}
+	}
+
+	close(taskCh)
+	wg.Wait()
+
+	log.Debugw("fetch sector all over", "url", url, "outname", outname, "[", err, "]")
+
+	return err
+}
+
+func (r *Remote) fetchFile(ctx context.Context, url, outname string) error {
+	log.Debugf("Fetch File %s -> %s", url, outname)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return xerrors.Errorf("request: %w", err)
+	}
+	req.Header = r.auth
+	req = req.WithContext(ctx)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return xerrors.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close() // nolint
+
+	if resp.StatusCode != 200 {
+		return xerrors.Errorf("non-200 code: %d", resp.StatusCode)
+	}
+
+	mediatype, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if err != nil {
+		return xerrors.Errorf("parse media type: %w", err)
+	}
+
+	switch mediatype {
+	case "application/octet-stream":
+		return files.WriteTo(files.NewReaderFile(resp.Body), outname)
 	default:
 		return xerrors.Errorf("unknown content type: '%s'", mediatype)
 	}

@@ -42,6 +42,14 @@ func (m *Miner) ForceSectorState(ctx context.Context, id abi.SectorNumber, state
 	return m.sealing.ForceSectorState(ctx, id, state)
 }
 
+func (m *Miner) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return m.sealing.SetMaxPreCommitGasFee(ctx, fee)
+}
+
+func (m *Miner) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return m.sealing.SetMaxCommitGasFee(ctx, fee)
+}
+
 func (m *Miner) RemoveSector(ctx context.Context, id abi.SectorNumber) error {
 	return m.sealing.Remove(ctx, id)
 }

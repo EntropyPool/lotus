@@ -314,6 +314,39 @@ func (sm *StorageMinerAPI) SectorGetSealDelay(ctx context.Context) (time.Duratio
 	return cfg.WaitDealsDelay, nil
 }
 
+func (sm *StorageMinerAPI) SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return xerrors.Errorf("get config: %w", err)
+	}
+
+	cfg.PreferSectorOnChain = prefer
+
+	return sm.SetSealingConfigFunc(cfg)
+}
+
+func (sm *StorageMinerAPI) SealingSetEnableAutoPledge(ctx context.Context, enable bool) error {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return xerrors.Errorf("get config: %w", err)
+	}
+
+	cfg.EnableAutoPledge = enable
+
+	return sm.SetSealingConfigFunc(cfg)
+}
+
+func (sm *StorageMinerAPI) SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return xerrors.Errorf("get config: %w", err)
+	}
+
+	cfg.AutoPledgeBalanceThreshold = threshold
+
+	return sm.SetSealingConfigFunc(cfg)
+}
+
 func (sm *StorageMinerAPI) SectorSetExpectedSealDuration(ctx context.Context, delay time.Duration) error {
 	return sm.SetExpectedSealDurationFunc(delay)
 }
@@ -324,6 +357,14 @@ func (sm *StorageMinerAPI) SectorGetExpectedSealDuration(ctx context.Context) (t
 
 func (sm *StorageMinerAPI) SectorsUpdate(ctx context.Context, id abi.SectorNumber, state api.SectorState) error {
 	return sm.Miner.ForceSectorState(ctx, id, sealing.SectorState(state))
+}
+
+func (sm *StorageMinerAPI) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return sm.Miner.SetMaxPreCommitGasFee(ctx, fee)
+}
+
+func (sm *StorageMinerAPI) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return sm.Miner.SetMaxCommitGasFee(ctx, fee)
 }
 
 func (sm *StorageMinerAPI) SectorRemove(ctx context.Context, id abi.SectorNumber) error {
@@ -363,6 +404,22 @@ func (sm *StorageMinerAPI) SealingSchedDiag(ctx context.Context, doSched bool) (
 
 func (sm *StorageMinerAPI) SealingAbort(ctx context.Context, call storiface.CallID) error {
 	return sm.StorageMgr.Abort(ctx, call)
+}
+
+func (sm *StorageMinerAPI) SetWorkerMode(ctx context.Context, address string, mode string) error {
+	return sm.StorageMgr.SetWorkerMode(ctx, address, mode)
+}
+
+func (sm *StorageMinerAPI) SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error {
+	return sm.StorageMgr.SetScheduleConcurrent(ctx, idleCpus, usableCpus, apConcurrent)
+}
+
+func (sm *StorageMinerAPI) SetScheduleGpuConcurrentTasks(ctx context.Context, gpuTasks int) error {
+	return sm.StorageMgr.SetScheduleGpuConcurrentTasks(ctx, gpuTasks)
+}
+
+func (sm *StorageMinerAPI) ScheduleAbort(ctx context.Context, sector sto.SectorRef) error {
+	return sm.StorageMgr.ScheduleAbort(ctx, sector)
 }
 
 func (sm *StorageMinerAPI) MarketImportDealData(ctx context.Context, propCid cid.Cid, path string) error {

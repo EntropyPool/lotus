@@ -67,8 +67,12 @@ type SealingAPI interface {
 	StateMinerProvingDeadline(context.Context, address.Address, TipSetToken) (*dline.Info, error)
 	StateMinerPartitions(ctx context.Context, m address.Address, dlIdx uint64, tok TipSetToken) ([]api.Partition, error)
 	SendMsg(ctx context.Context, from, to address.Address, method abi.MethodNum, value, maxFee abi.TokenAmount, params []byte) (cid.Cid, error)
+	EstimateMsgGasLimit(ctx context.Context, from, to address.Address, method abi.MethodNum, value abi.TokenAmount, params []byte) (int64, error)
 	ChainHead(ctx context.Context) (TipSetToken, abi.ChainEpoch, error)
 	ChainGetMessage(ctx context.Context, mc cid.Cid) (*types.Message, error)
+	GasEstimateGasLimit(context.Context, *types.Message) (int64, error)
+	ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error)
+	ChainGetParentBaseFee(ctx context.Context) (abi.TokenAmount, error)
 	ChainGetRandomnessFromBeacon(ctx context.Context, tok TipSetToken, personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) (abi.Randomness, error)
 	ChainGetRandomnessFromTickets(ctx context.Context, tok TipSetToken, personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) (abi.Randomness, error)
 	ChainReadObj(context.Context, cid.Cid) ([]byte, error)
@@ -164,11 +168,23 @@ func New(api SealingAPI, fc FeeConfig, events Events, maddr address.Address, ds 
 	return s
 }
 
+func (m *Sealing) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	m.feeCfg.MaxPreCommitGasFee = fee
+	return nil
+}
+
+func (m *Sealing) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	m.feeCfg.MaxCommitGasFee = fee
+	return nil
+}
+
 func (m *Sealing) Run(ctx context.Context) error {
 	if err := m.restartSectors(ctx); err != nil {
 		log.Errorf("%+v", err)
 		return xerrors.Errorf("failed load sector states: %w", err)
 	}
+
+	go m.AutoPledgeTask(ctx)
 
 	return nil
 }

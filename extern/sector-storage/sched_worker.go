@@ -2,6 +2,7 @@ package sectorstorage
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"time"
 
 	"golang.org/x/xerrors"
@@ -33,6 +34,20 @@ func (sh *scheduler) runWorker(ctx context.Context, w Worker) error {
 	if err != nil {
 		return xerrors.Errorf("getting worker session: %w", err)
 	}
+
+	wid := WorkerID(sessID)
+
+	if sh.useExtScheduler() {
+		worker := &eWorkerHandle{
+			w:    w,
+			info: info,
+			wt:   sh.workTracker,
+			wid:  uuid.UUID(wid),
+		}
+		sh.esched.NewWorker(worker)
+		return nil
+	}
+
 	if sessID == ClosedWorkerID {
 		return xerrors.Errorf("worker already closed")
 	}
@@ -48,8 +63,6 @@ func (sh *scheduler) runWorker(ctx context.Context, w Worker) error {
 		closingMgr: make(chan struct{}),
 		closedMgr:  make(chan struct{}),
 	}
-
-	wid := WorkerID(sessID)
 
 	sh.workersLk.Lock()
 	_, exist := sh.workers[wid]

@@ -319,6 +319,91 @@ func (s SealingAPIAdapter) SendMsg(ctx context.Context, from, to address.Address
 	return smsg.Cid(), nil
 }
 
+func (s SealingAPIAdapter) EstimateMsgGasLimit(ctx context.Context, from, to address.Address, method abi.MethodNum, value abi.TokenAmount, params []byte) (int64, error) {
+	msg := types.Message{
+		To:     to,
+		From:   from,
+		Value:  value,
+		Method: method,
+		Params: params,
+	}
+
+	return s.delegate.GasEstimateGasLimit(ctx, &msg, types.TipSetKey{})
+}
+
+func (s SealingAPIAdapter) ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error) {
+	baseFee, err := s.delegate.ChainComputeBaseFee(ctx, ts)
+	if err != nil {
+		return abi.NewTokenAmount(0), err
+	}
+	return baseFee, nil
+}
+
+func (s SealingAPIAdapter) ChainGetParentBaseFee(ctx context.Context) (abi.TokenAmount, error) {
+	head, err := s.delegate.ChainHead(ctx)
+	if err != nil {
+		return abi.NewTokenAmount(0), err
+	}
+
+	var feeEpochs int64 = int64(head.Height())
+	if 600 < feeEpochs {
+		feeEpochs = 600
+	}
+
+	baseFee := abi.NewTokenAmount(0)
+    feeCount := big.NewInt(0)
+
+	for ; 0 < feeEpochs; feeEpochs -= 1 {
+        fee := abi.NewTokenAmount(0)
+
+		epoch := head.Height() - abi.ChainEpoch(feeEpochs)
+		ts, err := s.delegate.ChainGetTipSetByHeight(ctx, epoch, types.TipSetKey{})
+        if err != nil {
+            log.Errorf("cannot get tipset from epoch %v, %v", epoch, err)
+            continue
+        }
+
+		if len(ts.Blocks()) > 0 {
+            fee = ts.Blocks()[0].ParentBaseFee
+		} else {
+            fee, err = s.delegate.ChainComputeBaseFee(ctx, ts)
+            if err != nil {
+                log.Errorf("cannot caculate fee from epoch %v, %v", epoch, err)
+                continue
+            }
+		}
+		baseFee = big.Add(baseFee, fee)
+        feeCount = big.Add(feeCount, big.NewInt(1))
+	}
+
+    headFee := abi.NewTokenAmount(0)
+    if len(head.Blocks()) > 0 {
+        headFee = head.Blocks()[0].ParentBaseFee
+    } else {
+        headFee, err = s.delegate.ChainComputeBaseFee(ctx, head)
+        if err != nil {
+            return baseFee, err
+        }
+    }
+
+    if big.Cmp(feeCount, big.NewInt(0)) == 0 {
+        return headFee, nil
+    }
+
+	log.Infof("current base fee %v =? head fee %v", baseFee, headFee)
+
+    baseFee = big.Div(baseFee, feeCount)
+    if big.Cmp(baseFee, headFee) < 0 {
+        return headFee, nil
+    }
+
+	return baseFee, nil
+}
+
+func (s SealingAPIAdapter) GasEstimateGasLimit(ctx context.Context, msg *types.Message) (int64, error) {
+	return s.delegate.GasEstimateGasLimit(ctx, msg, types.TipSetKey{})
+}
+
 func (s SealingAPIAdapter) ChainHead(ctx context.Context) (sealing.TipSetToken, abi.ChainEpoch, error) {
 	head, err := s.delegate.ChainHead(ctx)
 	if err != nil {
