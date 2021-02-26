@@ -51,7 +51,7 @@ func LicenseChecker(username string) {
 			checkLicense(cli)
 		case <-killTimer.C:
 			if shouldStop {
-				os.Exit(-1)
+				// os.Exit(-1)
 			}
 		}
 	}
