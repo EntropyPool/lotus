@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"math/bits"
 	"os"
+	"os/exec"
 	"runtime"
 
 	"github.com/ipfs/go-cid"
@@ -98,11 +99,6 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 			return abi.PieceInfo{}, xerrors.Errorf("acquire unsealed sector: %w", err)
 		}
 
-		stagedFile, err = createPartialFile(maxPieceSize, stagedPath.Unsealed)
-		if err != nil {
-			return abi.PieceInfo{}, xerrors.Errorf("creating unsealed sector file: %w", err)
-		}
-
 		copyPattern := false
 		_, err = os.Stat(patternFilehash)
 		if err == nil {
@@ -126,25 +122,21 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		}
 
 		if copyPattern {
-			src, err := os.Open(patternFilepath)
-			if err != nil {
-				log.Errorf("cannot open %v [%v]", patternFilepath, err)
+			cmd := exec.Command("cp", patternFilepath, stagedFile.path)
+			err = cmd.Run()
+			if err == nil {
+				log.Infof("copy pattern %v -> %v", patternFilepath, stagedFile.path)
+				fromPattern = true
 			} else {
-				defer src.Close()
-				dst, err := os.Open(stagedFile.path)
-				if err != nil {
-					log.Errorf("cannot open %v [%v]", stagedFile.path, err)
-				} else {
-					defer dst.Close()
-					_, err := io.Copy(dst, src)
-					if err == nil {
-						log.Infof("copy pattern %v -> %v", patternFilepath, stagedFile.path)
-						fromPattern = true
-					} else {
-						log.Errorf("cannot copy %v -> %v [%v]", patternFilepath, stagedFile.path, err)
-					}
-				}
+				log.Errorf("cannot copy %v -> %v [%v]", patternFilepath, stagedFile.path, err)
 			}
+			stagedFile, err = openPartialFile(maxPieceSize, stagedPath.Unsealed)
+		} else {
+			stagedFile, err = createPartialFile(maxPieceSize, stagedPath.Unsealed)
+		}
+
+		if err != nil {
+			return abi.PieceInfo{}, xerrors.Errorf("creating unsealed sector file: %w", err)
 		}
 
 	} else {
@@ -263,23 +255,14 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 
 	if !fromPattern {
 		go func(path string) {
-			src, err := os.Open(path)
-			if err != nil {
-				log.Errorf("cannot open %v [%v]", path, err)
-				return
-			}
-			defer src.Close()
-			dst, err := os.Create(patternFilepath)
-			if err != nil {
-				log.Errorf("cannot open %v [%v]", path, err)
-				return
-			}
-			defer dst.Close()
-			_, err = io.Copy(dst, src)
+			cmd := exec.Command("cp", path, patternFilepath)
+			err = cmd.Run()
 			if err != nil {
 				log.Errorf("cannot copy %v -> %v [%v]", path, patternFilepath, err)
 				return
 			}
+			log.Infof("copy pattern %v -> %v", path, patternFilepath)
+
 			os.Create(patternFilehash)
 			log.Infof("save pattern %v -> %v", path, patternFilepath)
 		}(stagedFile.path)
