@@ -776,6 +776,7 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	for _, worker := range bucket.workers {
 		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit2)
 		waitingJobs += bucket.waitingJobs(worker, sealtasks.TTCommit2)
+
 		waitingJobs += worker.typedTaskCount(sealtasks.TTPreCommit2, false)
 		waitingJobs += worker.typedTaskCount(sealtasks.TTCommit2, false)
 
@@ -784,14 +785,14 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 
 		curConcurrentLimit := worker.maxConcurrent[bucket.spt][sealtasks.TTPreCommit1]
 
-		pc1Count := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
-		pc1Count += worker.typedTaskCount(sealtasks.TTPreCommit1, false)
+		pc1Waiting := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
+		pc1Running += worker.typedTaskCount(sealtasks.TTPreCommit1, false)
 
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
 				if taskType == sealtasks.TTAddPiece {
 					if bucket.concurrentAP <= apCount {
-						if 0 < waitingJobs || curConcurrentLimit <= pc1Count {
+						if 0 < waitingJobs || curConcurrentLimit <= pc1Waiting+pc1Running || 0 < pc1Waiting {
 							continue
 						}
 					}
