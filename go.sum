@@ -54,6 +54,8 @@ github.com/NpoolRD/fbc-license v0.0.0-20210221084614-0ff5a5f78be8 h1:4hDEJDH/GuL
 github.com/NpoolRD/fbc-license v0.0.0-20210221084614-0ff5a5f78be8/go.mod h1:56juYMRUYIG+KpK7kvl/1y08CpFZqjNo31NC87BVcLM=
 github.com/NpoolRD/fbc-license v0.0.0-20210221093013-14162b0a6d0c h1:FpJh9qczHF9xXKPeN6wW3TjFq8NsOZr+vjKjwiBrPck=
 github.com/NpoolRD/fbc-license v0.0.0-20210221093013-14162b0a6d0c/go.mod h1:56juYMRUYIG+KpK7kvl/1y08CpFZqjNo31NC87BVcLM=
+github.com/NpoolRD/fbc-license v0.0.0-20210225141310-d8552f4ff107 h1:4BmOZZkashqa/N7QKh1mj7BThFmfuFZR9/MIAXGlwgM=
+github.com/NpoolRD/fbc-license v0.0.0-20210225141310-d8552f4ff107/go.mod h1:56juYMRUYIG+KpK7kvl/1y08CpFZqjNo31NC87BVcLM=
 github.com/NpoolRD/http-daemon v0.0.0-20210210091512-241ac31803ef h1:hFDeLUZfb6TJ1p8butePgmGzTzZ1duiNZmgjfV0NSAY=
 github.com/NpoolRD/http-daemon v0.0.0-20210210091512-241ac31803ef/go.mod h1:1zc5D8V0YuVLbkAOLaWY7V4jaZ4iqOibGvJcx+SpZOM=
 github.com/OneOfOne/xxhash v1.2.2 h1:KMrpdQIwFcEqXDklaen+P1axHaj9BSKzvpUUfnHldSE=

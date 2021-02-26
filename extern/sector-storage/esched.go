@@ -786,7 +786,7 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 		curConcurrentLimit := worker.maxConcurrent[bucket.spt][sealtasks.TTPreCommit1]
 
 		pc1Waiting := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
-		pc1Running += worker.typedTaskCount(sealtasks.TTPreCommit1, false)
+		pc1Running := worker.typedTaskCount(sealtasks.TTPreCommit1, false)
 
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
@@ -811,8 +811,9 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 				}
 				bucket.reqQueue.mutex.Unlock()
 
-				log.Infof("<%s> peek %v %v reqs (waiting %v, ap count %v, pc1 count %v) [%s]",
-					eschedTag, peekReqs, taskType, waitingJobs, apCount, pc1Count, worker.info.Address)
+				log.Infof("<%s> peek %v %v reqs (waiting %v, ap count %v, pc1 count %v (%v + %v)) [%s]",
+					eschedTag, peekReqs, taskType, waitingJobs, apCount, pc1Waiting + pc1Running,
+					pc1Waiting, pc1Running, worker.info.Address)
 			}
 		}
 	}
