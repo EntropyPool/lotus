@@ -122,13 +122,13 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		}
 
 		if copyPattern {
-			cmd := exec.Command("cp", patternFilepath, stagedFile.path)
+			cmd := exec.Command("cp", patternFilepath, stagedPath.Unsealed)
 			err = cmd.Run()
 			if err == nil {
-				log.Infof("copy pattern %v -> %v", patternFilepath, stagedFile.path)
+				log.Infof("copy pattern %v -> %v", patternFilepath, stagedPath.Unsealed)
 				fromPattern = true
 			} else {
-				log.Errorf("cannot copy %v -> %v [%v]", patternFilepath, stagedFile.path, err)
+				log.Errorf("cannot copy %v -> %v [%v]", patternFilepath, stagedPath.Unsealed, err)
 			}
 			stagedFile, err = openPartialFile(maxPieceSize, stagedPath.Unsealed)
 		} else {
@@ -151,11 +151,6 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		}
 	}
 
-	w, err := stagedFile.Writer(storiface.UnpaddedByteIndex(offset).Padded(), pieceSize.Padded())
-	if err != nil {
-		return abi.PieceInfo{}, xerrors.Errorf("getting partial file writer: %w", err)
-	}
-
 	var pieceCids []abi.PieceInfo
 
 	if fromPattern {
@@ -176,6 +171,11 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 	piecePromises := make([]func() (abi.PieceInfo, error), 0)
 
 	if !fromPattern {
+		w, err := stagedFile.Writer(storiface.UnpaddedByteIndex(offset).Padded(), pieceSize.Padded())
+		if err != nil {
+			return abi.PieceInfo{}, xerrors.Errorf("getting partial file writer: %w", err)
+		}
+
 		pw := fr32.NewPadWriter(w)
 		pr := io.TeeReader(io.LimitReader(file, int64(pieceSize)), pw)
 
