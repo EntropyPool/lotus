@@ -2,7 +2,7 @@ package main
 
 import (
 	machspec "github.com/EntropyPool/machine-spec"
-	lic "github.com/NpoolRD/fbc-license"
+	lic "github.com/filecoin-project/lotus/fbc-license"
 	_ "os"
 	"time"
 )
