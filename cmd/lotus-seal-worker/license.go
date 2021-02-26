@@ -3,7 +3,7 @@ package main
 import (
 	machspec "github.com/EntropyPool/machine-spec"
 	lic "github.com/NpoolRD/fbc-license"
-	"os"
+	_ "os"
 	"time"
 )
 
