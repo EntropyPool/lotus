@@ -565,7 +565,6 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 		return nil, nil, fmt.Errorf("Cannot run add piece")
 	}
 
-
 	errs := make(chan error, par.PreCommit1)
 	for wid := 0; wid < par.PreCommit1; wid++ {
 		go func(worker int) {
@@ -682,7 +681,7 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 						verifySeal := time.Now()
 
 						if !skipunseal {
-							log.Infof("[%d] Unsealing sector", i + 1)
+							log.Infof("[%d] Unsealing sector", i+1)
 							sector := storage.SectorRef{
 								ID:        abi.SectorID{Miner: mid, Number: i + 1},
 								ProofType: spt(sectorSize),

@@ -6,7 +6,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"math/bits"
 	"os"
 	"runtime"
@@ -81,6 +84,13 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		}
 	}()
 
+	patternFilepath := fmt.Sprintf("%s/pattern-%v", os.TempDir(), ssize)
+	patternFilehash := fmt.Sprintf("%s.hash", patternFilepath)
+	patternFileCids := fmt.Sprintf("%s.cids", patternFilepath)
+	patternFileCidsHash := fmt.Sprintf("%s.hash", patternFileCids)
+
+	fromPattern := false
+
 	var stagedPath storiface.SectorPaths
 	if len(existingPieceSizes) == 0 {
 		stagedPath, done, err = sb.sectors.AcquireSector(ctx, sector, 0, storiface.FTUnsealed, storiface.PathSealing)
@@ -92,6 +102,51 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		if err != nil {
 			return abi.PieceInfo{}, xerrors.Errorf("creating unsealed sector file: %w", err)
 		}
+
+		copyPattern := false
+		_, err = os.Stat(patternFilehash)
+		if err == nil {
+			copyPattern = true
+		} else if err != nil && !os.IsNotExist(err) {
+			copyPattern = true
+		}
+
+		_, err = os.Stat(patternFileCids)
+		if err == nil {
+			copyPattern = true
+		} else if err != nil && !os.IsNotExist(err) {
+			copyPattern = true
+		}
+
+		_, err = os.Stat(patternFileCidsHash)
+		if err == nil {
+			copyPattern = true
+		} else if err != nil && !os.IsNotExist(err) {
+			copyPattern = true
+		}
+
+		if copyPattern {
+			src, err := os.Open(patternFilepath)
+			if err != nil {
+				log.Errorf("cannot open %v [%v]", patternFilepath, err)
+			} else {
+				defer src.Close()
+				dst, err := os.Open(stagedFile.path)
+				if err != nil {
+					log.Errorf("cannot open %v [%v]", stagedFile.path, err)
+				} else {
+					defer dst.Close()
+					_, err := io.Copy(dst, src)
+					if err == nil {
+						log.Infof("copy pattern %v -> %v", patternFilepath, stagedFile.path)
+						fromPattern = true
+					} else {
+						log.Errorf("cannot copy %v -> %v [%v]", patternFilepath, stagedFile.path, err)
+					}
+				}
+			}
+		}
+
 	} else {
 		stagedPath, done, err = sb.sectors.AcquireSector(ctx, sector, storiface.FTUnsealed, 0, storiface.PathSealing)
 		if err != nil {
@@ -109,82 +164,125 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		return abi.PieceInfo{}, xerrors.Errorf("getting partial file writer: %w", err)
 	}
 
-	pw := fr32.NewPadWriter(w)
+	var pieceCids []abi.PieceInfo
 
-	pr := io.TeeReader(io.LimitReader(file, int64(pieceSize)), pw)
+	if fromPattern {
+		cids, err := ioutil.ReadFile(patternFileCids)
+		if err == nil {
+			err = json.Unmarshal(cids, &pieceCids)
+			if err != nil {
+				log.Errorf("cannot parse cids from %v [%v]", patternFileCids, err)
+			} else {
+				log.Infof("parse pattern cids %v", patternFileCids)
+			}
+		} else {
+			log.Errorf("cannot read pattern cids %v", patternFileCids)
+			fromPattern = false
+		}
+	}
 
-	throttle := make(chan []byte, parallel)
 	piecePromises := make([]func() (abi.PieceInfo, error), 0)
 
-	buf := make([]byte, chunk.Unpadded())
-	for i := 0; i < parallel; i++ {
-		if abi.UnpaddedPieceSize(i)*chunk.Unpadded() >= pieceSize {
-			break // won't use this many buffers
-		}
-		throttle <- make([]byte, chunk.Unpadded())
-	}
+	if !fromPattern {
+		pw := fr32.NewPadWriter(w)
+		pr := io.TeeReader(io.LimitReader(file, int64(pieceSize)), pw)
 
-	for {
-		var read int
-		for rbuf := buf; len(rbuf) > 0; {
-			n, err := pr.Read(rbuf)
-			if err != nil && err != io.EOF {
-				return abi.PieceInfo{}, xerrors.Errorf("pr read error: %w", err)
+		throttle := make(chan []byte, parallel)
+
+		buf := make([]byte, chunk.Unpadded())
+		for i := 0; i < parallel; i++ {
+			if abi.UnpaddedPieceSize(i)*chunk.Unpadded() >= pieceSize {
+				break // won't use this many buffers
 			}
-
-			rbuf = rbuf[n:]
-			read += n
-
-			if err == io.EOF {
-				break
-			}
-		}
-		if read == 0 {
-			break
+			throttle <- make([]byte, chunk.Unpadded())
 		}
 
-		done := make(chan struct {
-			cid.Cid
-			error
-		}, 1)
-		pbuf := <-throttle
-		copy(pbuf, buf[:read])
-
-		go func(read int) {
-			defer func() {
-				throttle <- pbuf
-			}()
-
-			c, err := sb.pieceCid(sector.ProofType, pbuf[:read])
-			done <- struct {
-				cid.Cid
-				error
-			}{c, err}
-		}(read)
-
-		piecePromises = append(piecePromises, func() (abi.PieceInfo, error) {
-			select {
-			case e := <-done:
-				if e.error != nil {
-					return abi.PieceInfo{}, e.error
+		for {
+			var read int
+			for rbuf := buf; len(rbuf) > 0; {
+				n, err := pr.Read(rbuf)
+				if err != nil && err != io.EOF {
+					return abi.PieceInfo{}, xerrors.Errorf("pr read error: %w", err)
 				}
 
-				return abi.PieceInfo{
-					Size:     abi.UnpaddedPieceSize(len(buf[:read])).Padded(),
-					PieceCID: e.Cid,
-				}, nil
-			case <-ctx.Done():
-				return abi.PieceInfo{}, ctx.Err()
+				rbuf = rbuf[n:]
+				read += n
+
+				if err == io.EOF {
+					break
+				}
 			}
-		})
+			if read == 0 {
+				break
+			}
+
+			done := make(chan struct {
+				cid.Cid
+				error
+			}, 1)
+			pbuf := <-throttle
+			copy(pbuf, buf[:read])
+
+			go func(read int) {
+				defer func() {
+					throttle <- pbuf
+				}()
+
+				c, err := sb.pieceCid(sector.ProofType, pbuf[:read])
+				done <- struct {
+					cid.Cid
+					error
+				}{c, err}
+			}(read)
+
+			piecePromises = append(piecePromises, func() (abi.PieceInfo, error) {
+				select {
+				case e := <-done:
+					if e.error != nil {
+						return abi.PieceInfo{}, e.error
+					}
+
+					return abi.PieceInfo{
+						Size:     abi.UnpaddedPieceSize(len(buf[:read])).Padded(),
+						PieceCID: e.Cid,
+					}, nil
+				case <-ctx.Done():
+					return abi.PieceInfo{}, ctx.Err()
+				}
+			})
+		}
+
+		if err := pw.Close(); err != nil {
+			return abi.PieceInfo{}, xerrors.Errorf("closing padded writer: %w", err)
+		}
+
+		if err := stagedFile.MarkAllocated(storiface.UnpaddedByteIndex(offset).Padded(), pieceSize.Padded()); err != nil {
+			return abi.PieceInfo{}, xerrors.Errorf("marking data range as allocated: %w", err)
+		}
 	}
 
-	if err := pw.Close(); err != nil {
-		return abi.PieceInfo{}, xerrors.Errorf("closing padded writer: %w", err)
-	}
-
-	if err := stagedFile.MarkAllocated(storiface.UnpaddedByteIndex(offset).Padded(), pieceSize.Padded()); err != nil {
-		return abi.PieceInfo{}, xerrors.Errorf("marking data range as allocated: %w", err)
+	if !fromPattern {
+		go func(path string) {
+			src, err := os.Open(path)
+			if err != nil {
+				log.Errorf("cannot open %v [%v]", path, err)
+				return
+			}
+			defer src.Close()
+			dst, err := os.Create(patternFilepath)
+			if err != nil {
+				log.Errorf("cannot open %v [%v]", path, err)
+				return
+			}
+			defer dst.Close()
+			_, err = io.Copy(dst, src)
+			if err != nil {
+				log.Errorf("cannot copy %v -> %v [%v]", path, patternFilepath, err)
+				return
+			}
+			os.Create(patternFilehash)
+			log.Infof("save pattern %v -> %v", path, patternFilepath)
+		}(stagedFile.path)
 	}
 
 	if err := stagedFile.Close(); err != nil {
@@ -192,16 +290,32 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 	}
 	stagedFile = nil
 
-	if len(piecePromises) == 1 {
-		return piecePromises[0]()
-	}
-
-	pieceCids := make([]abi.PieceInfo, len(piecePromises))
-	for i, promise := range piecePromises {
-		pieceCids[i], err = promise()
-		if err != nil {
-			return abi.PieceInfo{}, err
+	if !fromPattern {
+		if len(piecePromises) == 1 {
+			return piecePromises[0]()
 		}
+
+		pieceCids = make([]abi.PieceInfo, len(piecePromises))
+		for i, promise := range piecePromises {
+			pieceCids[i], err = promise()
+			if err != nil {
+				return abi.PieceInfo{}, err
+			}
+		}
+
+		go func(cids []abi.PieceInfo) {
+			buf, err := json.Marshal(pieceCids)
+			if err != nil {
+				log.Errorf("cannot marshal piece cids to json")
+				return
+			}
+			err = ioutil.WriteFile(patternFileCids, buf, 0644)
+			if err != nil {
+				log.Errorf("cannot write to %v", patternFileCids)
+				return
+			}
+			os.Create(patternFileCidsHash)
+		}(pieceCids)
 	}
 
 	pieceCID, err := ffi.GenerateUnsealedCID(sector.ProofType, pieceCids)
