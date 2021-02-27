@@ -253,7 +253,7 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		}
 	}
 
-	if !fromPattern {
+	if !fromPattern && len(existingPieceSizes) == 0 {
 		go func(path string) {
 			cmd := exec.Command("cp", path, patternFilepath)
 			err = cmd.Run()
@@ -277,7 +277,7 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		return piecePromises[0]()
 	}
 
-	if !fromPattern {
+	if !fromPattern && len(existingPieceSizes) == 0 {
 		pieceCids = make([]abi.PieceInfo, len(piecePromises))
 		for i, promise := range piecePromises {
 			pieceCids[i], err = promise()
