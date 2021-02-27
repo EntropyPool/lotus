@@ -98,6 +98,8 @@ func openPartialFile(maxPieceSize abi.PaddedPieceSize, path string) (*partialFil
 		return nil, xerrors.Errorf("openning partial file '%s': %w", path, err)
 	}
 
+	f.Sync()
+
 	var rle rlepluslazy.RLE
 	err = func() error {
 		st, err := f.Stat()
