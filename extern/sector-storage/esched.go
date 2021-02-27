@@ -774,12 +774,6 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 	peekReqs := 0
 
 	for _, worker := range bucket.workers {
-		waitingJobs := bucket.waitingJobs(worker, sealtasks.TTPreCommit2)
-		waitingJobs += bucket.waitingJobs(worker, sealtasks.TTCommit2)
-
-		waitingJobs += worker.typedTaskCount(sealtasks.TTPreCommit2, false)
-		waitingJobs += worker.typedTaskCount(sealtasks.TTCommit2, false)
-
 		apCount := bucket.waitingJobs(worker, sealtasks.TTAddPiece)
 		apCount += worker.typedTaskCount(sealtasks.TTAddPiece, false)
 
@@ -792,7 +786,7 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 			for taskType, tq := range pq.typedTasksQueue {
 				if taskType == sealtasks.TTAddPiece {
 					if bucket.concurrentAP <= apCount {
-						if 0 < waitingJobs || curConcurrentLimit <= pc1Waiting+pc1Running || 0 < pc1Waiting {
+						if curConcurrentLimit <= pc1Waiting+pc1Running || 0 < pc1Waiting {
 							continue
 						}
 					}
@@ -811,8 +805,8 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 				}
 				bucket.reqQueue.mutex.Unlock()
 
-				log.Infof("<%s> peek %v %v reqs (waiting %v, ap count %v, pc1 count %v (%v + %v)) [%s]",
-					eschedTag, peekReqs, taskType, waitingJobs, apCount, pc1Waiting + pc1Running,
+				log.Infof("<%s> peek %v %v reqs (ap count %v, pc1 count %v (%v + %v)) [%s]",
+					eschedTag, peekReqs, taskType, apCount, pc1Waiting+pc1Running,
 					pc1Waiting, pc1Running, worker.info.Address)
 			}
 		}
