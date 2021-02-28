@@ -332,8 +332,8 @@ var eschedTaskHugePage = map[sealtasks.TaskType]bool{
 }
 
 var eschedTaskRuntimeLimitHalf = map[sealtasks.TaskType][]sealtasks.TaskType{
-	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTCommit2, sealtasks.TTPreCommit2},
-	sealtasks.TTAddPiece:   []sealtasks.TaskType{sealtasks.TTCommit2, sealtasks.TTPreCommit2, sealtasks.TTPreCommit1},
+	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTCommit2 /*, sealtasks.TTPreCommit2*/},
+	// sealtasks.TTAddPiece:   []sealtasks.TaskType{sealtasks.TTCommit2, sealtasks.TTPreCommit2, sealtasks.TTPreCommit1},
 }
 
 var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
@@ -1008,7 +1008,11 @@ func (worker *eWorkerHandle) typedRunningTasks(taskType sealtasks.TaskType) int 
 }
 
 func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
-	idleCpus := int(worker.info.Resources.CPUs / 2)
+	idleCpus := bucket.idleCpus
+	if worker.info.Resources.CPUs <= uint64(idleCpus) {
+		idleCpus = 1
+	}
+
 	remainReqs := make([]*eWorkerRequest, 0)
 
 	for {
@@ -1027,12 +1031,9 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			}
 		}
 
-		maxRuntimeConcurrentTasks := 11
+		maxRuntimeConcurrentTasks := int(worker.info.Resources.CPUs - uint64(idleCpus))
 		if 0 < bucket.usableCpus {
 			maxRuntimeConcurrentTasks = bucket.usableCpus
-		}
-		if 0 < bucket.idleCpus {
-			maxRuntimeConcurrentTasks = int(worker.info.Resources.CPUs - uint64(bucket.idleCpus))
 		}
 		if 0 < halfTasks {
 			runningTasks := int(worker.info.Resources.CPUs / 2)
@@ -1870,6 +1871,7 @@ func newExtScheduler() *edispatcher {
 			workers:            make([]*eWorkerHandle, 0),
 			reqQueue:           dispatcher.reqQueue,
 			concurrentAP:       1,
+			idleCpus:           4,
 			schedulerWaker:     make(chan struct{}, 20),
 			schedulerRunner:    make(chan struct{}, 20000),
 			reqFinisher:        make(chan *eRequestFinisher),
