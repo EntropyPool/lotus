@@ -263,7 +263,22 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 			}
 			log.Infof("copy pattern %v -> %v", path, patternFilepath)
 
-			os.Create(patternFilehash)
+			file, err := os.Open(patternFilepath)
+			if err != nil {
+				log.Errorf("cannot open %v [%v]", patternFilepath, err)
+				return
+			}
+			file.Sync()
+			file.Close()
+
+			file, err = os.Create(patternFilehash)
+			if err != nil {
+				log.Errorf("cannot create %v [%v]", patternFilehash, err)
+				return
+			}
+			file.Sync()
+			file.Close()
+
 			log.Infof("save pattern %v -> %v", path, patternFilepath)
 		}(stagedFile.path)
 	}
@@ -297,7 +312,13 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 				log.Errorf("cannot write to %v", patternFileCids)
 				return
 			}
-			os.Create(patternFileCidsHash)
+			file, err := os.Create(patternFileCidsHash)
+			if err != nil {
+				log.Errorf("cannot create %v [%v]", patternFileCidsHash, err)
+				return
+			}
+			file.Sync()
+			file.Close()
 		}(pieceCids)
 	}
 
