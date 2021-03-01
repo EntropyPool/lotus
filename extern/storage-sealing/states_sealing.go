@@ -313,6 +313,13 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 		preferSectorOnChain = cfg.PreferSectorOnChain
 	}
 
+	if !preferSectorOnChain {
+		if m.feeCfg.MaxPreCommitGasFee.LessThan(parentBaseFee) {
+			return ctx.Send(SectorChainPreCommitFailed{xerrors.Errorf("estimated base fee (%v) is higher than limitation (%v), wait for a moment",
+				parentBaseFee, m.feeCfg.MaxPreCommitGasFee)})
+		}
+	}
+
 	if preferSectorOnChain && 0 < gasLimit {
 		baseFee = parentBaseFee
 	} else {
