@@ -312,7 +312,16 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 				log.Errorf("cannot write to %v", patternFileCids)
 				return
 			}
-			file, err := os.Create(patternFileCidsHash)
+
+			file, err := os.Open(patternFileCids)
+			if err != nil {
+				log.Errorf("cannot open %v [%v]", patternFilepath, err)
+				return
+			}
+			file.Sync()
+			file.Close()
+
+			file, err = os.Create(patternFileCidsHash)
 			if err != nil {
 				log.Errorf("cannot create %v [%v]", patternFileCidsHash, err)
 				return
