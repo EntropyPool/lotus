@@ -253,39 +253,40 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 		}
 	}
 
-	if !fromPattern && len(existingPieceSizes) == 0 {
-		go func(path string) {
-			cmd := exec.Command("cp", path, patternFilepath)
-			err = cmd.Run()
-			if err != nil {
-				log.Errorf("cannot copy %v -> %v [%v]", path, patternFilepath, err)
-				return
-			}
-			log.Infof("copy pattern %v -> %v", path, patternFilepath)
-
-			file, err := os.Open(patternFilepath)
-			if err != nil {
-				log.Errorf("cannot open %v [%v]", patternFilepath, err)
-				return
-			}
-			file.Sync()
-			file.Close()
-
-			file, err = os.Create(patternFilehash)
-			if err != nil {
-				log.Errorf("cannot create %v [%v]", patternFilehash, err)
-				return
-			}
-			file.Sync()
-			file.Close()
-
-			log.Infof("save pattern %v -> %v", path, patternFilepath)
-		}(stagedFile.path)
-	}
-
 	if err := stagedFile.Close(); err != nil {
 		return abi.PieceInfo{}, err
 	}
+
+	if !fromPattern && len(existingPieceSizes) == 0 {
+		path := stagedFile.path
+		cmd := exec.Command("cp", path, patternFilepath)
+		err = cmd.Run()
+		if err != nil {
+			log.Errorf("cannot copy %v -> %v [%v]", path, patternFilepath, err)
+			goto l_save_pattern_error
+		}
+		log.Infof("copy pattern %v -> %v", path, patternFilepath)
+
+		file, err := os.Open(patternFilepath)
+		if err != nil {
+			log.Errorf("cannot open %v [%v]", patternFilepath, err)
+			goto l_save_pattern_error
+		}
+		file.Sync()
+		file.Close()
+
+		file, err = os.Create(patternFilehash)
+		if err != nil {
+			log.Errorf("cannot create %v [%v]", patternFilehash, err)
+			goto l_save_pattern_error
+		}
+		file.Sync()
+		file.Close()
+
+		log.Infof("save pattern %v -> %v", path, patternFilepath)
+	}
+
+l_save_pattern_error:
 	stagedFile = nil
 
 	if len(piecePromises) == 1 {
@@ -301,36 +302,35 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 			}
 		}
 
-		go func(cids []abi.PieceInfo) {
-			buf, err := json.Marshal(pieceCids)
-			if err != nil {
-				log.Errorf("cannot marshal piece cids to json")
-				return
-			}
-			err = ioutil.WriteFile(patternFileCids, buf, 0644)
-			if err != nil {
-				log.Errorf("cannot write to %v", patternFileCids)
-				return
-			}
+		buf, err := json.Marshal(pieceCids)
+		if err != nil {
+			log.Errorf("cannot marshal piece cids to json")
+			goto l_save_cids_pattern_error
+		}
+		err = ioutil.WriteFile(patternFileCids, buf, 0644)
+		if err != nil {
+			log.Errorf("cannot write to %v", patternFileCids)
+			goto l_save_cids_pattern_error
+		}
 
-			file, err := os.Open(patternFileCids)
-			if err != nil {
-				log.Errorf("cannot open %v [%v]", patternFilepath, err)
-				return
-			}
-			file.Sync()
-			file.Close()
+		file, err := os.Open(patternFileCids)
+		if err != nil {
+			log.Errorf("cannot open %v [%v]", patternFilepath, err)
+			goto l_save_cids_pattern_error
+		}
+		file.Sync()
+		file.Close()
 
-			file, err = os.Create(patternFileCidsHash)
-			if err != nil {
-				log.Errorf("cannot create %v [%v]", patternFileCidsHash, err)
-				return
-			}
-			file.Sync()
-			file.Close()
-		}(pieceCids)
+		file, err = os.Create(patternFileCidsHash)
+		if err != nil {
+			log.Errorf("cannot create %v [%v]", patternFileCidsHash, err)
+			goto l_save_cids_pattern_error
+		}
+		file.Sync()
+		file.Close()
 	}
 
+l_save_cids_pattern_error:
 	pieceCID, err := ffi.GenerateUnsealedCID(sector.ProofType, pieceCids)
 	if err != nil {
 		return abi.PieceInfo{}, xerrors.Errorf("generate unsealed CID: %w", err)
