@@ -88,7 +88,7 @@ func (self *GuardClient) StartUpClient() error {
 
 	jparam, err := json.Marshal(param)
 	if err != nil {
-		log.Errorf(log.Fields{}, "setup client (marshal param) %v [%v] (%v)", targetUri, param, err)
+		log.Errorf(log.Fields{}, "setup client (marshal param) [%v] (%v)", param, err)
 		return err
 	}
 
