@@ -968,7 +968,7 @@ func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRe
 		}
 	}()
 
-	if !eschedDebug || nil == err {
+	if nil == err {
 		bucket.doCleanTask(task, eschedWorkerCleanAtFinish)
 	}
 }
@@ -1208,7 +1208,7 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 			w.runningTasks = append(w.runningTasks[:idx], w.runningTasks[idx+1:]...)
 			w.releaseRequestResource(finisher.req, eschedResStageRuntime)
 
-			if !eschedDebug || finisher.resp.err == nil {
+			if finisher.resp.err == nil {
 				bucket.addCleaningTask(finisher.wid, finisher.req)
 			}
 		} else {
@@ -1217,11 +1217,7 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 		}
 	}
 
-	if !eschedDebug || finisher.resp.err == nil {
-		go func() { finisher.req.ret <- *finisher.resp }()
-	} else {
-		go func() { bucket.retRequest <- finisher.req }()
-	}
+	go func() { finisher.req.ret <- *finisher.resp }()
 	go func() { bucket.notifier <- struct{}{} }()
 	go func() { bucket.schedulerWaker <- struct{}{} }()
 	go func() { bucket.schedulerRunner <- struct{}{} }()
