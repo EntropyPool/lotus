@@ -118,6 +118,16 @@ var sealingWorkersCmd = &cli.Command{
 			fmt.Printf("\tTSK:  | Type | Running | Prepared | Cleaning | Waiting | MaxConcurrent |%s\n", taskTypes)
 			fmt.Printf("\t      ------------------------------------------------------------------\n")
 
+			workerStores := ""
+			for _, store := range stat.Stores {
+				workerStores = fmt.Sprintf("%s\n\t      ", workerStores)
+				workerStores = fmt.Sprintf("%s| %8s | %11v | %11v | %11v | %10v |",
+					store.ID, store.Total, store.Available, store.Reserved, store.MaxReached)
+			}
+			fmt.Printf("\t      ------------------------------------------------------------------\n")
+			fmt.Printf("\tSTO:  |    ID    |    Total    |    Avail    |    Rsvd    | MaxReached |%s\n", workerStores)
+			fmt.Printf("\t      ------------------------------------------------------------------\n")
+
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)
 			cpuBar := strings.Repeat("|", cpuBars) + strings.Repeat(" ", int(barCols)-cpuBars)

@@ -166,6 +166,7 @@ const eschedWorkerStateReady = "ready"
 type eStoreStat struct {
 	total      int64
 	space      int64
+	reserved   int64
 	URLs       []string
 	local      bool
 	id         stores.ID
@@ -1458,6 +1459,16 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 	out := map[uuid.UUID]storiface.WorkerStats{}
 
 	for _, worker := range bucket.workers {
+		workerStores := []storiface.WorkerStore{}
+		for _, stat := range worker.storeIDs {
+			workerStores = append(workerStores, storiface.WorkerStore{
+				Total:      stat.total,
+				Available:  stat.space,
+				Reserved:   stat.reserved,
+				MaxReached: stat.maxReached,
+				ID:         string(stat.id),
+			})
+		}
 		out[worker.wid] = storiface.WorkerStats{
 			Info:          worker.info,
 			GpuUsed:       0 < worker.gpuUsed,
@@ -1466,6 +1477,7 @@ func (bucket *eWorkerBucket) onWorkerStatsQuery(param *eWorkerStatsParam) {
 			State:         worker.state,
 			Maintaining:   worker.maintaining,
 			RejectNewTask: worker.rejectNewTask,
+			Stores:        workerStores,
 		}
 		for _, taskType := range worker.info.SupportTasks {
 			out[worker.wid].Tasks[taskType] = storiface.TasksInfo{

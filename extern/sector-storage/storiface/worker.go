@@ -36,6 +36,14 @@ type WorkerResources struct {
 	GPUs         []string
 }
 
+type WorkerStore struct {
+	Total      int64
+	Available  int64
+	Reserved   int64
+	MaxReached bool
+	ID         string
+}
+
 type TasksInfo struct {
 	Running       int
 	Prepared      int
@@ -56,6 +64,7 @@ type WorkerStats struct {
 	State         string
 	Maintaining   bool
 	RejectNewTask bool
+	Stores        []WorkerStore
 }
 
 const (
