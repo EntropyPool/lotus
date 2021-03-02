@@ -149,9 +149,10 @@ type eWorkerTaskPrepared struct {
 }
 
 type eWorkerTaskCleaning struct {
-	sector      storage.SectorRef
-	taskType    sealtasks.TaskType
-	byCacheMove bool
+	sector         storage.SectorRef
+	taskType       sealtasks.TaskType
+	byCacheMove    bool
+	bySectorRemove bool
 }
 
 type eWorkerSyncTaskList struct {
@@ -1441,7 +1442,7 @@ func (bucket *eWorkerBucket) onTaskClean(clean *eWorkerTaskCleaning) {
 			continue
 		}
 		for idx, task := range worker.cleaningTasks {
-			if clean.taskType == task.taskType && task.sector.ID.Number == clean.sector.ID.Number {
+			if (clean.taskType == task.taskType || clean.bySectorRemove) && task.sector.ID.Number == clean.sector.ID.Number {
 				log.Infof("<%s> clean task %v / %v [byCacheMove %v] from %s [bigCache %v]",
 					eschedTag, clean.sector, clean.taskType, clean.byCacheMove,
 					worker.info.Address, worker.info.BigCache)
@@ -1449,7 +1450,9 @@ func (bucket *eWorkerBucket) onTaskClean(clean *eWorkerTaskCleaning) {
 				go func() { bucket.notifier <- struct{}{} }()
 				go func() { bucket.schedulerWaker <- struct{}{} }()
 				go func() { bucket.schedulerRunner <- struct{}{} }()
-				return
+				if !clean.bySectorRemove {
+					return
+				}
 			}
 		}
 	}
@@ -2522,7 +2525,7 @@ func (sh *edispatcher) WorkerJobs() map[uuid.UUID][]storiface.WorkerJob {
 	}
 }
 
-func (sh *edispatcher) doCleanTask(sector storage.SectorRef, taskType sealtasks.TaskType, stage string, byCacheMove bool) {
+func (sh *edispatcher) doCleanTask(sector storage.SectorRef, taskType sealtasks.TaskType, stage string, byCacheMove bool, bySectorRemove bool) {
 	clean, ok := eschedTaskCleanMap[taskType]
 	if !ok {
 		return
@@ -2533,18 +2536,19 @@ func (sh *edispatcher) doCleanTask(sector storage.SectorRef, taskType sealtasks.
 	}
 
 	sh.taskCleaner <- &eWorkerTaskCleaning{
-		sector:      sector,
-		taskType:    clean.taskType,
-		byCacheMove: byCacheMove,
+		sector:         sector,
+		taskType:       clean.taskType,
+		byCacheMove:    byCacheMove,
+		bySectorRemove: bySectorRemove,
 	}
 }
 
 func (sh *edispatcher) MoveCacheDone(sector storage.SectorRef) {
-	go sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish, true)
+	go sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish, true, false)
 }
 
 func (sh *edispatcher) RemoveSector(sector storage.SectorRef) {
-	go sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish, false)
+	go sh.doCleanTask(sector, sealtasks.TTCommit2, eschedWorkerCleanAtFinish, false, true)
 }
 
 func (sh *edispatcher) Debugging() bool {
