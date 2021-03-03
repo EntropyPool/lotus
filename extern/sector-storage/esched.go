@@ -345,9 +345,32 @@ var eschedTaskRuntimeLimitHalf = map[sealtasks.TaskType][]sealtasks.TaskType{
 	// sealtasks.TTAddPiece:   []sealtasks.TaskType{sealtasks.TTCommit2, sealtasks.TTPreCommit2, sealtasks.TTPreCommit1},
 }
 
-var eschedTaskLimitMerge = map[sealtasks.TaskType][]sealtasks.TaskType{
-	sealtasks.TTAddPiece:   []sealtasks.TaskType{sealtasks.TTPreCommit1, sealtasks.TTPreCommit2},
-	sealtasks.TTPreCommit1: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit2},
+type eschedTaskLimitMergeAttr struct {
+	taskType        sealtasks.TaskType
+	includeCleaning bool
+}
+
+var eschedTaskLimitMerge = map[sealtasks.TaskType][]eschedTaskLimitMergeAttr{
+	sealtasks.TTAddPiece: []eschedTaskLimitMergeAttr{
+		eschedTaskLimitMergeAttr{
+			taskType:        sealtasks.TTPreCommit1,
+			includeCleaning: false,
+		},
+		eschedTaskLimitMergeAttr{
+			taskType:        sealtasks.TTPreCommit2,
+			includeCleaning: false,
+		},
+	},
+	sealtasks.TTPreCommit1: []eschedTaskLimitMergeAttr{
+		eschedTaskLimitMergeAttr{
+			taskType:        sealtasks.TTAddPiece,
+			includeCleaning: false,
+		},
+		eschedTaskLimitMergeAttr{
+			taskType:        sealtasks.TTPreCommit2,
+			includeCleaning: true,
+		},
+	},
 	// sealtasks.TTPreCommit2: []sealtasks.TaskType{sealtasks.TTAddPiece, sealtasks.TTPreCommit1},
 }
 
@@ -686,7 +709,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		taskCount := worker.typedTaskCount(req.taskType, true)
 		if taskTypes, ok := eschedTaskLimitMerge[req.taskType]; ok {
 			for _, lTaskType := range taskTypes {
-				taskCount += worker.typedTaskCount(lTaskType, false)
+				taskCount += worker.typedTaskCount(lTaskType.taskType, lTaskType.includeCleaning)
 			}
 		}
 
@@ -1633,7 +1656,7 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 		taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
 		if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
 			for _, lTaskType := range taskTypes {
-				taskCount += worker.typedTaskCount(lTaskType, false)
+				taskCount += worker.typedTaskCount(lTaskType.taskType, lTaskType.includeCleaning)
 			}
 		}
 		taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
@@ -1653,7 +1676,7 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 
 		if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
 			for _, taskType := range taskTypes {
-				if reqs, ok := bucket.reqQueue.reqs[taskType]; ok {
+				if reqs, ok := bucket.reqQueue.reqs[taskType.taskType]; ok {
 					for _, req := range reqs {
 						bucket.taskWorkerBinder.mutex.Lock()
 						if binder, ok := bucket.taskWorkerBinder.binder[req.sector.ID.Number]; ok {
