@@ -126,19 +126,20 @@ func (sb *Sealer) AddPiece(ctx context.Context, sector storage.SectorRef, existi
 			err = cmd.Run()
 			if err == nil {
 				log.Infof("copy pattern %v -> %v", patternFilepath, stagedPath.Unsealed)
+				stagedFile, err = openPartialFile(maxPieceSize, stagedPath.Unsealed)
 				fromPattern = true
 			} else {
 				log.Errorf("cannot copy %v -> %v [%v]", patternFilepath, stagedPath.Unsealed, err)
 			}
-			stagedFile, err = openPartialFile(maxPieceSize, stagedPath.Unsealed)
-		} else {
+		}
+
+		if !fromPattern {
 			stagedFile, err = createPartialFile(maxPieceSize, stagedPath.Unsealed)
 		}
 
 		if err != nil {
 			return abi.PieceInfo{}, xerrors.Errorf("creating unsealed sector file: %w", err)
 		}
-
 	} else {
 		stagedPath, done, err = sb.sectors.AcquireSector(ctx, sector, storiface.FTUnsealed, 0, storiface.PathSealing)
 		if err != nil {
