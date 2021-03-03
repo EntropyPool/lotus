@@ -51,12 +51,13 @@ func (m *Sealing) checkPreCommitted(ctx statemachine.Context, sector SectorInfo)
 
 func (m *Sealing) handleSealPrecommit1Failed(ctx statemachine.Context, sector SectorInfo) error {
 	log.Warnf("pre commit1 fails(%v) sector (%v)", sector.PreCommit1Fails, sector.SectorNumber)
-	if !checkDeals(sector.sealingCtx(ctx.Context()), sector) {
-		return ctx.Send(SectorRemove{})
-	}
 
 	if err := failedCooldown(ctx, sector); err != nil {
 		return err
+	}
+
+	if !checkDeals(sector.sealingCtx(ctx.Context()), sector) {
+		return ctx.Send(SectorRemove{})
 	}
 
 	return ctx.Send(SectorRetrySealPreCommit1{})
