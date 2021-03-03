@@ -638,7 +638,7 @@ func (worker *eWorkerHandle) taskCleaning(task *eWorkerRequest) bool {
 	return false
 }
 
-func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType, includeCleaning bool) int {
+func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType, includeCleaning bool, includeRunning bool) int {
 	taskCount := 0
 	worker.preparingTasks.mutex.Lock()
 	for _, task := range worker.preparingTasks.queue {
@@ -656,9 +656,11 @@ func (worker *eWorkerHandle) typedTaskCount(taskType sealtasks.TaskType, include
 	}
 	worker.preparedTasks.mutex.Unlock()
 
-	for _, task := range worker.runningTasks {
-		if task.taskType == taskType && !worker.taskCleaning(task) {
-			taskCount += 1
+	if includeRunning {
+		for _, task := range worker.runningTasks {
+			if task.taskType == taskType && !worker.taskCleaning(task) {
+				taskCount += 1
+			}
 		}
 	}
 
@@ -706,10 +708,10 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			return 0
 		}
 
-		taskCount := worker.typedTaskCount(req.taskType, true)
+		taskCount := worker.typedTaskCount(req.taskType, true, true)
 		if taskTypes, ok := eschedTaskLimitMerge[req.taskType]; ok {
 			for _, lTaskType := range taskTypes {
-				taskCount += worker.typedTaskCount(lTaskType.taskType, lTaskType.includeCleaning)
+				taskCount += worker.typedTaskCount(lTaskType.taskType, lTaskType.includeCleaning, true)
 			}
 		}
 
@@ -728,7 +730,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			continue
 		}
 
-		apCount := worker.typedTaskCount(sealtasks.TTAddPiece, false)
+		apCount := worker.typedTaskCount(sealtasks.TTAddPiece, false, true)
 		if req.taskType == sealtasks.TTAddPiece && bucket.concurrentAP <= apCount {
 			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
 			continue
@@ -809,10 +811,11 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 
 	for _, worker := range bucket.workers {
 		apCount := bucket.waitingJobs(worker, sealtasks.TTAddPiece)
-		apCount += worker.typedTaskCount(sealtasks.TTAddPiece, false)
+		apCount += worker.typedTaskCount(sealtasks.TTAddPiece, false, true)
 
 		pc1Waiting := bucket.waitingJobs(worker, sealtasks.TTPreCommit1)
-		pc1Running := worker.typedTaskCount(sealtasks.TTPreCommit1, false)
+		pc1Waiting += worker.typedTaskCount(sealtasks.TTPreCommit1, false, false)
+		pc1Running := worker.typedTaskCount(sealtasks.TTPreCommit1, false, true)
 
 		for _, pq := range worker.priorityTasksQueue {
 			for taskType, tq := range pq.typedTasksQueue {
@@ -1061,7 +1064,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		halfTasks := 0
 		if taskTypes, ok := eschedTaskRuntimeLimitHalf[task.taskType]; ok {
 			for _, lTaskType := range taskTypes {
-				halfTasks += worker.typedTaskCount(lTaskType, false)
+				halfTasks += worker.typedTaskCount(lTaskType, false, true)
 			}
 		}
 
@@ -1653,13 +1656,13 @@ func (bucket *eWorkerBucket) onBucketPledgedJobs(param *eBucketPledgedJobsParam)
 			continue
 		}
 
-		taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true)
+		taskCount := worker.typedTaskCount(sealtasks.TTPreCommit1, true, true)
 		if taskTypes, ok := eschedTaskLimitMerge[sealtasks.TTPreCommit1]; ok {
 			for _, lTaskType := range taskTypes {
-				taskCount += worker.typedTaskCount(lTaskType.taskType, lTaskType.includeCleaning)
+				taskCount += worker.typedTaskCount(lTaskType.taskType, lTaskType.includeCleaning, true)
 			}
 		}
-		taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true)
+		taskCount += worker.typedTaskCount(sealtasks.TTAddPiece, true, true)
 
 		bucket.reqQueue.mutex.Lock()
 		if reqs, ok := bucket.reqQueue.reqs[sealtasks.TTPreCommit1]; ok {

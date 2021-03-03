@@ -58,13 +58,13 @@ func (self *GuardClient) Exchangekey() error {
 		SetBody(param).
 		Post(targetUri)
 	if err != nil {
-		log.Errorf(log.Fields{}, "exchange key error [%v] (%v)", param, err)
+		log.Errorf(log.Fields{}, "exchange key error [%v]", param)
 		return err
 	}
 
 	apiResp, err := httpdaemon.ParseResponse(resp)
 	if err != nil {
-		log.Errorf(log.Fields{}, "exchange api response error [%v] (%v)", param, err)
+		log.Errorf(log.Fields{}, "exchange api response error [%v]", param)
 		return err
 	}
 
@@ -88,7 +88,7 @@ func (self *GuardClient) StartUpClient() error {
 
 	jparam, err := json.Marshal(param)
 	if err != nil {
-		log.Errorf(log.Fields{}, "setup client (marshal param) [%v] (%v)", param, err)
+		log.Errorf(log.Fields{}, "setup client (marshal param) [%v]", param)
 		return err
 	}
 
@@ -102,13 +102,13 @@ func (self *GuardClient) StartUpClient() error {
 		SetBody(req).
 		Post(targetUri)
 	if err != nil {
-		log.Errorf(log.Fields{}, "setup client error [%v] (%v)", param, err)
+		log.Errorf(log.Fields{}, "setup client error [%v]", param)
 		return err
 	}
 
 	apiResp, err := httpdaemon.ParseResponse(resp)
 	if err != nil {
-		log.Errorf(log.Fields{}, "setup client api response error [%v] (%v)", param, err)
+		log.Errorf(log.Fields{}, "setup client api response error [%v]", param)
 		return err
 	}
 
@@ -119,7 +119,7 @@ func (self *GuardClient) StartUpClient() error {
 	var startupMap map[string]interface{}
 	err = json.Unmarshal(data, &startupMap)
 	if err != nil {
-		log.Errorf(log.Fields{}, "setup client (parse response) [%v] (%v)", param, err)
+		log.Errorf(log.Fields{}, "setup client (parse response) [%v]", param)
 		return err
 	}
 
@@ -142,13 +142,13 @@ func (self *GuardClient) SendHeartBeat() error {
 		SetBody(reqParam).
 		Post(targetUri)
 	if err != nil {
-		log.Errorf(log.Fields{}, "heartbeat error [%v] (%v)", reqParam, err)
+		log.Errorf(log.Fields{}, "heartbeat error [%v]", reqParam)
 		return err
 	}
 
 	apiResp, err := httpdaemon.ParseResponse(resp)
 	if err != nil {
-		log.Errorf(log.Fields{}, "heartbeat api response error [%v] (%v)", reqParam, err)
+		log.Errorf(log.Fields{}, "heartbeat api response error [%v]", reqParam)
 		return err
 	}
 
@@ -159,7 +159,7 @@ func (self *GuardClient) SendHeartBeat() error {
 	var heartbeatMap map[string]interface{}
 	err = json.Unmarshal(data, &heartbeatMap)
 	if err != nil {
-		log.Errorf(log.Fields{}, "heartbeat (parse response) [%v] (%v)", reqParam, err)
+		log.Errorf(log.Fields{}, "heartbeat (parse response) [%v]", reqParam)
 		return err
 	}
 
