@@ -555,7 +555,7 @@ func (w *eWorkerHandle) acquireRequestResource(req *eWorkerRequest, resType stri
 		} else {
 			w.memUsed += req.memUsed
 		}
-		log.Infof("<%s> acquire runtime resource %v / %v, gpu %v, cpu %v [%v], mem %v / %v / %v [%v]",
+		log.Debugf("<%s> acquire runtime resource %v / %v, gpu %v, cpu %v [%v], mem %v / %v / %v [%v]",
 			eschedTag, req.sector, req.taskType, req.gpuUsed, req.cpuUsed, w.info.Address,
 			hugepage, w.hugePageUsed, w.memUsed, req.memUsed)
 	}
@@ -574,7 +574,7 @@ func (w *eWorkerHandle) releaseRequestResource(req *eWorkerRequest, resType stri
 		} else {
 			w.memUsed -= req.memUsed
 		}
-		log.Infof("<%s> release runtime resource %v / %v, gpu %v, cpu %v [%v], mem %v / %v / %v [%v]",
+		log.Debugf("<%s> release runtime resource %v / %v, gpu %v, cpu %v [%v], mem %v / %v / %v [%v]",
 			eschedTag, req.sector, req.taskType, req.gpuUsed, req.cpuUsed, w.info.Address,
 			hugepage, w.hugePageUsed, w.memUsed, req.memUsed)
 	}
@@ -748,7 +748,7 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 		peekReqs += 1
 		reqs, _ = safeRemoveWorkerRequest(reqs, nil, req)
 		tasksQueue.tasks = append(tasksQueue.tasks, req)
-		log.Infof("<%s> worker %s peek task %v/%v", eschedTag, worker.info.Address, req.sector.ID, req.taskType)
+		log.Debugf("<%s> worker %s peek task %v/%v", eschedTag, worker.info.Address, req.sector.ID, req.taskType)
 		taskCount += 1
 	}
 
@@ -815,7 +815,7 @@ func (bucket *eWorkerBucket) tryPeekRequest() {
 				}
 				bucket.reqQueue.mutex.Unlock()
 
-				log.Infof("<%s> peek %v %v reqs (ap count %v, pc1 count %v (%v + %v)) [%s]",
+				log.Debugf("<%s> peek %v %v reqs (ap count %v, pc1 count %v (%v + %v)) [%s]",
 					eschedTag, peekReqs, taskType, apCount, pc1Waiting+pc1Running,
 					pc1Waiting, pc1Running, worker.info.Address)
 			}
@@ -928,7 +928,7 @@ func (bucket *eWorkerBucket) addCleaningTask(wid uuid.UUID, task *eWorkerRequest
 
 	for _, attr := range eschedTaskCleanMap {
 		if task.taskType == attr.taskType {
-			log.Infof("<%s> add task %v / %v to [%v] cleaning list of %s",
+			log.Debugf("<%s> add task %v / %v to [%v] cleaning list of %s",
 				eschedTag, task.sector.ID,
 				task.taskType, attr.taskType,
 				worker.info.Address)
@@ -1081,7 +1081,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		if 0 < res.GPUs {
 			if 0 < len(worker.info.Resources.GPUs) {
 				if len(worker.info.Resources.GPUs) < res.GPUs+worker.gpuUsed {
-					log.Infof("<%s> need %d = %d + %d GPUs but only %d available [%v / %v] [%s]",
+					log.Debugf("<%s> need %d = %d + %d GPUs but only %d available [%v / %v] [%s]",
 						eschedTag, res.GPUs+worker.gpuUsed, res.GPUs, worker.gpuUsed,
 						len(worker.info.Resources.GPUs)-worker.gpuUsed, task.sector.ID,
 						taskType, worker.info.Address)
@@ -1096,7 +1096,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 			}
 		}
 		if int(worker.info.Resources.CPUs)-idleCpus < needCPUs+worker.cpuUsed {
-			log.Infof("<%s> need %d = %d + %d CPUs but only %d available [%v / %v] [%s]",
+			log.Debugf("<%s> need %d = %d + %d CPUs but only %d available [%v / %v] [%s]",
 				eschedTag, needCPUs+worker.cpuUsed, needCPUs, worker.cpuUsed,
 				int(worker.info.Resources.CPUs)-idleCpus, task.sector.ID,
 				taskType, worker.info.Address)
@@ -1109,7 +1109,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 		hugepage, ok := eschedTaskHugePage[taskType]
 		if ok && hugepage && 0 < worker.hugePageBytes {
 			if worker.hugePageBytes < res.Memory+worker.hugePageUsed {
-				log.Infof("<%s> need %d = %d + %d hugepage but only %d available [%v / %v] [%s]",
+				log.Debugf("<%s> need %d = %d + %d hugepage but only %d available [%v / %v] [%s]",
 					eschedTag, res.Memory+worker.hugePageUsed, res.Memory, worker.hugePageUsed,
 					worker.hugePageBytes, task.sector.ID, taskType, worker.info.Address)
 				worker.preparedTasks.mutex.Lock()
@@ -1124,7 +1124,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 				extraMem = worker.info.Resources.MemSwap
 			}
 			if worker.info.Resources.MemPhysical+extraMem < res.Memory+worker.memUsed {
-				log.Infof("<%s> need %d = %d + %d memory but only %d available [%v / %v] [%s]",
+				log.Debugf("<%s> need %d = %d + %d memory but only %d available [%v / %v] [%s]",
 					eschedTag, res.Memory+worker.memUsed, res.Memory, worker.memUsed,
 					worker.info.Resources.MemPhysical+extraMem, task.sector.ID,
 					taskType, worker.info.Address)
@@ -1157,7 +1157,7 @@ func (bucket *eWorkerBucket) schedulePreparedTasks(worker *eWorkerHandle) {
 }
 
 func (bucket *eWorkerBucket) scheduleBucketTask() {
-	log.Infof("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
+	log.Debugf("<%s> try schedule bucket task for bucket [%d]", eschedTag, bucket.id)
 	scheduled := false
 	for _, worker := range bucket.workers {
 		if bucket.scheduleTypedTasks(worker) == true {
@@ -1170,7 +1170,7 @@ func (bucket *eWorkerBucket) scheduleBucketTask() {
 }
 
 func (bucket *eWorkerBucket) schedulePreparedTask() {
-	log.Infof("<%s> try schedule prepared task for bucket [%d]", eschedTag, bucket.id)
+	log.Debugf("<%s> try schedule prepared task for bucket [%d]", eschedTag, bucket.id)
 	for _, worker := range bucket.workers {
 		bucket.schedulePreparedTasks(worker)
 	}
@@ -1234,7 +1234,7 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 }
 
 func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
-	log.Infof("<%s> try to drop worker %v from bucket %d", eschedTag, wid, bucket.id)
+	log.Debugf("<%s> try to drop worker %v from bucket %d", eschedTag, wid, bucket.id)
 	worker := bucket.findBucketWorkerByID(wid)
 	if nil != worker {
 		for _, pq := range worker.priorityTasksQueue {
@@ -1244,7 +1244,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 						break
 					}
 					task := tq.tasks[0]
-					log.Infof("<%s> return typed task %v/%v to reqQueue", task.sector.ID, task.taskType)
+					log.Debugf("<%s> return typed task %v/%v to reqQueue", task.sector.ID, task.taskType)
 					tq.tasks, _ = safeRemoveWorkerRequest(tq.tasks, nil, task)
 					go func(task *eWorkerRequest) {
 						task.ret <- workerResponse{err: xerrors.Errorf("worker dropped unexpected")}
@@ -1259,7 +1259,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 				break
 			}
 			task := worker.preparedTasks.queue[0]
-			log.Infof("<%s> finish task %v/%v", eschedTag, task.sector.ID, task.taskType)
+			log.Debugf("<%s> finish task %v/%v", eschedTag, task.sector.ID, task.taskType)
 			worker.preparedTasks.queue, _ = safeRemoveWorkerRequest(worker.preparedTasks.queue, nil, task)
 			worker.preparedTasks.mutex.Unlock()
 
@@ -1274,7 +1274,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 				break
 			}
 			task := worker.preparingTasks.queue[0]
-			log.Infof("<%s> finish preparing task %v/%v", eschedTag, task.sector.ID, task.taskType)
+			log.Debugf("<%s> finish preparing task %v/%v", eschedTag, task.sector.ID, task.taskType)
 			worker.preparingTasks.queue, _ = safeRemoveWorkerRequest(worker.preparingTasks.queue, nil, task)
 			worker.preparingTasks.mutex.Unlock()
 
@@ -1287,7 +1287,7 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 				break
 			}
 			task := worker.runningTasks[0]
-			log.Infof("<%s> finish running task %v/%v", eschedTag, task.sector.ID, task.taskType)
+			log.Debugf("<%s> finish running task %v/%v", eschedTag, task.sector.ID, task.taskType)
 			worker.runningTasks, _ = safeRemoveWorkerRequest(worker.runningTasks, nil, task)
 
 			go func(worker *eWorkerHandle, task *eWorkerRequest) {
@@ -1304,14 +1304,14 @@ func (bucket *eWorkerBucket) removeWorkerFromBucket(wid uuid.UUID) {
 	if 0 <= index {
 		bucket.workers = append(bucket.workers[:index], bucket.workers[index+1:]...)
 		go func() { bucket.droppedWorker <- eTaskWorkerBindParam{address: worker.info.Address, wid: worker.wid} }()
-		log.Infof("<%s> drop worker %v from bucket %d", eschedTag, worker.info.Address, bucket.id)
+		log.Debugf("<%s> drop worker %v from bucket %d", eschedTag, worker.info.Address, bucket.id)
 	}
-	log.Infof("<%s> dropped worker %v from bucket %d", eschedTag, wid, bucket.id)
+	log.Debugf("<%s> dropped worker %v from bucket %d", eschedTag, wid, bucket.id)
 }
 
 func (bucket *eWorkerBucket) appendNewWorker(w *eWorkerHandle) {
 	bucket.workers = append(bucket.workers, w)
-	log.Infof("<%s> new worker [%v] %s is added to bucket %d [%d]",
+	log.Debugf("<%s> new worker [%v] %s is added to bucket %d [%d]",
 		eschedTag, w.wid, w.info.Address, bucket.id, len(bucket.workers))
 	go func() { bucket.notifier <- struct{}{} }()
 }
@@ -1352,7 +1352,7 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 		}
 	}
 
-	log.Infof("<%s> storage count %v, max reached %v [%v]", eschedTag, worker.info.StorageCount, maxReached, worker.info.Address)
+	log.Debugf("<%s> storage count %v, max reached %v [%v]", eschedTag, worker.info.StorageCount, maxReached, worker.info.Address)
 	if maxReached == worker.info.StorageCount {
 		worker.rejectNewTask = false
 	} else {
@@ -1396,13 +1396,13 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 	if _, ok := w.storeIDs[act.id]; ok {
 		stat := w.storeIDs[act.id]
 		if stat.space < act.stat.space {
-			log.Infof("<%s> store %v is updating %v -> %v (%v | %v)",
+			log.Debugf("<%s> store %v is updating %v -> %v (%v | %v)",
 				eschedTag, act.id, stat.space, act.stat.space, stat.maxReached, act.stat.total)
 			act.stat.maxReached = stat.maxReached
 			w.storeIDs[act.id] = act.stat
 		}
 	} else {
-		log.Infof("<%s> store %v is adding %v | %v", eschedTag, act.id, act.stat.space, act.stat.total)
+		log.Debugf("<%s> store %v is adding %v | %v", eschedTag, act.id, act.stat.space, act.stat.total)
 		w.storeIDs[act.id] = act.stat
 	}
 
@@ -1412,10 +1412,10 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 
 func (bucket *eWorkerBucket) onDropStore(w *eWorkerHandle, act eStoreAction) {
 	if _, ok := w.storeIDs[act.id]; !ok {
-		log.Infof("<%s> store %v already dropped", eschedTag, act.id)
+		log.Debugf("<%s> store %v already dropped", eschedTag, act.id)
 		return
 	}
-	log.Infof("<%s> store %v already dropped", eschedTag, act.id)
+	log.Debugf("<%s> store %v already dropped", eschedTag, act.id)
 	delete(w.storeIDs, act.id)
 	w.caculateTaskLimit()
 }
@@ -1430,7 +1430,7 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 	if nil == worker {
 		return
 	}
-	log.Infof("<%s> %v store %v [bucket %d / worker %s]", eschedTag, act.act, act.id, bucket.id, worker.info.Address)
+	log.Debugf("<%s> %v store %v [bucket %d / worker %s]", eschedTag, act.act, act.id, bucket.id, worker.info.Address)
 	switch act.act {
 	case eschedAdd:
 		bucket.onAddStore(worker, act)
@@ -1449,7 +1449,7 @@ func (bucket *eWorkerBucket) onTaskClean(clean *eWorkerTaskCleaning) {
 		}
 		for idx, task := range worker.cleaningTasks {
 			if (clean.taskType == task.taskType || clean.bySectorRemove) && task.sector.ID.Number == clean.sector.ID.Number {
-				log.Infof("<%s> clean task %v / %v [byCacheMove %v] from %s [bigCache %v]",
+				log.Debugf("<%s> clean task %v / %v [byCacheMove %v] from %s [bigCache %v]",
 					eschedTag, clean.sector, clean.taskType, clean.byCacheMove,
 					worker.info.Address, worker.info.BigCache)
 				worker.cleaningTasks = append(worker.cleaningTasks[:idx], worker.cleaningTasks[idx+1:]...)
@@ -1686,7 +1686,7 @@ func (bucket *eWorkerBucket) onScheduleTick() {
 }
 
 func (bucket *eWorkerBucket) setTaskUUID(uuid eTaskUUID) {
-	log.Infof("<%s> try to set sector %v uuid to %v", eschedTag, uuid.sector.ID, uuid.uuid)
+	log.Debugf("<%s> try to set sector %v uuid to %v", eschedTag, uuid.sector.ID, uuid.uuid)
 	for _, worker := range bucket.workers {
 		for _, task := range worker.runningTasks {
 			if task.sector.ID == uuid.sector.ID {
