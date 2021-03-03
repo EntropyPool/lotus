@@ -35,6 +35,7 @@ var sealingCmd = &cli.Command{
 		scheduleAbortCmd,
 		sealingGasAdjustCmd,
 		sealingSetWorkerModeCmd,
+		sealingSetWorkerReservedSpaceCmd,
 	},
 }
 
@@ -540,5 +541,42 @@ var sealingSetWorkerModeCmd = &cli.Command{
 		ctx := lcli.ReqContext(cctx)
 
 		return nodeApi.SetWorkerMode(ctx, address, mode)
+	},
+}
+
+var sealingSetWorkerReservedSpaceCmd = &cli.Command{
+	Name:  "set-worker-reserved-space",
+	Usage: "Set worker store's reserved space",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name: "address",
+		},
+		&cli.StringFlag{
+			Name:  "store-id",
+			Value: "",
+		},
+		&cli.Int64Flag{
+			Name:  "reserved-space",
+			Value: 0,
+		},
+	},
+	Action: func(cctx *cli.Context) error {
+		address := cctx.String("address")
+		storeID := cctx.String("store-id")
+		reserved := cctx.Int64("reserved-space")
+
+		if "" == storeID {
+			return nil
+		}
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		ctx := lcli.ReqContext(cctx)
+
+		return nodeApi.SetWorkerReservedSpace(ctx, address, storeID, reserved)
 	},
 }

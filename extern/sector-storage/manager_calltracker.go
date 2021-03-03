@@ -432,3 +432,7 @@ func (m *Manager) SetScheduleConcurrent(ctx context.Context, idleCpus int, usabl
 func (m *Manager) SetWorkerMode(ctx context.Context, address string, mode string) error {
 	return m.sched.esched.SetWorkerMode(address, mode)
 }
+
+func (m *Manager) SetWorkerReservedSpace(ctx context.Context, address string, storePrefix string, reserved int64) error {
+	return m.sched.esched.SetWorkerReservedSpace(address, storePrefix, reserved)
+}

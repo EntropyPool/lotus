@@ -95,6 +95,7 @@ type StorageMiner interface {
 	SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error
 	SetScheduleGpuConcurrentTasks(ctx context.Context, gpuTasks int) error
 	SetWorkerMode(ctx context.Context, address string, mode string) error
+	SetWorkerReservedSpace(ctx context.Context, address string, storePrefix string, reserved int64) error
 	SealingAbort(ctx context.Context, call storiface.CallID) error
 
 	SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error

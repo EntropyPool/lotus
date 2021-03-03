@@ -347,15 +347,16 @@ type StorageMinerStruct struct {
 		ReturnReadPiece       func(ctx context.Context, callID storiface.CallID, ok bool, err *storiface.CallError) error                   `perm:"admin" retry:"true"`
 		ReturnFetch           func(ctx context.Context, callID storiface.CallID, err *storiface.CallError) error                            `perm:"admin" retry:"true"`
 
-		SealingSchedDiag                     func(context.Context, bool) (interface{}, error)                                `perm:"admin"`
-		SealingAbort                         func(ctx context.Context, call storiface.CallID) error                          `perm:"admin"`
-		ScheduleAbort                        func(ctx context.Context, sector storage.SectorRef) error                       `perm:"admin"`
-		SetScheduleGpuConcurrentTasks        func(ctx context.Context, gpuTasks int) error                                   `perm:"admin"`
-		SetScheduleConcurrent                func(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error `perm:"admin"`
-		SetWorkerMode                        func(ctx context.Context, address string, mode string) error                    `perm:"admin"`
-		SealingSetPreferSectorOnChain        func(ctx context.Context, prefer bool) error                                    `perm:"admin"`
-		SealingSetEnableAutoPledge           func(ctx context.Context, enable bool) error                                    `perm:"admin"`
-		SealingSetAutoPledgeBalanceThreshold func(ctx context.Context, threshold abi.TokenAmount) error                      `perm:"admin"`
+		SealingSchedDiag                     func(context.Context, bool) (interface{}, error)                                    `perm:"admin"`
+		SealingAbort                         func(ctx context.Context, call storiface.CallID) error                              `perm:"admin"`
+		ScheduleAbort                        func(ctx context.Context, sector storage.SectorRef) error                           `perm:"admin"`
+		SetScheduleGpuConcurrentTasks        func(ctx context.Context, gpuTasks int) error                                       `perm:"admin"`
+		SetScheduleConcurrent                func(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error     `perm:"admin"`
+		SetWorkerMode                        func(ctx context.Context, address string, mode string) error                        `perm:"admin"`
+		SetWorkerReservedSpace               func(ctx context.Context, address string, storePrefix string, reserved int64) error `perm:"admin"`
+		SealingSetPreferSectorOnChain        func(ctx context.Context, prefer bool) error                                        `perm:"admin"`
+		SealingSetEnableAutoPledge           func(ctx context.Context, enable bool) error                                        `perm:"admin"`
+		SealingSetAutoPledgeBalanceThreshold func(ctx context.Context, threshold abi.TokenAmount) error                          `perm:"admin"`
 
 		StorageList          func(context.Context) (map[stores.ID][]stores.Decl, error)                                                                                   `perm:"admin"`
 		StorageLocal         func(context.Context) (map[stores.ID]string, error)                                                                                          `perm:"admin"`
@@ -1452,6 +1453,10 @@ func (c *StorageMinerStruct) SealingSetAutoPledgeBalanceThreshold(ctx context.Co
 
 func (c *StorageMinerStruct) SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error {
 	return c.Internal.SealingSetPreferSectorOnChain(ctx, prefer)
+}
+
+func (c *StorageMinerStruct) SetWorkerReservedSpace(ctx context.Context, address string, storePrefix string, reserved int64) error {
+	return c.Internal.SetWorkerReservedSpace(ctx, address, storePrefix, reserved)
 }
 
 func (c *StorageMinerStruct) SetWorkerMode(ctx context.Context, address string, mode string) error {

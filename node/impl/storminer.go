@@ -406,6 +406,10 @@ func (sm *StorageMinerAPI) SealingAbort(ctx context.Context, call storiface.Call
 	return sm.StorageMgr.Abort(ctx, call)
 }
 
+func (sm *StorageMinerAPI) SetWorkerReservedSpace(ctx context.Context, address string, storePrefix string, reserved int64) error {
+	return sm.StorageMgr.SetWorkerReservedSpace(ctx, address, storePrefix, reserved)
+}
+
 func (sm *StorageMinerAPI) SetWorkerMode(ctx context.Context, address string, mode string) error {
 	return sm.StorageMgr.SetWorkerMode(ctx, address, mode)
 }
