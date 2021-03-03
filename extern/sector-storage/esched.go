@@ -228,35 +228,42 @@ type eWorkerMode struct {
 	mode    string
 }
 
+type eWorkerReservedSpace struct {
+	address     string
+	storePrefix string
+	reserved    int64
+}
+
 type eWorkerBucket struct {
-	spt                abi.RegisteredSealProof
-	id                 int
-	idleCpus           int
-	usableCpus         int
-	gpuTasks           int
-	concurrentAP       int
-	newWorker          chan *eWorkerHandle
-	workers            []*eWorkerHandle
-	reqQueue           *eRequestQueue
-	schedulerWaker     chan struct{}
-	schedulerRunner    chan struct{}
-	reqFinisher        chan *eRequestFinisher
-	notifier           chan struct{}
-	dropWorker         chan uuid.UUID
-	abortTask          chan storage.SectorRef
-	taskUUID           chan eTaskUUID
-	retRequest         chan *eWorkerRequest
-	storageNotifier    chan eStoreAction
-	droppedWorker      chan eTaskWorkerBindParam
-	taskWorkerBinder   *eTaskWorkerBinder
-	taskCleaner        chan *eWorkerTaskCleaning
-	taskCleanerHandler chan *eWorkerTaskCleaning
-	workerStatsQuery   chan *eWorkerStatsParam
-	workerJobsQuery    chan *eWorkerJobsParam
-	bucketPledgedJobs  chan *eBucketPledgedJobsParam
-	setWorkerMode      chan eWorkerMode
-	closing            chan struct{}
-	ticker             *time.Ticker
+	spt                    abi.RegisteredSealProof
+	id                     int
+	idleCpus               int
+	usableCpus             int
+	gpuTasks               int
+	concurrentAP           int
+	newWorker              chan *eWorkerHandle
+	workers                []*eWorkerHandle
+	reqQueue               *eRequestQueue
+	schedulerWaker         chan struct{}
+	schedulerRunner        chan struct{}
+	reqFinisher            chan *eRequestFinisher
+	notifier               chan struct{}
+	dropWorker             chan uuid.UUID
+	abortTask              chan storage.SectorRef
+	taskUUID               chan eTaskUUID
+	retRequest             chan *eWorkerRequest
+	storageNotifier        chan eStoreAction
+	droppedWorker          chan eTaskWorkerBindParam
+	taskWorkerBinder       *eTaskWorkerBinder
+	taskCleaner            chan *eWorkerTaskCleaning
+	taskCleanerHandler     chan *eWorkerTaskCleaning
+	workerStatsQuery       chan *eWorkerStatsParam
+	workerJobsQuery        chan *eWorkerJobsParam
+	bucketPledgedJobs      chan *eBucketPledgedJobsParam
+	setWorkerMode          chan eWorkerMode
+	setWorkerReservedSpace chan eWorkerReservedSpace
+	closing                chan struct{}
+	ticker                 *time.Ticker
 }
 
 type eRequestQueue struct {
@@ -384,32 +391,33 @@ type eWorkerJobsParam struct {
 }
 
 type edispatcher struct {
-	nextRequest       uint64
-	nextWorker        uint64
-	newWorker         chan *eWorkerHandle
-	dropWorker        chan uuid.UUID
-	taskUUID          chan eTaskUUID
-	abortTask         chan storage.SectorRef
-	setWorkerMode     chan eWorkerMode
-	newRequest        chan *eWorkerRequest
-	buckets           []*eWorkerBucket
-	reqQueue          *eRequestQueue
-	storage           *EStorage
-	storageNotifier   chan eStoreAction
-	droppedWorker     chan eTaskWorkerBindParam
-	taskCleaner       chan *eWorkerTaskCleaning
-	closing           chan struct{}
-	ctx               context.Context
-	taskWorkerBinder  *eTaskWorkerBinder
-	workerStatsQuery  chan *eWorkerStatsParam
-	workerJobsQuery   chan *eWorkerJobsParam
-	bucketPledgedJobs chan *eBucketPledgedJobsParam
-	workerJobs        map[uuid.UUID][]storiface.WorkerJob
-	workerJobsResp    chan map[uuid.UUID][]storiface.WorkerJob
-	workerStats       map[uuid.UUID]storiface.WorkerStats
-	workerStatsResp   chan map[uuid.UUID]storiface.WorkerStats
-	statsTicker       *time.Ticker
-	state             string
+	nextRequest            uint64
+	nextWorker             uint64
+	newWorker              chan *eWorkerHandle
+	dropWorker             chan uuid.UUID
+	taskUUID               chan eTaskUUID
+	abortTask              chan storage.SectorRef
+	setWorkerMode          chan eWorkerMode
+	setWorkerReservedSpace chan eWorkerReservedSpace
+	newRequest             chan *eWorkerRequest
+	buckets                []*eWorkerBucket
+	reqQueue               *eRequestQueue
+	storage                *EStorage
+	storageNotifier        chan eStoreAction
+	droppedWorker          chan eTaskWorkerBindParam
+	taskCleaner            chan *eWorkerTaskCleaning
+	closing                chan struct{}
+	ctx                    context.Context
+	taskWorkerBinder       *eTaskWorkerBinder
+	workerStatsQuery       chan *eWorkerStatsParam
+	workerJobsQuery        chan *eWorkerJobsParam
+	bucketPledgedJobs      chan *eBucketPledgedJobsParam
+	workerJobs             map[uuid.UUID][]storiface.WorkerJob
+	workerJobsResp         chan map[uuid.UUID][]storiface.WorkerJob
+	workerStats            map[uuid.UUID]storiface.WorkerStats
+	workerStatsResp        chan map[uuid.UUID]storiface.WorkerStats
+	statsTicker            *time.Ticker
+	state                  string
 }
 
 const eschedWorkerBuckets = 10
@@ -482,7 +490,7 @@ func (sh *edispatcher) checkStorageUpdate() {
 			space: stor.FsStat().Available,
 			URLs:  stor.Info().URLs,
 			local: sh.isLocalStorage(id),
-			id: id,
+			id:    id,
 		}
 
 		sh.storeNotify(id, stat, eschedAdd)
@@ -1332,7 +1340,7 @@ func (worker *eWorkerHandle) caculateTaskLimit() {
 	maxReached := 0
 
 	for key, stat := range worker.storeIDs {
-		if stat.total-stat.space < 100*eGiB {
+		if stat.total-stat.space-stat.reserved < 100*eGiB {
 			stat.maxReached = true
 			worker.storeIDs[key] = stat
 		}
@@ -1793,6 +1801,20 @@ func (bucket *eWorkerBucket) onSetWorkerMode(workerMode eWorkerMode) {
 	}
 }
 
+func (bucket *eWorkerBucket) onSetWorkerReservedSpace(workerReservedSpace eWorkerReservedSpace) {
+	for _, worker := range bucket.workers {
+		if workerReservedSpace.address == worker.info.Address {
+			for key, stat := range worker.storeIDs {
+				if strings.HasPrefix(string(stat.id), workerReservedSpace.storePrefix) {
+					stat.reserved = workerReservedSpace.reserved
+					worker.storeIDs[key] = stat
+					return
+				}
+			}
+		}
+	}
+}
+
 func (bucket *eWorkerBucket) scheduler() {
 	log.Infof("<%s> run scheduler for bucket %d", eschedTag, bucket.id)
 
@@ -1814,6 +1836,8 @@ func (bucket *eWorkerBucket) scheduler() {
 			bucket.onAbortTask(sector)
 		case workerMode := <-bucket.setWorkerMode:
 			bucket.onSetWorkerMode(workerMode)
+		case workerReservedSpace := <-bucket.setWorkerReservedSpace:
+			bucket.onSetWorkerReservedSpace(workerReservedSpace)
 		case wid := <-bucket.dropWorker:
 			bucket.removeWorkerFromBucket(wid)
 		case act := <-bucket.storageNotifier:
@@ -1847,14 +1871,15 @@ func (bucket *eWorkerBucket) addNewWorker(w *eWorkerHandle) {
 
 func newExtScheduler() *edispatcher {
 	dispatcher := &edispatcher{
-		nextWorker:    0,
-		newWorker:     make(chan *eWorkerHandle, 40),
-		dropWorker:    make(chan uuid.UUID, 10),
-		taskUUID:      make(chan eTaskUUID, 10),
-		setWorkerMode: make(chan eWorkerMode, 10),
-		abortTask:     make(chan storage.SectorRef, 10),
-		newRequest:    make(chan *eWorkerRequest, 1000),
-		buckets:       make([]*eWorkerBucket, eschedWorkerBuckets),
+		nextWorker:             0,
+		newWorker:              make(chan *eWorkerHandle, 40),
+		dropWorker:             make(chan uuid.UUID, 10),
+		taskUUID:               make(chan eTaskUUID, 10),
+		setWorkerMode:          make(chan eWorkerMode, 10),
+		setWorkerReservedSpace: make(chan eWorkerReservedSpace, 10),
+		abortTask:              make(chan storage.SectorRef, 10),
+		newRequest:             make(chan *eWorkerRequest, 1000),
+		buckets:                make([]*eWorkerBucket, eschedWorkerBuckets),
 		reqQueue: &eRequestQueue{
 			reqs: make(map[sealtasks.TaskType][]*eWorkerRequest),
 		},
@@ -1877,32 +1902,33 @@ func newExtScheduler() *edispatcher {
 
 	for i := range dispatcher.buckets {
 		dispatcher.buckets[i] = &eWorkerBucket{
-			spt:                abi.RegisteredSealProof_StackedDrg32GiBV1,
-			id:                 i,
-			newWorker:          make(chan *eWorkerHandle),
-			workers:            make([]*eWorkerHandle, 0),
-			reqQueue:           dispatcher.reqQueue,
-			concurrentAP:       1,
-			idleCpus:           4,
-			schedulerWaker:     make(chan struct{}, 20),
-			schedulerRunner:    make(chan struct{}, 20000),
-			reqFinisher:        make(chan *eRequestFinisher),
-			notifier:           make(chan struct{}),
-			dropWorker:         make(chan uuid.UUID, 10),
-			taskUUID:           make(chan eTaskUUID, 10),
-			setWorkerMode:      make(chan eWorkerMode, 10),
-			abortTask:          make(chan storage.SectorRef, 10),
-			retRequest:         dispatcher.newRequest,
-			storageNotifier:    make(chan eStoreAction, 10),
-			droppedWorker:      dispatcher.droppedWorker,
-			taskWorkerBinder:   dispatcher.taskWorkerBinder,
-			taskCleaner:        dispatcher.taskCleaner,
-			taskCleanerHandler: make(chan *eWorkerTaskCleaning, 10),
-			workerStatsQuery:   make(chan *eWorkerStatsParam, 10),
-			workerJobsQuery:    make(chan *eWorkerJobsParam, 10),
-			closing:            make(chan struct{}, 2),
-			ticker:             time.NewTicker(3 * 60 * time.Second),
-			bucketPledgedJobs:  make(chan *eBucketPledgedJobsParam, 0),
+			spt:                    abi.RegisteredSealProof_StackedDrg32GiBV1,
+			id:                     i,
+			newWorker:              make(chan *eWorkerHandle),
+			workers:                make([]*eWorkerHandle, 0),
+			reqQueue:               dispatcher.reqQueue,
+			concurrentAP:           1,
+			idleCpus:               4,
+			schedulerWaker:         make(chan struct{}, 20),
+			schedulerRunner:        make(chan struct{}, 20000),
+			reqFinisher:            make(chan *eRequestFinisher),
+			notifier:               make(chan struct{}),
+			dropWorker:             make(chan uuid.UUID, 10),
+			taskUUID:               make(chan eTaskUUID, 10),
+			setWorkerMode:          make(chan eWorkerMode, 10),
+			setWorkerReservedSpace: make(chan eWorkerReservedSpace, 10),
+			abortTask:              make(chan storage.SectorRef, 10),
+			retRequest:             dispatcher.newRequest,
+			storageNotifier:        make(chan eStoreAction, 10),
+			droppedWorker:          dispatcher.droppedWorker,
+			taskWorkerBinder:       dispatcher.taskWorkerBinder,
+			taskCleaner:            dispatcher.taskCleaner,
+			taskCleanerHandler:     make(chan *eWorkerTaskCleaning, 10),
+			workerStatsQuery:       make(chan *eWorkerStatsParam, 10),
+			workerJobsQuery:        make(chan *eWorkerJobsParam, 10),
+			closing:                make(chan struct{}, 2),
+			ticker:                 time.NewTicker(3 * 60 * time.Second),
+			bucketPledgedJobs:      make(chan *eBucketPledgedJobsParam, 0),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -2404,6 +2430,12 @@ func (sh *edispatcher) onSetWorkerMode(workerMode eWorkerMode) {
 	}
 }
 
+func (sh *edispatcher) onSetWorkerReservedSpace(workerReservedSpace eWorkerReservedSpace) {
+	for _, bucket := range sh.buckets {
+		go func(bucket *eWorkerBucket) { bucket.setWorkerReservedSpace <- workerReservedSpace }(bucket)
+	}
+}
+
 func (sh *edispatcher) statePrinter() {
 	ticker := time.NewTicker(3 * time.Minute)
 	for {
@@ -2469,9 +2501,13 @@ func (sh *edispatcher) runSched() {
 			sh.onAbortTask(sector)
 			sh.state = "abortTaskEnd"
 		case workerMode := <-sh.setWorkerMode:
-			sh.state = "abortTaskStart"
+			sh.state = "setWorkerModeStart"
 			sh.onSetWorkerMode(workerMode)
-			sh.state = "abortTaskEnd"
+			sh.state = "setWorkerModeEnd"
+		case workerReservedSpace := <-sh.setWorkerReservedSpace:
+			sh.state = "setWorkerReservedSpaceStart"
+			sh.onSetWorkerReservedSpace(workerReservedSpace)
+			sh.state = "setWorkerReservedSpaceEnd"
 		case <-sh.statsTicker.C:
 			sh.state = "statsTickerStart"
 			sh.onStatsTick()
@@ -2599,6 +2635,17 @@ func (sh *edispatcher) SetScheduleGpuConcurrentTasks(gpuTasks int) error {
 
 func (sh *edispatcher) SetWorkerMode(address string, mode string) error {
 	go func() { sh.setWorkerMode <- eWorkerMode{address: address, mode: mode} }()
+	return nil
+}
+
+func (sh *edispatcher) SetWorkerReservedSpace(address string, storePrefix string, reserved int64) error {
+	go func() {
+		sh.setWorkerReservedSpace <- eWorkerReservedSpace{
+			address:     address,
+			reserved:    reserved,
+			storePrefix: storePrefix,
+		}
+	}()
 	return nil
 }
 
