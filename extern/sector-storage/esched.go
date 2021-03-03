@@ -482,6 +482,7 @@ func (sh *edispatcher) checkStorageUpdate() {
 			space: stor.FsStat().Available,
 			URLs:  stor.Info().URLs,
 			local: sh.isLocalStorage(id),
+			id: id,
 		}
 
 		sh.storeNotify(id, stat, eschedAdd)

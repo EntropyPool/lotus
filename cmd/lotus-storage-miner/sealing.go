@@ -121,12 +121,14 @@ var sealingWorkersCmd = &cli.Command{
 			workerStores := ""
 			for _, store := range stat.Stores {
 				workerStores = fmt.Sprintf("%s\n\t      ", workerStores)
-				workerStores = fmt.Sprintf("%s| %8s | %11v | %11v | %11v | %10v |",
-					store.ID, store.Total, store.Available, store.Reserved, store.MaxReached)
+				workerStores = fmt.Sprintf("%s| %8s | %14v | %14v | %14v | %10v |",
+					workerStores, strings.Split(store.ID, "-")[0],
+					store.Total, store.Available,
+					store.Reserved, store.MaxReached)
 			}
-			fmt.Printf("\t      ------------------------------------------------------------------\n")
-			fmt.Printf("\tSTO:  |    ID    |    Total    |    Avail    |    Rsvd    | MaxReached |%s\n", workerStores)
-			fmt.Printf("\t      ------------------------------------------------------------------\n")
+			fmt.Printf("\t      ----------------------------------------------------------------------------\n")
+			fmt.Printf("\tSTO:  |    ID    |      Total     |      Avail     |      Rsvd      | MaxReached |%s\n", workerStores)
+			fmt.Printf("\t      ----------------------------------------------------------------------------\n")
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)
