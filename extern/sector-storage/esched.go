@@ -391,6 +391,10 @@ var eschedTaskStableRunning = map[sealtasks.TaskType]struct{}{
 	sealtasks.TTPreCommit2: struct{}{},
 }
 
+var eschedTaskMaxPeeked = map[sealtasks.TaskType]int{
+	sealtasks.TTPreCommit1: 2,
+}
+
 var eschedTaskSingleRunning = map[sealtasks.TaskType][]sealtasks.TaskType{
 	sealtasks.TTPreCommit2: {sealtasks.TTCommit2},
 	// sealtasks.TTCommit2:    {sealtasks.TTPreCommit2},
@@ -706,6 +710,16 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			log.Debugf("<%s> worker %s's disk concurrent limit is not set, %v need to run at stable state",
 				eschedTag, worker.info.Address, taskType)
 			return 0
+		}
+
+		if count, ok := eschedTaskMaxPeeked[taskType]; ok {
+			peekedCount := worker.typedTaskCount(taskType, false, false)
+			if count <= peekedCount {
+				log.Debugf("<%s> worker %s's %v peeked queue is full %d / %d",
+					eschedTag, worker.info.Address, req.taskType, peekedCount, count)
+				reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
+				continue
+			}
 		}
 
 		taskCount := worker.typedTaskCount(req.taskType, true, true)
