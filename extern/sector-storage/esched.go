@@ -1267,7 +1267,14 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 		}
 	}
 
-	go func() { finisher.req.ret <- *finisher.resp }()
+	if strings.Contains(finisher.resp.err.Error(), "couldn't find a suitable path for a sector") ||
+		strings.Contains(finisher.resp.err.Error(), "reserving storage space") ||
+		strings.Contains(finisher.resp.err.Error(), "can't reserve") {
+		go func() { bucket.retRequest <- finisher.req }()
+	} else {
+		go func() { finisher.req.ret <- *finisher.resp }()
+	}
+
 	go func() { bucket.notifier <- struct{}{} }()
 	go func() { bucket.schedulerWaker <- struct{}{} }()
 	go func() { bucket.schedulerRunner <- struct{}{} }()
