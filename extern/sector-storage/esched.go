@@ -2230,9 +2230,11 @@ func (sh *edispatcher) addNewWorkerRequestToBucketWorker(req *eWorkerRequest) {
 
 	req.id = sh.nextRequest
 	sh.nextRequest += 1
-	req.requestTime = time.Now().UnixNano()
+	if req.requestTime == 0 {
+		req.requestTime = time.Now().UnixNano()
+		req.requestTimeRaw = time.Now()
+	}
 	req.deadTime = req.requestTime + eTaskTimeout[req.taskType]
-	req.requestTimeRaw = time.Now()
 
 	sh.reqQueue.mutex.Lock()
 	if _, ok := sh.reqQueue.reqs[req.taskType]; !ok {
