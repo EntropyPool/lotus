@@ -1267,10 +1267,14 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 		}
 	}
 
-	if strings.Contains(finisher.resp.err.Error(), "couldn't find a suitable path for a sector") ||
-		strings.Contains(finisher.resp.err.Error(), "reserving storage space") ||
-		strings.Contains(finisher.resp.err.Error(), "can't reserve") {
-		go func() { bucket.retRequest <- finisher.req }()
+	if finisher.resp.err != nil {
+		if strings.Contains(finisher.resp.err.Error(), "couldn't find a suitable path for a sector") ||
+			strings.Contains(finisher.resp.err.Error(), "reserving storage space") ||
+			strings.Contains(finisher.resp.err.Error(), "can't reserve") {
+			go func() { bucket.retRequest <- finisher.req }()
+		} else {
+			go func() { finisher.req.ret <- *finisher.resp }()
+		}
 	} else {
 		go func() { finisher.req.ret <- *finisher.resp }()
 	}
