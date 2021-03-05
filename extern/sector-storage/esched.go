@@ -1274,7 +1274,7 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 		}
 	}
 
-	if finisher.resp.err != nil {
+	if finisher.resp.err != nil && finisher.req.taskType != sealtasks.TTAddPiece {
 		if strings.Contains(finisher.resp.err.Error(), "couldn't find a suitable path for a sector") ||
 			strings.Contains(finisher.resp.err.Error(), "reserving storage space") ||
 			strings.Contains(finisher.resp.err.Error(), "can't reserve") {
