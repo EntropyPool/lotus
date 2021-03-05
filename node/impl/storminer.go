@@ -414,6 +414,10 @@ func (sm *StorageMinerAPI) SetWorkerMode(ctx context.Context, address string, mo
 	return sm.StorageMgr.SetWorkerMode(ctx, address, mode)
 }
 
+func (sm *StorageMinerAPI) SetScheduleDebugEnable(ctx context.Context, enable bool) error {
+	return sm.StorageMgr.SetScheduleDebugEnable(ctx, enable)
+}
+
 func (sm *StorageMinerAPI) SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error {
 	return sm.StorageMgr.SetScheduleConcurrent(ctx, idleCpus, usableCpus, apConcurrent)
 }

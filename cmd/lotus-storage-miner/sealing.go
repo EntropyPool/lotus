@@ -33,6 +33,7 @@ var sealingCmd = &cli.Command{
 		sealingSchedDiagCmd,
 		sealingAbortCmd,
 		scheduleAbortCmd,
+		scheduleEnableDebugCmd,
 		sealingGasAdjustCmd,
 		sealingSetWorkerModeCmd,
 		sealingSetWorkerReservedSpaceCmd,
@@ -578,5 +579,27 @@ var sealingSetWorkerReservedSpaceCmd = &cli.Command{
 		ctx := lcli.ReqContext(cctx)
 
 		return nodeApi.SetWorkerReservedSpace(ctx, address, storeID, reserved)
+	},
+}
+
+var scheduleEnableDebugCmd = &cli.Command{
+	Name:      "sched-enable-debug",
+	Usage:     "Enable more debug information of schedule",
+	ArgsUsage: "[true|false]",
+	Action: func(cctx *cli.Context) error {
+		if cctx.Args().Len() != 1 {
+			return xerrors.Errorf("expected 1 argument")
+		}
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		ctx := lcli.ReqContext(cctx)
+		enable, _ := strconv.ParseBool(cctx.Args().First())
+
+		return nodeApi.SetScheduleDebugEnable(ctx, enable)
 	},
 }

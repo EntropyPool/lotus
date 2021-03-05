@@ -433,6 +433,10 @@ func (m *Manager) SetWorkerMode(ctx context.Context, address string, mode string
 	return m.sched.esched.SetWorkerMode(address, mode)
 }
 
+func (m *Manager) SetScheduleDebugEnable(ctx context.Context, enable bool) error {
+	return m.sched.esched.SetScheduleDebugEnable(enable)
+}
+
 func (m *Manager) SetWorkerReservedSpace(ctx context.Context, address string, storePrefix string, reserved int64) error {
 	return m.sched.esched.SetWorkerReservedSpace(address, storePrefix, reserved)
 }

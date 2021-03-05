@@ -353,6 +353,7 @@ type StorageMinerStruct struct {
 		SetScheduleGpuConcurrentTasks        func(ctx context.Context, gpuTasks int) error                                       `perm:"admin"`
 		SetScheduleConcurrent                func(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error     `perm:"admin"`
 		SetWorkerMode                        func(ctx context.Context, address string, mode string) error                        `perm:"admin"`
+		SetScheduleDebugEnable               func(ctx context.Context, enable bool) error                                        `perm:"admin"`
 		SetWorkerReservedSpace               func(ctx context.Context, address string, storePrefix string, reserved int64) error `perm:"admin"`
 		SealingSetPreferSectorOnChain        func(ctx context.Context, prefer bool) error                                        `perm:"admin"`
 		SealingSetEnableAutoPledge           func(ctx context.Context, enable bool) error                                        `perm:"admin"`
@@ -1461,6 +1462,10 @@ func (c *StorageMinerStruct) SetWorkerReservedSpace(ctx context.Context, address
 
 func (c *StorageMinerStruct) SetWorkerMode(ctx context.Context, address string, mode string) error {
 	return c.Internal.SetWorkerMode(ctx, address, mode)
+}
+
+func (c *StorageMinerStruct) SetScheduleDebugEnable(ctx context.Context, enable bool) error {
+	return c.Internal.SetScheduleDebugEnable(ctx, enable)
 }
 
 func (c *StorageMinerStruct) SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error {
