@@ -95,6 +95,7 @@ type eWorkerRequest struct {
 	startRunTimeRaw time.Time
 	sel             WorkerSelector
 	priority        int
+	failTime        time.Time
 }
 
 var eTaskPriority = map[sealtasks.TaskType]int{
@@ -719,6 +720,11 @@ func (bucket *eWorkerBucket) tryPeekAsManyRequests(worker *eWorkerHandle, taskTy
 			return 0
 		}
 
+		if time.Since(req.failTime) < 2*time.Minute {
+			reqs, remainReqs = safeRemoveWorkerRequest(reqs, remainReqs, req)
+			continue
+		}
+
 		if count, ok := eschedTaskMaxPeeked[taskType]; ok {
 			peekedCount := worker.typedTaskCount(taskType, false, false)
 			if count <= peekedCount {
@@ -1278,6 +1284,7 @@ func (bucket *eWorkerBucket) taskFinished(finisher *eRequestFinisher) {
 		if strings.Contains(finisher.resp.err.Error(), "couldn't find a suitable path for a sector") ||
 			strings.Contains(finisher.resp.err.Error(), "reserving storage space") ||
 			strings.Contains(finisher.resp.err.Error(), "can't reserve") {
+			finisher.req.failTime = time.Now()
 			go func() { bucket.retRequest <- finisher.req }()
 		} else {
 			go func() { finisher.req.ret <- *finisher.resp }()
