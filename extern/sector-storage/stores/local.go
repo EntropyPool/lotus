@@ -792,10 +792,13 @@ func (st *Local) MoveStorage(ctx context.Context, s storage.SectorRef, types sto
 
 		if dst.Oss {
 			// If source is from another storage, just process when it's not oss
-			if sst.ID == dst.ID || !sst.Oss {
+			if sst.ID == dst.ID {
 				for _, p := range st.paths {
 					if p.oss && p.ossInfo.Equal(&dst.OssInfo) && dst.CanStore {
 						moveErr = upload(storiface.PathByType(src, fileType), fileType.String(), storiface.SectorName(s.ID), p.ossClient, true)
+						if moveErr != nil {
+							log.Errorf("cannot upload %v to oss storage %v", storiface.SectorName(s.ID), moveErr)
+						}
 						ossUploaded = true
 						break
 					}
