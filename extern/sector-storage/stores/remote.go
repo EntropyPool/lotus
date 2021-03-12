@@ -3,6 +3,7 @@ package stores
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math/bits"
@@ -138,15 +139,28 @@ func (r *Remote) AcquireSector(ctx context.Context, s storage.SectorRef, existin
 			continue
 		}
 
-		dest := storiface.PathByType(apaths, fileType)
 		storageID := storiface.PathByType(ids, fileType)
+		storageIDExt := storiface.PathExtByType(ids, fileType)
 
-		url, err := r.acquireFromRemote(ctx, s.ID, fileType, dest)
-		if err != nil {
-			return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+		var url string
+
+		destSectorPath := storiface.PathExtByType(apaths, fileType)
+		if destSectorPath.Oss {
+			url, err = r.acquireFromRemoteWithOss(ctx, s.ID, fileType, destSectorPath)
+			if err != nil {
+				return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+			}
+			storiface.SetPathExtByType(&paths, fileType, destSectorPath.Oss, destSectorPath.Private, destSectorPath.OssInfo)
+		} else {
+			destPath := storiface.PathByType(apaths, fileType)
+			url, err = r.acquireFromRemote(ctx, s.ID, fileType, destPath)
+			if err != nil {
+				return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+			}
+			storiface.SetPathByType(&paths, fileType, destPath)
 		}
 
-		storiface.SetPathByType(&paths, fileType, dest)
+		storiface.SetPathExtByType(&stores, fileType, storageIDExt.Oss, storageIDExt.Private, storageIDExt.OssInfo)
 		storiface.SetPathByType(&stores, fileType, storageID)
 
 		if err := r.index.StorageDeclareSector(ctx, ID(storageID), s.ID, fileType, op == storiface.AcquireMove); err != nil {
@@ -174,6 +188,47 @@ func tempFetchDest(spath string, create bool) (string, error) {
 	}
 
 	return filepath.Join(tempdir, b), nil
+}
+
+func (r *Remote) acquireFromRemoteWithOss(ctx context.Context, s abi.SectorID, fileType storiface.SectorFileType, dest storiface.SectorPath) (string, error) {
+	si, err := r.index.StorageFindSector(ctx, s, fileType, 0, false)
+	if err != nil {
+		return "", err
+	}
+
+	if len(si) == 0 {
+		return "", xerrors.Errorf("failed to acquire sector %v from remote(%d): %w", s, fileType, storiface.ErrSectorNotFound)
+	}
+
+	sort.Slice(si, func(i, j int) bool {
+		return si[i].Weight < si[j].Weight
+	})
+
+	var merr error
+	for _, info := range si {
+		for _, url := range info.URLs {
+			urlWithOss := fmt.Sprintf("%s?oss=%v", url, dest.Oss)
+			urlWithOss = fmt.Sprintf("%s&oss_access_key=%v", urlWithOss, dest.OssInfo.AccessKey)
+			urlWithOss = fmt.Sprintf("%s&oss_secret_key=%v", urlWithOss, dest.OssInfo.SecretKey)
+			urlWithOss = fmt.Sprintf("%s&oss_url=%v", urlWithOss, dest.OssInfo.URL)
+			urlWithOss = fmt.Sprintf("%s&oss_bucket_name=%v", urlWithOss, dest.OssInfo.BucketName)
+			urlWithOss = fmt.Sprintf("%s&oss_prefix=%v", urlWithOss, dest.OssInfo.Prefix)
+
+			if err := os.RemoveAll(dest.Path); err != nil {
+				return "", xerrors.Errorf("removing dest: %w", err)
+			}
+
+			err = r.fetch(ctx, urlWithOss, "", true)
+			if err != nil {
+				merr = multierror.Append(merr, xerrors.Errorf("fetch error %s (storage %s) %w", url, info.ID, err))
+				continue
+			}
+
+			return url, nil
+		}
+	}
+
+	return "", xerrors.Errorf("failed to acquire sector %v from remote (tried %v): %w", s, si, merr)
 }
 
 func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType storiface.SectorFileType, dest string) (string, error) {
@@ -207,13 +262,10 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 				return "", xerrors.Errorf("removing dest: %w", err)
 			}
 
-			if e := r.fetchex(ctx, url, tempDest); e != nil {
-				log.Warnw("fetch ex error", "url", url, "storage", info.ID, "error", e)
-				err = r.fetch(ctx, url, tempDest)
-				if err != nil {
-					merr = multierror.Append(merr, xerrors.Errorf("fetch error %s (storage %s) -> %s: %w", url, info.ID, tempDest, err))
-					continue
-				}
+			err = r.fetch(ctx, url, tempDest, false)
+			if err != nil {
+				merr = multierror.Append(merr, xerrors.Errorf("fetch error %s (storage %s) -> %s: %w", url, info.ID, tempDest, err))
+				continue
 			}
 
 			if err := move(tempDest, dest); err != nil {
@@ -231,8 +283,8 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 	return "", xerrors.Errorf("failed to acquire sector %v from remote (tried %v): %w", s, si, merr)
 }
 
-func (r *Remote) fetch(ctx context.Context, url, outname string) error {
-	log.Debugf("Fetch %s -> %s", url, outname)
+func (r *Remote) fetch(ctx context.Context, url, outname string, ossStore bool) error {
+	log.Infof("Fetch %s -> %s", url, outname)
 
 	if len(r.limit) >= cap(r.limit) {
 		log.Debugf("Throttling fetch, %d already running", len(r.limit))
@@ -264,6 +316,10 @@ func (r *Remote) fetch(ctx context.Context, url, outname string) error {
 
 	if resp.StatusCode != 200 {
 		return xerrors.Errorf("non-200 code: %d", resp.StatusCode)
+	}
+
+	if ossStore {
+		return nil
 	}
 
 	/*bar := pb.New64(w.sizeForType(typ))
@@ -302,108 +358,6 @@ func (r *Remote) fetch(ctx context.Context, url, outname string) error {
 	default:
 		return xerrors.Errorf("unknown content type: '%s'", mediatype)
 	}
-}
-
-func (r *Remote) fetchex(ctx context.Context, url, outname string) error {
-	log.Debugf("FetchEx %s -> %s", url, outname)
-
-	if len(r.limit) >= cap(r.limit) {
-		log.Debugf("Throttling fetch, %d already running", len(r.limit))
-	}
-
-	select {
-	case r.limit <- struct{}{}:
-		defer func() { <-r.limit }()
-	case <-ctx.Done():
-		return xerrors.Errorf("context error while waiting for fetch limiter: %w", ctx.Err())
-	}
-
-	req, err := http.NewRequest("LIST", url, nil)
-	if err != nil {
-		return xerrors.Errorf("request: %w", err)
-	}
-	req.Header = r.auth
-	req = req.WithContext(ctx)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return xerrors.Errorf("do request: %w", err)
-	}
-	defer resp.Body.Close() // nolint
-
-	if resp.StatusCode != 200 {
-		return xerrors.Errorf("non-200 code: %d", resp.StatusCode)
-	}
-
-	if err := os.RemoveAll(outname); err != nil {
-		return xerrors.Errorf("removing dest: %w", err)
-	}
-
-	flists := resp.Header.Get("Files-List")
-	log.Debugw("FetchEx get remote Files-List", "files", flists)
-	targets := strings.Split(flists, ";")
-	if len(targets) == 0 {
-		return xerrors.Errorf("There is no file to fetch")
-	}
-
-	//TODO: check bandwith
-	parallel := int(3)
-	env := os.Getenv("LOTUS_FETCH_PARALLEL")
-	if n, err := strconv.Atoi(env); err == nil {
-		parallel = n
-	}
-
-	type remoteFileDesc struct {
-		url string
-		out string
-	}
-
-	taskCh := make(chan remoteFileDesc, parallel)
-	var wg sync.WaitGroup
-	wg.Add(parallel)
-
-	for i := 0; i < parallel; i++ {
-		go func(ctx context.Context) {
-			for {
-				select {
-				case remoteFile, ok := <-taskCh:
-					if !ok {
-						wg.Done()
-						return
-					}
-					if err = r.fetchFile(ctx, remoteFile.url, remoteFile.out); err != nil {
-						log.Errorw("fetch file err", "url", remoteFile.url, "outname", remoteFile.out, "error", err)
-						wg.Done()
-						return
-					}
-					log.Debugw("fetch file", "url", remoteFile.url, "outname", remoteFile.out)
-				}
-			}
-		}(ctx)
-	}
-
-	for _, target := range targets {
-		targetUrl := url
-		outName := outname
-		if strings.HasSuffix(target, ".fp") {
-			continue
-		}
-		if 0 != len(target) {
-			if err = os.MkdirAll(outname, 0755); err != nil { // nolint
-				return xerrors.Errorf("mkdir: %w", err)
-			}
-			targetUrl += string(os.PathSeparator) + target
-			outName += string(os.PathSeparator) + target
-		}
-		taskCh <- remoteFileDesc{url: targetUrl, out: outName}
-	}
-
-	close(taskCh)
-	wg.Wait()
-
-	log.Debugw("fetch sector all over", "url", url, "outname", outname, "[", err, "]")
-
-	return err
 }
 
 func (r *Remote) fetchFile(ctx context.Context, url, outname string) error {

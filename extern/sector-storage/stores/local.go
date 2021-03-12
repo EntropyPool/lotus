@@ -623,6 +623,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 				ossInfo.URL = p.ossInfo.URL
 				ossInfo.AccessKey = p.ossInfo.AccessKey
 				ossInfo.SecretKey = p.ossInfo.SecretKey
+				ossInfo.Prefix = p.ossInfo.Prefix
 				ossInfo.LandedDir = p.local
 				ossInfo.SectorName = storiface.SectorName(sid.ID)
 			}
@@ -694,6 +695,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 			ossInfo.URL = bestPath.ossInfo.URL
 			ossInfo.AccessKey = bestPath.ossInfo.AccessKey
 			ossInfo.SecretKey = bestPath.ossInfo.SecretKey
+			ossInfo.Prefix = bestPath.ossInfo.Prefix
 			ossInfo.LandedDir = bestPath.local
 			ossInfo.SectorName = storiface.SectorName(sid.ID)
 		}
@@ -1219,15 +1221,23 @@ func (st *Local) MoveStorage(ctx context.Context, s storage.SectorRef, types sto
 		var moveErr error
 
 		if dst.Oss {
-			for _, p := range st.paths {
-				if p.oss && p.ossInfo.Equal(&dst.OssInfo) && dst.CanStore {
-					moveErr = upload(storiface.PathByType(src, fileType), fileType.String(), storiface.SectorName(s.ID), p.ossClient)
-					ossUploaded = true
-					break
+			// If file is not exist, do not upload
+			// That means: it's already uploaded at sealing side
+			_, err := os.Stat(storiface.PathByType(src, fileType))
+			if err == nil {
+				for _, p := range st.paths {
+					if p.oss && p.ossInfo.Equal(&dst.OssInfo) && dst.CanStore {
+						moveErr = upload(storiface.PathByType(src, fileType), fileType.String(), storiface.SectorName(s.ID), p.ossClient, true)
+						if moveErr != nil {
+							log.Errorf("cannot upload %v to oss storage %v", storiface.SectorName(s.ID), moveErr)
+						}
+						ossUploaded = true
+						break
+					}
 				}
-			}
-			if !ossUploaded {
-				moveErr = xerrors.Errorf("cannot find suitable uploader")
+				if !ossUploaded {
+					moveErr = xerrors.Errorf("cannot find suitable uploader")
+				}
 			}
 		} else {
 			if err := move(storiface.PathByType(src, fileType), storiface.PathByType(dest, fileType)); err != nil {

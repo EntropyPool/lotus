@@ -6,8 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"sort"
-	"strings"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	logging "github.com/ipfs/go-log/v2"
@@ -30,8 +29,6 @@ func (handler *FetchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	mux.HandleFunc("/remote/stat/{id}", handler.remoteStatFs).Methods("GET")
 	mux.HandleFunc("/remote/{type}/{id}", handler.remoteGetSector).Methods("GET")
-	mux.HandleFunc("/remote/{type}/{id}", handler.remoteListSector).Methods("LIST")
-	mux.HandleFunc("/remote/{type}/{id}/{file}", handler.remoteGetFile).Methods("GET")
 	mux.HandleFunc("/remote/{type}/{id}", handler.remoteDeleteSector).Methods("DELETE")
 	mux.HandleFunc("/remote/{type}/{id}", handler.remoteMoveCacheSector).Methods("MOVE")
 
@@ -78,6 +75,8 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	r.ParseForm()
+
 	// The caller has a lock on this sector already, no need to get one here
 
 	// passing 0 spt because we don't allocate anything
@@ -106,6 +105,43 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		log.Errorf("%+v", err)
 		w.WriteHeader(500)
+		return
+	}
+
+	oss := false
+	if _, ok := r.Form["oss"]; ok {
+		oss, err = strconv.ParseBool(r.Form["oss"][0])
+		if err != nil {
+			log.Errorf("%+v", err)
+			w.WriteHeader(500)
+			return
+		}
+	}
+
+	if oss {
+		ossCli, err := NewOSSClientWithSingleBucket(StorageOSSInfo{
+			URL:        r.Form["oss_url"][0],
+			AccessKey:  r.Form["oss_access_key"][0],
+			SecretKey:  r.Form["oss_secret_key"][0],
+			BucketName: r.Form["oss_bucket_name"][0],
+			Prefix:     r.Form["oss_prefix"][0],
+			CanWrite:   true,
+		})
+
+		if err != nil {
+			log.Errorf("%+v", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		err = upload(path, vars["type"], vars["id"], ossCli, false)
+		if err != nil {
+			log.Errorf("%+v", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		w.WriteHeader(200)
 		return
 	}
 
@@ -128,152 +164,6 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 		log.Errorf("%+v", err)
 		return
 	}
-}
-
-func (handler *FetchHandler) remoteListSector(w http.ResponseWriter, r *http.Request) {
-	log.Infof("SERVE LIST %s", r.URL)
-	vars := mux.Vars(r)
-	for k, v := range vars {
-		log.Infow("SERVE LIST VARS", "Key", k, "Val", v)
-	}
-
-	id, err := storiface.ParseSectorID(vars["id"])
-	if err != nil {
-		log.Error("%+v", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	ft, err := ftFromString(vars["type"])
-	if err != nil {
-		log.Error("%+v", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	si := storage.SectorRef{
-		ID:        id,
-		ProofType: 0,
-	}
-
-	paths, _, err := handler.Local.AcquireSector(r.Context(), si, ft, storiface.FTNone, storiface.PathStorage, storiface.AcquireMove)
-	if err != nil {
-		log.Error("%+v", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	// TODO: reserve local storage here
-	path := storiface.PathByType(paths, ft)
-	if path == "" {
-		log.Error("acquired path was empty")
-		w.WriteHeader(500)
-		return
-	}
-
-	stat, err := os.Stat(path)
-	if err != nil {
-		log.Error("%+v", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	files := ""
-	if stat.IsDir() {
-		if sect_dir, err := ioutil.ReadDir(path); err == nil {
-			sort.Slice(sect_dir, func(i, j int) bool {
-				return sect_dir[i].Size() > sect_dir[j].Size()
-			})
-
-			for _, fi := range sect_dir {
-				if fi.IsDir() {
-					continue
-				}
-
-				if strings.HasSuffix(fi.Name(), ".fp") {
-					continue
-				}
-
-				if files == "" {
-					files = fi.Name()
-				} else {
-					files = files + ";" + fi.Name()
-				}
-			}
-		}
-	}
-	w.Header().Set("Files-List", files)
-	log.Infow("SERVE LIST ", "Files-List", files)
-	w.WriteHeader(200)
-	return
-}
-
-func (handler *FetchHandler) remoteGetFile(w http.ResponseWriter, r *http.Request) {
-	log.Infof("SERVE GET FILE %s", r.URL)
-	vars := mux.Vars(r)
-	log.Infow("SERVE GET FILE", "vars", vars)
-
-	id, err := storiface.ParseSectorID(vars["id"])
-	if err != nil {
-		log.Error("%+v", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	ft, err := ftFromString(vars["type"])
-	if err != nil {
-		log.Error("%+v", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	si := storage.SectorRef{
-		ID:        id,
-		ProofType: 0,
-	}
-
-	// The caller has a lock on this sector already, no need to get one here
-
-	// passing 0 spt because we don't allocate anything
-	paths, _, err := handler.Local.AcquireSector(r.Context(), si, ft, storiface.FTNone, storiface.PathStorage, storiface.AcquireMove)
-	if err != nil {
-		log.Error("%+v", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	// TODO: reserve local storage here
-
-	path := storiface.PathByType(paths, ft)
-	if path == "" {
-		log.Error("acquired path was empty")
-		w.WriteHeader(500)
-		return
-	}
-
-	target := path + string(os.PathSeparator) + vars["file"]
-	log.Infow("SERVE GET FILE", "target", target)
-	if _, err := os.Stat(target); err != nil {
-		log.Error("%+v", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	var rd io.Reader
-	rd, err = os.OpenFile(target, os.O_RDONLY, 0644) // nolint
-	w.Header().Set("Content-Type", "application/octet-stream")
-	if err != nil {
-		log.Error("%+v", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	w.WriteHeader(200)
-	if _, err := io.Copy(w, rd); err != nil { // TODO: default 32k buf may be too small
-		log.Error("%+v", err)
-		return
-	}
-
 }
 
 func (handler *FetchHandler) remoteDeleteSector(w http.ResponseWriter, r *http.Request) {

@@ -203,10 +203,10 @@ func DefaultStorageMiner() *StorageMiner {
 		},
 
 		Storage: sectorstorage.SealerConfig{
-			AllowAddPiece:   true,
-			AllowPreCommit1: true,
-			AllowPreCommit2: true,
-			AllowCommit:     true,
+			AllowAddPiece:   false,
+			AllowPreCommit1: false,
+			AllowPreCommit2: false,
+			AllowCommit:     false,
 			AllowUnseal:     true,
 
 			// Default to 10 - tcp should still be able to figure this out, and
