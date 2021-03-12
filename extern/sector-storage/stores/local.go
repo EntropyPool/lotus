@@ -50,6 +50,9 @@ type LocalStorageMeta struct {
 
 	// Finalized sectors that will be proved over time will be stored here
 	CanStore bool
+
+	Oss     bool
+	OssInfo StorageOSSInfo
 }
 
 // StorageConfig .lotusstorage/storage.json
@@ -91,6 +94,10 @@ type path struct {
 
 	reserved     int64
 	reservations map[abi.SectorID]storiface.SectorFileType
+
+	oss       bool
+	ossInfo   StorageOSSInfo
+	ossClient *OSSClient
 }
 
 func (p *path) stat(ls LocalStorage) (fsutil.FsStat, error) {
@@ -154,6 +161,57 @@ func NewLocal(ctx context.Context, ls LocalStorage, index SectorIndex, urls []st
 	return l, l.open(ctx)
 }
 
+func (st *Local) UpdatePath(ctx context.Context, p string) error {
+	st.localLk.Lock()
+	defer st.localLk.Unlock()
+
+	mb, err := ioutil.ReadFile(filepath.Join(p, MetaFile))
+	if err != nil {
+		return xerrors.Errorf("reading storage metadata for %s: %w", p, err)
+	}
+
+	var meta LocalStorageMeta
+	if err := json.Unmarshal(mb, &meta); err != nil {
+		return xerrors.Errorf("unmarshalling storage metadata for %s: %w", p, err)
+	}
+
+	oldPath, ok := st.paths[meta.ID]
+	if !ok {
+		return xerrors.Errorf("cannot find storage %v", meta.ID)
+	}
+
+	newPath := &path{
+		local:        p,
+		reserved:     oldPath.reserved,
+		reservations: oldPath.reservations,
+		oss:          meta.Oss,
+		ossInfo:      meta.OssInfo,
+		ossClient:    oldPath.ossClient,
+	}
+
+	fst, err := newPath.stat(st.localStorage)
+	if err != nil {
+		return err
+	}
+
+	err = st.index.StorageAttach(ctx, StorageInfo{
+		ID:       meta.ID,
+		URLs:     st.urls,
+		Weight:   meta.Weight,
+		CanSeal:  meta.CanSeal,
+		CanStore: meta.CanStore,
+		Oss:      meta.Oss,
+		OssInfo:  meta.OssInfo,
+	}, fst)
+	if err != nil {
+		return xerrors.Errorf("update storage in index: %w", err)
+	}
+
+	st.paths[meta.ID] = newPath
+
+	return nil
+}
+
 func (st *Local) OpenPath(ctx context.Context, p string) error {
 	st.localLk.Lock()
 	defer st.localLk.Unlock()
@@ -175,6 +233,8 @@ func (st *Local) OpenPath(ctx context.Context, p string) error {
 
 		reserved:     0,
 		reservations: map[abi.SectorID]storiface.SectorFileType{},
+
+		oss: meta.Oss,
 	}
 
 	fst, err := out.stat(st.localStorage)
@@ -188,13 +248,27 @@ func (st *Local) OpenPath(ctx context.Context, p string) error {
 		Weight:   meta.Weight,
 		CanSeal:  meta.CanSeal,
 		CanStore: meta.CanStore,
+		Oss:      meta.Oss,
+		OssInfo:  meta.OssInfo,
 	}, fst)
 	if err != nil {
 		return xerrors.Errorf("declaring storage in index: %w", err)
 	}
 
-	if err := st.declareSectors(ctx, p, meta.ID, meta.CanStore); err != nil {
-		return err
+	if meta.Oss {
+		cli, ossErr := NewOSSClient(meta.OssInfo)
+		if ossErr != nil {
+			return xerrors.Errorf("create oss client: %w", ossErr)
+		}
+		out.ossClient = cli
+		out.ossInfo = meta.OssInfo
+		err = st.declareSectorsFromOss(ctx, cli, meta.ID, meta.OssInfo.CanWrite, p)
+	} else {
+		err = st.declareSectors(ctx, p, meta.ID, meta.CanStore)
+	}
+
+	if err != nil {
+		return xerrors.Errorf("open path: %w", err)
 	}
 
 	st.paths[meta.ID] = out
@@ -251,16 +325,53 @@ func (st *Local) Redeclare(ctx context.Context) error {
 			Weight:   meta.Weight,
 			CanSeal:  meta.CanSeal,
 			CanStore: meta.CanStore,
+			Oss:      meta.Oss,
+			OssInfo:  meta.OssInfo,
 		}, fst)
 		if err != nil {
 			return xerrors.Errorf("redeclaring storage in index: %w", err)
 		}
 
-		if err := st.declareSectors(ctx, p.local, meta.ID, meta.CanStore); err != nil {
+		if meta.Oss {
+			cli, ossErr := NewOSSClient(meta.OssInfo)
+			if ossErr != nil {
+				return xerrors.Errorf("create oss client: %w", ossErr)
+			}
+			p.ossClient = cli
+			p.ossInfo = meta.OssInfo
+			err = st.declareSectorsFromOss(ctx, cli, id, meta.OssInfo.CanWrite, p.local)
+		} else {
+			err = st.declareSectors(ctx, p.local, meta.ID, meta.CanStore)
+		}
+
+		if err != nil {
 			return xerrors.Errorf("redeclaring sectors: %w", err)
 		}
 	}
 
+	return nil
+}
+
+func (st *Local) declareSectorsFromOss(ctx context.Context, cli *OSSClient, id ID, primary bool, p string) error {
+	for _, t := range storiface.PathTypes {
+		os.MkdirAll(filepath.Join(p, t.String()), 0755) // nolint
+
+		ents, err := cli.ListSectors(t.String())
+		if err != nil {
+			return xerrors.Errorf("open path '%s': %w", t, err)
+		}
+
+		for _, ent := range ents {
+			sid, err := storiface.ParseSectorID(ent.Name())
+			if err != nil {
+				return xerrors.Errorf("parse sector id %s: %w", ent.Name(), err)
+			}
+
+			if err := st.index.StorageDeclareSector(ctx, id, sid, t, primary); err != nil {
+				return xerrors.Errorf("declare sector %d(t:%d) -> %s: %w", sid, t, id, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -501,6 +612,24 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 			storiface.SetPathByType(&out, fileType, spath)
 			storiface.SetPathByType(&storageIDs, fileType, string(info.ID))
 
+			ossInfo := storiface.SectorOSSInfo{}
+
+			if p.oss {
+				bucketName, err := p.ossClient.BucketNameByPrefix(fileType.String())
+				if err != nil {
+					return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+				}
+				ossInfo.BucketName = bucketName
+				ossInfo.URL = p.ossInfo.URL
+				ossInfo.AccessKey = p.ossInfo.AccessKey
+				ossInfo.SecretKey = p.ossInfo.SecretKey
+				ossInfo.LandedDir = p.local
+				ossInfo.SectorName = storiface.SectorName(sid.ID)
+			}
+
+			storiface.SetPathExtByType(&out, fileType, p.oss, p.ossClient, ossInfo)
+			storiface.SetPathExtByType(&storageIDs, fileType, p.oss, p.ossClient, ossInfo)
+
 			existing ^= fileType
 			break
 		}
@@ -518,6 +647,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 
 		var best string
 		var bestID ID
+		var bestPath *path
 
 		for _, si := range sis {
 			p, ok := st.paths[si.ID]
@@ -541,6 +671,8 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 
 			best = p.sectorPath(sid.ID, fileType)
 			bestID = si.ID
+			bestPath = p
+
 			break
 		}
 
@@ -550,6 +682,25 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 
 		storiface.SetPathByType(&out, fileType, best)
 		storiface.SetPathByType(&storageIDs, fileType, string(bestID))
+
+		ossInfo := storiface.SectorOSSInfo{}
+
+		if bestPath.oss {
+			bucketName, err := bestPath.ossClient.BucketNameByPrefix(fileType.String())
+			if err != nil {
+				return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+			}
+			ossInfo.BucketName = bucketName
+			ossInfo.URL = bestPath.ossInfo.URL
+			ossInfo.AccessKey = bestPath.ossInfo.AccessKey
+			ossInfo.SecretKey = bestPath.ossInfo.SecretKey
+			ossInfo.LandedDir = bestPath.local
+			ossInfo.SectorName = storiface.SectorName(sid.ID)
+		}
+
+		storiface.SetPathExtByType(&storageIDs, fileType, bestPath.oss, bestPath.ossClient, ossInfo)
+		storiface.SetPathExtByType(&out, fileType, bestPath.oss, bestPath.ossClient, ossInfo)
+
 		allocate ^= fileType
 	}
 
@@ -1047,29 +1198,50 @@ func (st *Local) MoveStorage(ctx context.Context, s storage.SectorRef, types sto
 			return xerrors.Errorf("failed to get source storage info: %w", err)
 		}
 
-		if sst.ID == dst.ID {
-			log.Debugf("not moving %v(%d); src and dest are the same", s, fileType)
-			continue
+		if !dst.Oss {
+			if sst.ID == dst.ID {
+				log.Infof("not moving %v(%d / %v); src and dest are the same", s, fileType, src)
+				continue
+			}
+			if sst.CanStore {
+				log.Debugf("not moving %v(%d / %v); source supports storage", s, fileType, src)
+				continue
+			}
 		}
 
-		if sst.CanStore {
-			log.Debugf("not moving %v(%d); source supports storage", s, fileType)
-			continue
-		}
-
-		log.Debugf("moving %v(%d) to storage: %s(se:%t; st:%t) -> %s(se:%t; st:%t)", s, fileType, sst.ID, sst.CanSeal, sst.CanStore, dst.ID, dst.CanSeal, dst.CanStore)
+		log.Infof("moving %v(%d) to storage: %s(se:%t; st:%t) -> %s(se:%t; st:%t)", s, fileType, sst.ID, sst.CanSeal, sst.CanStore, dst.ID, dst.CanSeal, dst.CanStore)
 
 		if err := st.index.StorageDropSector(ctx, ID(storiface.PathByType(srcIds, fileType)), s.ID, fileType); err != nil {
 			return xerrors.Errorf("dropping source sector from index: %w", err)
 		}
 
-		if err := move(storiface.PathByType(src, fileType), storiface.PathByType(dest, fileType)); err != nil {
-			// TODO: attempt some recovery (check if src is still there, re-declare)
-			return xerrors.Errorf("moving sector %v(%d): %w", s, fileType, err)
+		ossUploaded := false
+		var moveErr error
+
+		if dst.Oss {
+			for _, p := range st.paths {
+				if p.oss && p.ossInfo.Equal(&dst.OssInfo) && dst.CanStore {
+					moveErr = upload(storiface.PathByType(src, fileType), fileType.String(), storiface.SectorName(s.ID), p.ossClient)
+					ossUploaded = true
+					break
+				}
+			}
+			if !ossUploaded {
+				moveErr = xerrors.Errorf("cannot find suitable uploader")
+			}
+		} else {
+			if err := move(storiface.PathByType(src, fileType), storiface.PathByType(dest, fileType)); err != nil {
+				// TODO: attempt some recovery (check if src is still there, re-declare)
+				moveErr = xerrors.Errorf("moving sector %v(%d): %w", s, fileType, err)
+			}
 		}
 
 		if err := st.index.StorageDeclareSector(ctx, ID(storiface.PathByType(destIds, fileType)), s.ID, fileType, true); err != nil {
 			return xerrors.Errorf("declare sector %d(t:%d) -> %s: %w", s, fileType, ID(storiface.PathByType(destIds, fileType)), err)
+		}
+
+		if moveErr != nil {
+			return moveErr
 		}
 	}
 
@@ -1090,6 +1262,40 @@ func (st *Local) FsStat(ctx context.Context, id ID) (fsutil.FsStat, error) {
 	}
 
 	return p.stat(st.localStorage)
+}
+
+func (st *Local) CheckSectorInOss(ctx context.Context, p storiface.SectorPath, files []string, ft storiface.SectorFileType, ssize abi.SectorSize, checkSize bool) error {
+	ossCli := p.Private.(*OSSClient)
+	prefix := ft.String()
+
+	if 0 < len(files) {
+		for _, file := range files {
+			objName := strings.TrimPrefix(file, p.OssInfo.LandedDir)
+			objName = strings.TrimPrefix(objName, "/")
+			objName = strings.TrimPrefix(objName, prefix)
+			size, err := ossCli.HeadObject(prefix, objName)
+			if err != nil {
+				return xerrors.Errorf("fail to query object %v in oss (%v)", objName, err)
+			}
+			if !checkSize && size <= 0 {
+				return xerrors.Errorf("%s's size is invalid (%v)", objName, size)
+			}
+		}
+	} else {
+		objName := p.OssInfo.SectorName
+		size, err := ossCli.HeadObject(prefix, objName)
+		if err != nil {
+			return xerrors.Errorf("fail to query object %v in oss (%v)", objName, err)
+		}
+		if !checkSize && size <= 0 {
+			return xerrors.Errorf("%s's size is invalid (%v)", objName, size)
+		}
+		if checkSize && size != int64(ssize) {
+			return xerrors.Errorf("%s's size is not equal (%v != %v)", objName, size, ssize)
+		}
+	}
+
+	return nil
 }
 
 var _ Store = &Local{}

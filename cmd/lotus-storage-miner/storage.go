@@ -45,6 +45,7 @@ stored while moving through the sealing pipeline (references as 'seal').`,
 		storageListCmd,
 		storageFindCmd,
 		storageCleanupCmd,
+		storageAdjustCmd,
 	},
 }
 
@@ -88,6 +89,26 @@ over time
 			Name:  "store",
 			Usage: "(for init) use path for long-term storage",
 		},
+		&cli.BoolFlag{
+			Name:  "oss",
+			Usage: "(for init) the path is from object storage service",
+		},
+		&cli.StringFlag{
+			Name:  "oss-url",
+			Usage: "(for init) url used to access object storage service",
+		},
+		&cli.StringFlag{
+			Name:  "oss-access-key",
+			Usage: "(for init) access key used to access object storage service",
+		},
+		&cli.StringFlag{
+			Name:  "oss-secret-key",
+			Usage: "(for init) secret key used to access object storage service",
+		},
+		&cli.StringFlag{
+			Name:  "oss-bucket-name",
+			Usage: "(for init) bucket name of object storage service",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
@@ -126,6 +147,25 @@ over time
 				Weight:   cctx.Uint64("weight"),
 				CanSeal:  cctx.Bool("seal"),
 				CanStore: cctx.Bool("store"),
+				Oss:      cctx.Bool("oss"),
+			}
+
+			if cctx.Bool("oss") {
+				ma, err := nodeApi.ActorAddress(ctx)
+				if err != nil {
+					return err
+				}
+
+				cfg.Weight = 100
+
+				cfg.OssInfo = stores.StorageOSSInfo{
+					CanWrite:   cctx.Bool("store"),
+					URL:        cctx.String("oss-url"),
+					AccessKey:  cctx.String("oss-access-key"),
+					SecretKey:  cctx.String("oss-secret-key"),
+					BucketName: cctx.String("oss-bucket-name"),
+					Prefix:     fmt.Sprintf("%v", ma),
+				}
 			}
 
 			if !(cfg.CanStore || cfg.CanSeal) {
@@ -675,4 +715,65 @@ func cleanupRemovedSectorData(ctx context.Context, api api.StorageMiner, napi ap
 	}
 
 	return nil
+}
+
+var storageAdjustCmd = &cli.Command{
+	Name:  "adjust",
+	Usage: "adjust storage attribute at runtime",
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "store",
+			Usage: "set storage to store data or not",
+			Value: true,
+		},
+	},
+	Action: func(cctx *cli.Context) error {
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+		ctx := lcli.ReqContext(cctx)
+
+		if !cctx.Args().Present() {
+			return xerrors.Errorf("must specify storage path to attach")
+		}
+
+		p, err := homedir.Expand(cctx.Args().First())
+		if err != nil {
+			return xerrors.Errorf("expanding path: %w", err)
+		}
+
+		myMetaFile := filepath.Join(p, metaFile)
+		_, err = os.Stat(myMetaFile)
+		if os.IsNotExist(err) || err != nil {
+			return xerrors.Errorf("path is not initialized")
+		}
+
+		buf, err := ioutil.ReadFile(myMetaFile)
+		if err != nil {
+			return xerrors.Errorf("cannot read meta file")
+		}
+
+		cfg := stores.LocalStorageMeta{}
+		err = json.Unmarshal(buf, &cfg)
+		if err != nil {
+			return xerrors.Errorf("cannot unmarshal meta to struct")
+		}
+
+		canStore := cctx.Bool("store")
+		cfg.CanStore = canStore
+		cfg.OssInfo.CanWrite = canStore
+
+		b, err := json.MarshalIndent(cfg, "", "  ")
+		if err != nil {
+			return xerrors.Errorf("marshaling storage config: %w", err)
+		}
+
+		if err := ioutil.WriteFile(myMetaFile, b, 0644); err != nil {
+			return xerrors.Errorf("persisting storage metadata (%s): %w", filepath.Join(p, metaFile), err)
+		}
+
+		return nodeApi.StorageUpdateLocal(ctx, p)
+	},
 }

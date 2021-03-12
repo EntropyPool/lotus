@@ -673,8 +673,10 @@ func runSeals(sb *ffiwrapper.Sealer, sbfs *basicfs.Provider, numSectors int, par
 							if err != nil {
 								return err
 							}
-							if !ok {
-								return xerrors.Errorf("porep proof for sector %d was invalid", i)
+							done()
+
+							if err := os.Remove(storiface.PathByType(p, storiface.FTUnsealed)); err != nil {
+								return xerrors.Errorf("removing unsealed sector: %w", err)
 							}
 						}
 

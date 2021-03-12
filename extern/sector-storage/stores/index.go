@@ -32,6 +32,9 @@ type StorageInfo struct {
 
 	CanSeal  bool
 	CanStore bool
+
+	Oss     bool
+	OssInfo StorageOSSInfo
 }
 
 type HealthReport struct {
@@ -48,6 +51,9 @@ type SectorStorageInfo struct {
 	CanStore bool
 
 	Primary bool
+
+	Oss     bool
+	OssInfo StorageOSSInfo
 }
 
 type SectorIndex interface { // part of storage-miner api

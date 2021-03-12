@@ -55,21 +55,67 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 				return nil
 			}
 
-			if lp.Sealed == "" || lp.Cache == "" {
-				log.Warnw("CheckProvable Sector FAULT: cache and/or sealed paths not found", "sector", sector, "sealed", lp.Sealed, "cache", lp.Cache)
-				bad[sector.ID] = fmt.Sprintf("cache and/or sealed paths not found, cache %q, sealed %q", lp.Cache, lp.Sealed)
+			sealedPath := storiface.PathByType(lp, storiface.FTSealed)
+			cachePath := storiface.PathByType(lp, storiface.FTCache)
+			sealedSectorPath := storiface.PathExtByType(lp, storiface.FTSealed)
+			cacheSectorPath := storiface.PathExtByType(lp, storiface.FTCache)
+
+			if sealedPath == "" || cachePath == "" {
+				log.Warnw("CheckProvable Sector FAULT: cache and/or sealed paths not found", "sector", sector, "sealed", sealedPath, "cache", cachePath)
+				bad[sector.ID] = fmt.Sprintf("cache and/or sealed paths not found, cache %q, sealed %q", cachePath, sealedPath)
 				return nil
 			}
 
-			toCheck := map[string]int64{
-				lp.Sealed:                        1,
-				filepath.Join(lp.Cache, "t_aux"): 0,
-				filepath.Join(lp.Cache, "p_aux"): 0,
+			localToCheck := map[string]int64{}
+
+			type ossCheck struct {
+				sectorPath  storiface.SectorPath
+				sectorFiles []string
+				checkSize   bool
+				fileType    storiface.SectorFileType
+			}
+			ossToCheck := []ossCheck{}
+
+			sealedSectorPathInfo := ffi.PrivateSectorPathInfo{}
+
+			if sealedSectorPath.Oss {
+				ossToCheck = append(ossToCheck, ossCheck{
+					sectorPath: sealedSectorPath,
+					checkSize:  true,
+					fileType:   storiface.FTSealed,
+				})
+				sealedSectorPathInfo.Url = sealedSectorPath.OssInfo.URL
+				sealedSectorPathInfo.AccessKey = sealedSectorPath.OssInfo.AccessKey
+				sealedSectorPathInfo.SecretKey = sealedSectorPath.OssInfo.SecretKey
+				sealedSectorPathInfo.LandedDir = sealedSectorPath.OssInfo.LandedDir
+				sealedSectorPathInfo.BucketName = sealedSectorPath.OssInfo.BucketName
+				sealedSectorPathInfo.SectorName = sealedSectorPath.OssInfo.SectorName
+			} else {
+				localToCheck[sealedPath] = 1
 			}
 
-			addCachePathsForSectorSize(toCheck, lp.Cache, ssize)
+			cacheSectorPathInfo := ffi.PrivateSectorPathInfo{}
 
-			for p, sz := range toCheck {
+			if cacheSectorPath.Oss {
+				ossToCheck = append(ossToCheck, ossCheck{
+					sectorPath:  cacheSectorPath,
+					sectorFiles: getCacheFilesForSectorSize(cachePath, ssize),
+					checkSize:   false,
+					fileType:    storiface.FTCache,
+				})
+				cacheSectorPathInfo.Url = cacheSectorPath.OssInfo.URL
+				cacheSectorPathInfo.AccessKey = cacheSectorPath.OssInfo.AccessKey
+				cacheSectorPathInfo.SecretKey = cacheSectorPath.OssInfo.SecretKey
+				cacheSectorPathInfo.LandedDir = cacheSectorPath.OssInfo.LandedDir
+				cacheSectorPathInfo.BucketName = cacheSectorPath.OssInfo.BucketName
+				cacheSectorPathInfo.SectorName = cacheSectorPath.OssInfo.SectorName
+			} else {
+				localToCheck[filepath.Join(cachePath, "t_aux")] = 0
+				localToCheck[filepath.Join(cachePath, "p_aux")] = 0
+				addCachePathsForSectorSize(localToCheck, cachePath, ssize)
+			}
+
+			for p, sz := range localToCheck {
 				st, err := os.Stat(p)
 				if err != nil {
 					log.Warnw("CheckProvable Sector FAULT: sector file stat error", "sector", sector, "sealed", lp.Sealed, "cache", lp.Cache, "file", p, "err", err)
@@ -83,6 +129,14 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 						bad[sector.ID] = fmt.Sprintf("%s is wrong size (got %d, expect %d)", p, st.Size(), int64(ssize)*sz)
 						return nil
 					}
+				}
+			}
+
+			for _, check := range ossToCheck {
+				if err = m.localStore.CheckSectorInOss(ctx, check.sectorPath, check.sectorFiles, check.fileType, ssize, check.checkSize); err != nil {
+					log.Warnw("CheckProvable Sector FAULT: oss check error", "sector", sector, "sealed", sealedPath, "cache", cachePath, "files", check.sectorFiles)
+					bad[sector.ID] = fmt.Sprintf("%s is wrong in oss (%v)", check.sectorPath.OssInfo.SectorName, err)
+					return nil
 				}
 			}
 
@@ -118,9 +172,13 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 						SectorNumber: sector.ID.Number,
 						SealedCID:    commr,
 					},
-					CacheDirPath:     lp.Cache,
-					PoStProofType:    wpp,
-					SealedSectorPath: lp.Sealed,
+					CacheDirPath:         storiface.PathByType(lp, storiface.FTCache),
+					CacheInOss:           cacheSectorPath.Oss,
+					CacheSectorPathInfo:  cacheSectorPathInfo,
+					PoStProofType:        wpp,
+					SealedSectorPath:     storiface.PathByType(lp, storiface.FTSealed),
+					SealedInOss:          sealedSectorPath.Oss,
+					SealedSectorPathInfo: sealedSectorPathInfo,
 				}, ch.Challenges[sector.ID.Number])
 				if err != nil {
 					log.Warnw("CheckProvable Sector FAULT: generating vanilla proof", "sector", sector, "sealed", lp.Sealed, "cache", lp.Cache, "err", err)
@@ -128,7 +186,6 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 					return nil
 				}
 			}
-
 			return nil
 		}()
 		if err != nil {
@@ -158,6 +215,30 @@ func addCachePathsForSectorSize(chk map[string]int64, cacheDir string, ssize abi
 	default:
 		log.Warnf("not checking cache files of %s sectors for faults", ssize)
 	}
+}
+
+func getCacheFilesForSectorSize(cacheDir string, ssize abi.SectorSize) []string {
+	files := []string{}
+
+	switch ssize {
+	case 2 << 10:
+		fallthrough
+	case 8 << 20:
+		fallthrough
+	case 512 << 20:
+		files = append(files, filepath.Join(cacheDir, "sc-02-data-tree-r-last.dat"))
+	case 32 << 30:
+		for i := 0; i < 8; i++ {
+			files = append(files, filepath.Join(cacheDir, fmt.Sprintf("sc-02-data-tree-r-last-%d.dat", i)))
+		}
+	case 64 << 30:
+		for i := 0; i < 16; i++ {
+			files = append(files, filepath.Join(cacheDir, fmt.Sprintf("sc-02-data-tree-r-last-%d.dat", i)))
+		}
+	default:
+		log.Warnf("not checking cache files of %s sectors for faults", ssize)
+	}
+	return files
 }
 
 var _ FaultTracker = &Manager{}
