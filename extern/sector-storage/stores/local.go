@@ -791,8 +791,10 @@ func (st *Local) MoveStorage(ctx context.Context, s storage.SectorRef, types sto
 		var moveErr error
 
 		if dst.Oss {
-			// If source is from another storage, just process when it's not oss
-			if sst.ID == dst.ID {
+			// If file is not exist, do not upload
+			// That means: it's already uploaded at sealing side
+			_, err := os.Stat(storiface.PathByType(src, fileType))
+			if err == nil {
 				for _, p := range st.paths {
 					if p.oss && p.ossInfo.Equal(&dst.OssInfo) && dst.CanStore {
 						moveErr = upload(storiface.PathByType(src, fileType), fileType.String(), storiface.SectorName(s.ID), p.ossClient, true)
