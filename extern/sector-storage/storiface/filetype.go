@@ -90,6 +90,7 @@ type SectorOSSInfo struct {
 	SecretKey  string
 	BucketName string
 	SectorName string
+	Prefix     string
 }
 
 type SectorPath struct {

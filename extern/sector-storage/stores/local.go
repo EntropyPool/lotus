@@ -546,6 +546,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 				ossInfo.URL = p.ossInfo.URL
 				ossInfo.AccessKey = p.ossInfo.AccessKey
 				ossInfo.SecretKey = p.ossInfo.SecretKey
+				ossInfo.Prefix = p.ossInfo.Prefix
 				ossInfo.LandedDir = p.local
 				ossInfo.SectorName = storiface.SectorName(sid.ID)
 			}
@@ -617,6 +618,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 			ossInfo.URL = bestPath.ossInfo.URL
 			ossInfo.AccessKey = bestPath.ossInfo.AccessKey
 			ossInfo.SecretKey = bestPath.ossInfo.SecretKey
+			ossInfo.Prefix = bestPath.ossInfo.Prefix
 			ossInfo.LandedDir = bestPath.local
 			ossInfo.SectorName = storiface.SectorName(sid.ID)
 		}
