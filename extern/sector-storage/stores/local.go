@@ -791,15 +791,18 @@ func (st *Local) MoveStorage(ctx context.Context, s storage.SectorRef, types sto
 		var moveErr error
 
 		if dst.Oss {
-			for _, p := range st.paths {
-				if p.oss && p.ossInfo.Equal(&dst.OssInfo) && dst.CanStore {
-					moveErr = upload(storiface.PathByType(src, fileType), fileType.String(), storiface.SectorName(s.ID), p.ossClient, true)
-					ossUploaded = true
-					break
+			// If source is from another storage, just process when it's not oss
+			if sst.ID == dst.ID || !sst.Oss {
+				for _, p := range st.paths {
+					if p.oss && p.ossInfo.Equal(&dst.OssInfo) && dst.CanStore {
+						moveErr = upload(storiface.PathByType(src, fileType), fileType.String(), storiface.SectorName(s.ID), p.ossClient, true)
+						ossUploaded = true
+						break
+					}
 				}
-			}
-			if !ossUploaded {
-				moveErr = xerrors.Errorf("cannot find suitable uploader")
+				if !ossUploaded {
+					moveErr = xerrors.Errorf("cannot find suitable uploader")
+				}
 			}
 		} else {
 			if err := move(storiface.PathByType(src, fileType), storiface.PathByType(dest, fileType)); err != nil {
