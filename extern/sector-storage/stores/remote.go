@@ -136,6 +136,7 @@ func (r *Remote) AcquireSector(ctx context.Context, s storage.SectorRef, existin
 		}
 
 		storageID := storiface.PathByType(ids, fileType)
+		storageIDExt := storiface.PathExtByType(ids, fileType)
 
 		var url string
 
@@ -155,6 +156,7 @@ func (r *Remote) AcquireSector(ctx context.Context, s storage.SectorRef, existin
 			storiface.SetPathByType(&paths, fileType, destPath)
 		}
 
+		storiface.SetPathExtByType(&stores, fileType, storageIDExt.Oss, storageIDExt.Private, storageIDExt.OssInfo)
 		storiface.SetPathByType(&stores, fileType, storageID)
 
 		if err := r.index.StorageDeclareSector(ctx, ID(storageID), s.ID, fileType, op == storiface.AcquireMove); err != nil {
