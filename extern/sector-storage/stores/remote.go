@@ -3,6 +3,7 @@ package stores
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math/bits"
@@ -134,15 +135,26 @@ func (r *Remote) AcquireSector(ctx context.Context, s storage.SectorRef, existin
 			continue
 		}
 
-		dest := storiface.PathByType(apaths, fileType)
 		storageID := storiface.PathByType(ids, fileType)
 
-		url, err := r.acquireFromRemote(ctx, s.ID, fileType, dest)
-		if err != nil {
-			return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+		var url string
+
+		destSectorPath := storiface.PathExtByType(apaths, fileType)
+		if destSectorPath.Oss {
+			url, err = r.acquireFromRemoteWithOss(ctx, s.ID, fileType, destSectorPath)
+			if err != nil {
+				return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+			}
+			storiface.SetPathExtByType(&paths, fileType, destSectorPath.Oss, destSectorPath.Private, destSectorPath.OssInfo)
+		} else {
+			destPath := storiface.PathByType(apaths, fileType)
+			url, err = r.acquireFromRemote(ctx, s.ID, fileType, destPath)
+			if err != nil {
+				return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+			}
+			storiface.SetPathByType(&paths, fileType, destPath)
 		}
 
-		storiface.SetPathByType(&paths, fileType, dest)
 		storiface.SetPathByType(&stores, fileType, storageID)
 
 		if err := r.index.StorageDeclareSector(ctx, ID(storageID), s.ID, fileType, op == storiface.AcquireMove); err != nil {
@@ -170,6 +182,43 @@ func tempFetchDest(spath string, create bool) (string, error) {
 	}
 
 	return filepath.Join(tempdir, b), nil
+}
+
+func (r *Remote) acquireFromRemoteWithOss(ctx context.Context, s abi.SectorID, fileType storiface.SectorFileType, dest storiface.SectorPath) (string, error) {
+	si, err := r.index.StorageFindSector(ctx, s, fileType, 0, false)
+	if err != nil {
+		return "", err
+	}
+
+	if len(si) == 0 {
+		return "", xerrors.Errorf("failed to acquire sector %v from remote(%d): %w", s, fileType, storiface.ErrSectorNotFound)
+	}
+
+	sort.Slice(si, func(i, j int) bool {
+		return si[i].Weight < si[j].Weight
+	})
+
+	var merr error
+	for _, info := range si {
+		for _, url := range info.URLs {
+			urlWithOss := fmt.Sprintf("%s?oss=%v&oss_access_key=%v&oss_secret_key=%v&oss_url=%v&oss_bucket_name=%v",
+				url, dest.Oss, dest.OssInfo.AccessKey, dest.OssInfo.SecretKey, dest.OssInfo.URL, dest.OssInfo.BucketName)
+
+			if err := os.RemoveAll(dest.Path); err != nil {
+				return "", xerrors.Errorf("removing dest: %w", err)
+			}
+
+			err = r.fetch(ctx, urlWithOss, "", true)
+			if err != nil {
+				merr = multierror.Append(merr, xerrors.Errorf("fetch error %s (storage %s) %w", url, info.ID, err))
+				continue
+			}
+
+			return url, nil
+		}
+	}
+
+	return "", xerrors.Errorf("failed to acquire sector %v from remote (tried %v): %w", s, si, merr)
 }
 
 func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType storiface.SectorFileType, dest string) (string, error) {
@@ -200,7 +249,7 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 				return "", xerrors.Errorf("removing dest: %w", err)
 			}
 
-			err = r.fetch(ctx, url, tempDest)
+			err = r.fetch(ctx, url, tempDest, false)
 			if err != nil {
 				merr = multierror.Append(merr, xerrors.Errorf("fetch error %s (storage %s) -> %s: %w", url, info.ID, tempDest, err))
 				continue
@@ -220,7 +269,7 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 	return "", xerrors.Errorf("failed to acquire sector %v from remote (tried %v): %w", s, si, merr)
 }
 
-func (r *Remote) fetch(ctx context.Context, url, outname string) error {
+func (r *Remote) fetch(ctx context.Context, url, outname string, ossStore bool) error {
 	log.Infof("Fetch %s -> %s", url, outname)
 
 	if len(r.limit) >= cap(r.limit) {
@@ -253,6 +302,10 @@ func (r *Remote) fetch(ctx context.Context, url, outname string) error {
 
 	if resp.StatusCode != 200 {
 		return xerrors.Errorf("non-200 code: %d", resp.StatusCode)
+	}
+
+	if ossStore {
+		return nil
 	}
 
 	/*bar := pb.New64(w.sizeForType(typ))
