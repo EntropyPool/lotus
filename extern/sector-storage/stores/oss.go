@@ -73,14 +73,6 @@ func baseOSSClient(info StorageOSSInfo) (*OSSClient, error) {
 	}
 
 	cli := s3.New(sess)
-	buckets, err := cli.ListBuckets(nil)
-
-	if err != nil {
-		return nil, err
-	}
-
-	log.Debugf("buckets from %v", info.URL)
-	log.Debugf("%v", buckets)
 
 	ossCli := &OSSClient{
 		s3Client:  cli,
@@ -100,7 +92,24 @@ func NewOSSClientWithSingleBucket(info StorageOSSInfo) (*OSSClient, error) {
 	ossCli.proofBucket = info.BucketName
 	ossCli.dataBucket = info.BucketName
 
-	return ossCli, nil
+	buckets, err := ossCli.s3Client.ListBuckets(nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	log.Debugf("buckets from %v", info.URL)
+	log.Debugf("%v", buckets)
+
+	for _, bucket := range buckets.Buckets {
+		if *bucket.Name == info.BucketName {
+			ossCli.s3Uploader = s3manager.NewUploader(ossCli.s3Session)
+			ossCli.s3Downloader = s3manager.NewDownloader(ossCli.s3Session)
+			return ossCli, nil
+		}
+	}
+
+	return nil, xerrors.Errorf("bucket %v is not exist", info.BucketName)
 }
 
 func NewOSSClient(info StorageOSSInfo) (*OSSClient, error) {
@@ -111,6 +120,15 @@ func NewOSSClient(info StorageOSSInfo) (*OSSClient, error) {
 
 	ossCli.proofBucket = info.ProofBucket()
 	ossCli.dataBucket = info.DataBucket()
+
+	buckets, err := ossCli.s3Client.ListBuckets(nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	log.Debugf("buckets from %v", info.URL)
+	log.Debugf("%v", buckets)
 
 	bucketExists := false
 	bucketName := info.ProofBucket()
