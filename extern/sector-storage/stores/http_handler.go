@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	logging "github.com/ipfs/go-log/v2"
@@ -72,6 +73,8 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	r.ParseForm()
+
 	// The caller has a lock on this sector already, no need to get one here
 
 	// passing 0 spt because we don't allocate anything
@@ -100,6 +103,43 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		log.Errorf("%+v", err)
 		w.WriteHeader(500)
+		return
+	}
+
+	oss := false
+	if _, ok := r.Form["oss"]; ok {
+		oss, err = strconv.ParseBool(r.Form["oss"][0])
+		if err != nil {
+			log.Errorf("%+v", err)
+			w.WriteHeader(500)
+			return
+		}
+	}
+
+	if oss {
+		ossCli, err := NewOSSClient(StorageOSSInfo{
+			URL:        r.Form["oss_url"][0],
+			AccessKey:  r.Form["oss_access_key"][0],
+			SecretKey:  r.Form["oss_secret_key"][0],
+			BucketName: r.Form["oss_bucket_name"][0],
+			Prefix:     r.Form["oss_prefix"][0],
+			CanWrite:   true,
+		})
+
+		if err != nil {
+			log.Errorf("%+v", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		err = upload(path, vars["type"], vars["id"], ossCli, false)
+		if err != nil {
+			log.Errorf("%+v", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		w.WriteHeader(200)
 		return
 	}
 
