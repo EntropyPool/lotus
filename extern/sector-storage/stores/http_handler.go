@@ -3,7 +3,6 @@ package stores
 import (
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"

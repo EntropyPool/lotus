@@ -14,8 +14,6 @@ import (
 	gopath "path"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
