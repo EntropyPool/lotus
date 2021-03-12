@@ -202,11 +202,11 @@ func (r *Remote) acquireFromRemoteWithOss(ctx context.Context, s abi.SectorID, f
 	for _, info := range si {
 		for _, url := range info.URLs {
 			urlWithOss := fmt.Sprintf("%s?oss=%v", url, dest.Oss)
-			urlWithOss = fmt.Sprintf("%s&oss_access_key=%v", dest.OssInfo.AccessKey)
-			urlWithOss = fmt.Sprintf("%s&oss_secret_key=%v", dest.OssInfo.SecretKey)
-			urlWithOss = fmt.Sprintf("%s&oss_url=%v", dest.OssInfo.URL)
-			urlWithOss = fmt.Sprintf("%s&oss_bucket_name=%v", dest.OssInfo.BucketName)
-			urlWithOss = fmt.Sprintf("%s&oss_prefix=%v", dest.OssInfo.Prefix)
+			urlWithOss = fmt.Sprintf("%s&oss_access_key=%v", urlWithOss, dest.OssInfo.AccessKey)
+			urlWithOss = fmt.Sprintf("%s&oss_secret_key=%v", urlWithOss, dest.OssInfo.SecretKey)
+			urlWithOss = fmt.Sprintf("%s&oss_url=%v", urlWithOss, dest.OssInfo.URL)
+			urlWithOss = fmt.Sprintf("%s&oss_bucket_name=%v", urlWithOss, dest.OssInfo.BucketName)
+			urlWithOss = fmt.Sprintf("%s&oss_prefix=%v", urlWithOss, dest.OssInfo.Prefix)
 
 			if err := os.RemoveAll(dest.Path); err != nil {
 				return "", xerrors.Errorf("removing dest: %w", err)
