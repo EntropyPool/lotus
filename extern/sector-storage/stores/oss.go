@@ -59,7 +59,7 @@ func (info *OSSInfo) Equal(another *OSSInfo) bool {
 		info.Prefix == another.Prefix
 }
 
-func NewOSSClient(info StorageOSSInfo) (*OSSClient, error) {
+func baseOSSClient(info StorageOSSInfo) (*OSSClient, error) {
 	sess, err := session.NewSession(&aws.Config{
 		Credentials:      credentials.NewStaticCredentials(info.AccessKey, info.SecretKey, ""),
 		Endpoint:         aws.String(info.URL),
@@ -83,12 +83,34 @@ func NewOSSClient(info StorageOSSInfo) (*OSSClient, error) {
 	log.Debugf("%v", buckets)
 
 	ossCli := &OSSClient{
-		s3Client:    cli,
-		s3Session:   sess,
-		s3Info:      info,
-		proofBucket: info.ProofBucket(),
-		dataBucket:  info.DataBucket(),
+		s3Client:  cli,
+		s3Session: sess,
+		s3Info:    info,
 	}
+
+	return ossCli, nil
+}
+
+func NewOSSClientWithSingleBucket(info StorageOSSInfo) (*OSSClient, error) {
+	ossCli, err := baseOSSClient(info)
+	if err != nil {
+		return nil, err
+	}
+
+	ossCli.proofBucket = info.BucketName
+	ossCli.dataBucket = info.BucketName
+
+	return ossCli, nil
+}
+
+func NewOSSClient(info StorageOSSInfo) (*OSSClient, error) {
+	ossCli, err := baseOSSClient(info)
+	if err != nil {
+		return nil, err
+	}
+
+	ossCli.proofBucket = info.ProofBucket()
+	ossCli.dataBucket = info.DataBucket()
 
 	bucketExists := false
 	bucketName := info.ProofBucket()

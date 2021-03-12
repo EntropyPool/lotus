@@ -117,7 +117,7 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 	}
 
 	if oss {
-		ossCli, err := NewOSSClient(StorageOSSInfo{
+		ossCli, err := NewOSSClientWithSingleBucket(StorageOSSInfo{
 			URL:        r.Form["oss_url"][0],
 			AccessKey:  r.Form["oss_access_key"][0],
 			SecretKey:  r.Form["oss_secret_key"][0],
