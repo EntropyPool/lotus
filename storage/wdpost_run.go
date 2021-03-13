@@ -535,7 +535,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 			for partIdx, partition := range batch {
 				waitGroup.Add(1)
 
-				go func(partIdx int, partition api.Partition, ts *types.TipSet, batchPartitionStartIdx int) {
+				go func(ctx context.Context, partIdx int, partition api.Partition, ts *types.TipSet, batchPartitionStartIdx int, pistSkipped bitfield.BitField) {
 					defer waitGroup.Done()
 
 					toProve, err := bitfield.SubtractBitField(partition.LiveSectors, partition.FaultySectors)
@@ -587,7 +587,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 							Skipped: skipped,
 						},
 					}
-				}(partIdx, partition, ts, batchPartitionStartIdx)
+				}(ctx, partIdx, partition, ts, batchPartitionStartIdx, postSkipped)
 			}
 
 			go func() {
@@ -602,11 +602,11 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 					if !ok {
 						break
 					}
+					skipCount += info.skipCount
 					if len(info.sectorInfos) == 0 {
 						continue
 					}
 					sinfos = append(sinfos, info.sectorInfos...)
-					skipCount += info.skipCount
 					partitions = append(partitions, info.postPartition)
 				case err, ok := <-chanErr:
 					if !ok {
