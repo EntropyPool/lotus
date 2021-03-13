@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"sync"
 	"time"
 
 	"github.com/filecoin-project/go-bitfield"
@@ -521,57 +522,107 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 		for retries := 0; ; retries++ {
 			var partitions []miner.PoStPartition
 			var sinfos []proof2.SectorInfo
+
+			var waitGroup sync.WaitGroup
+			chanErr := make(chan error)
+			type sectorProveInfo struct {
+				skipCount     uint64
+				postPartition miner.PoStPartition
+				sectorInfos   []proof2.SectorInfo
+			}
+			chanInfo := make(chan sectorProveInfo)
+
 			for partIdx, partition := range batch {
-				// TODO: Can do this in parallel
-				toProve, err := bitfield.SubtractBitField(partition.LiveSectors, partition.FaultySectors)
-				if err != nil {
-					return nil, xerrors.Errorf("removing faults from set of sectors to prove: %w", err)
-				}
-				toProve, err = bitfield.MergeBitFields(toProve, partition.RecoveringSectors)
-				if err != nil {
-					return nil, xerrors.Errorf("adding recoveries to set of sectors to prove: %w", err)
-				}
+				waitGroup.Add(1)
 
-				good, err := s.checkSectors(ctx, toProve, ts.Key())
-				if err != nil {
-					return nil, xerrors.Errorf("checking sectors to skip: %w", err)
+				go func(ctx context.Context, partIdx int, partition api.Partition, ts *types.TipSet, batchPartitionStartIdx int, pistSkipped bitfield.BitField) {
+					defer waitGroup.Done()
+
+					toProve, err := bitfield.SubtractBitField(partition.LiveSectors, partition.FaultySectors)
+					if err != nil {
+						chanErr <- xerrors.Errorf("removing faults from set of sectors to prove: %w", err)
+						return
+					}
+					toProve, err = bitfield.MergeBitFields(toProve, partition.RecoveringSectors)
+					if err != nil {
+						chanErr <- xerrors.Errorf("adding recoveries to set of sectors to prove: %w", err)
+						return
+					}
+
+					good, err := s.checkSectors(ctx, toProve, ts.Key())
+					if err != nil {
+						chanErr <- xerrors.Errorf("checking sectors to skip: %w", err)
+						return
+					}
+
+					good, err = bitfield.SubtractBitField(good, postSkipped)
+					if err != nil {
+						chanErr <- xerrors.Errorf("toProve - postSkipped: %w", err)
+						return
+					}
+
+					skipped, err := bitfield.SubtractBitField(toProve, good)
+					if err != nil {
+						chanErr <- xerrors.Errorf("toProve - good: %w", err)
+						return
+					}
+
+					sc, err := skipped.Count()
+					if err != nil {
+						chanErr <- xerrors.Errorf("getting skipped sector count: %w", err)
+						return
+					}
+
+					ssi, err := s.sectorsForProof(ctx, good, partition.AllSectors, ts)
+					if err != nil {
+						chanErr <- xerrors.Errorf("getting sorted sector info: %w", err)
+						return
+					}
+
+					chanInfo <- sectorProveInfo{
+						skipCount:   sc,
+						sectorInfos: ssi,
+						postPartition: miner.PoStPartition{
+							Index:   uint64(batchPartitionStartIdx + partIdx),
+							Skipped: skipped,
+						},
+					}
+				}(ctx, partIdx, partition, ts, batchPartitionStartIdx, postSkipped)
+			}
+
+			go func() {
+				waitGroup.Wait()
+				close(chanErr)
+				close(chanInfo)
+			}()
+
+		waitForSectorInfos:
+			for {
+				select {
+				case info, ok := <-chanInfo:
+					if !ok {
+						break waitForSectorInfos
+					}
+
+					skipCount += info.skipCount
+					if len(info.sectorInfos) == 0 {
+						continue
+					}
+					sinfos = append(sinfos, info.sectorInfos...)
+					partitions = append(partitions, info.postPartition)
+				case err, ok := <-chanErr:
+					if !ok {
+						break waitForSectorInfos
+					}
+					if err != nil {
+						log.Errorf("fail to check proven sectors: %v", err)
+						return nil, err
+					}
 				}
-
-				good, err = bitfield.SubtractBitField(good, postSkipped)
-				if err != nil {
-					return nil, xerrors.Errorf("toProve - postSkipped: %w", err)
-				}
-
-				skipped, err := bitfield.SubtractBitField(toProve, good)
-				if err != nil {
-					return nil, xerrors.Errorf("toProve - good: %w", err)
-				}
-
-				sc, err := skipped.Count()
-				if err != nil {
-					return nil, xerrors.Errorf("getting skipped sector count: %w", err)
-				}
-
-				skipCount += sc
-
-				ssi, err := s.sectorsForProof(ctx, good, partition.AllSectors, ts)
-				if err != nil {
-					return nil, xerrors.Errorf("getting sorted sector info: %w", err)
-				}
-
-				if len(ssi) == 0 {
-					continue
-				}
-
-				sinfos = append(sinfos, ssi...)
-				partitions = append(partitions, miner.PoStPartition{
-					Index:   uint64(batchPartitionStartIdx + partIdx),
-					Skipped: skipped,
-				})
 			}
 
 			if len(sinfos) == 0 {
-				// nothing to prove for this batch
+				log.Infof("nothing to be proved")
 				break
 			}
 
