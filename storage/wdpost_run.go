@@ -596,12 +596,16 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 				close(chanInfo)
 			}()
 
+		waitForSectorInfos:
 			for {
 				select {
 				case info, ok := <-chanInfo:
 					if !ok {
-						break
+						break waitForSectorInfos
 					}
+
+					log.Infof("sc %v sectors %v skipped %v index %v", info.skipCount, len(info.sectorInfos), info.postPartition.Index, info.postPartition.Skipped)
+
 					skipCount += info.skipCount
 					if len(info.sectorInfos) == 0 {
 						continue
@@ -610,16 +614,17 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 					partitions = append(partitions, info.postPartition)
 				case err, ok := <-chanErr:
 					if !ok {
-						break
+						break waitForSectorInfos
 					}
 					if err != nil {
+						log.Errorf("fail to check proven sectors: %v", err)
 						return nil, err
 					}
 				}
 			}
 
 			if len(sinfos) == 0 {
-				// nothing to prove for this batch
+				log.Infof("nothing to be proved")
 				break
 			}
 
