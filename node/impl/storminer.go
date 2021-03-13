@@ -346,6 +346,16 @@ func (sm *StorageMinerAPI) SectorMarkForUpgrade(ctx context.Context, id abi.Sect
 	return sm.Miner.MarkForUpgrade(id)
 }
 
+func (sm *StorageMinerAPI) AnnounceMaster(ctx context.Context, addr string, headers http.Header) error {
+	log.Infof("Master notification from %v / %v", addr, headers)
+	return nil
+}
+
+func (sm *StorageMinerAPI) CheckMaster(ctx context.Context) error {
+	log.Infof("Master check from")
+	return nil
+}
+
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {
 	w, err := connectRemoteWorker(ctx, sm, url)
 	if err != nil {

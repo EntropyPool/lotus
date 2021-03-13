@@ -101,6 +101,10 @@ func envForRepoDeprecation(t repo.RepoType) string {
 	}
 }
 
+func GetAPIInfoWithEnvValue(ctx *cli.Context, envVal string) (cliutil.APIInfo, error) {
+	return cliutil.ParseApiInfo(envVal), nil
+}
+
 func GetAPIInfo(ctx *cli.Context, t repo.RepoType) (cliutil.APIInfo, error) {
 	// Check if there was a flag passed with the listen address of the API
 	// server (only used by the tests)
@@ -152,6 +156,14 @@ func GetAPIInfo(ctx *cli.Context, t repo.RepoType) (cliutil.APIInfo, error) {
 		Addr:  ma.String(),
 		Token: token,
 	}, nil
+}
+
+func GetRawAPIWithAPIInfo(ctx *cli.Context, ainfo cliutil.APIInfo) (string, http.Header, error) {
+	addr, err := ainfo.DialArgs()
+	if err != nil {
+		return "", nil, xerrors.Errorf("could not get DialArgs: %w", err)
+	}
+	return addr, ainfo.AuthHeader(), nil
 }
 
 func GetRawAPI(ctx *cli.Context, t repo.RepoType) (string, http.Header, error) {
@@ -215,6 +227,88 @@ type GetStorageMinerOption func(*GetStorageMinerOptions)
 
 func StorageMinerUseHttp(opts *GetStorageMinerOptions) {
 	opts.PreferHttp = true
+}
+
+func StorageMinerIsMySelf(ctx *cli.Context, apiInfo string) (bool, error) {
+	ainfo, err := GetAPIInfo(ctx, repo.StorageMiner)
+	if err != nil {
+		return false, err
+	}
+
+	avInfo, err := GetAPIInfoWithEnvValue(ctx, apiInfo)
+	if err != nil {
+		return false, err
+	}
+
+	if ainfo.Addr == avInfo.Addr {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func GetStorageMinerAPIWithAPIInfo(ctx *cli.Context, apiInfo string, opts ...GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {
+	var options GetStorageMinerOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	if tn, ok := ctx.App.Metadata["testnode-storage"]; ok {
+		return tn.(api.StorageMiner), func() {}, nil
+	}
+
+	ainfo, err := GetAPIInfoWithEnvValue(ctx, apiInfo)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	addr, headers, err := GetRawAPIWithAPIInfo(ctx, ainfo)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if options.PreferHttp {
+		u, err := url.Parse(addr)
+		if err != nil {
+			return nil, nil, xerrors.Errorf("parsing miner api URL: %w", err)
+		}
+
+		switch u.Scheme {
+		case "ws":
+			u.Scheme = "http"
+		case "wss":
+			u.Scheme = "https"
+		}
+
+		addr = u.String()
+	}
+
+	return client.NewStorageMinerRPC(ctx.Context, addr, headers)
+}
+
+func CheckMaster(ctx *cli.Context, apiInfo string) error {
+	minerApi, closer, err := GetStorageMinerAPIWithAPIInfo(ctx, apiInfo)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	return minerApi.CheckMaster(ctx.Context)
+}
+
+func AnnounceMaster(ctx *cli.Context, apiInfo string) error {
+	minerApi, closer, err := GetStorageMinerAPIWithAPIInfo(ctx, apiInfo)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	addr, headers, err := GetRawAPI(ctx, repo.StorageMiner)
+	if err != nil {
+		return err
+	}
+
+	return minerApi.AnnounceMaster(ctx.Context, addr, headers)
 }
 
 func GetStorageMinerAPI(ctx *cli.Context, opts ...GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {
