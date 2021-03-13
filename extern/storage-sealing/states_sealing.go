@@ -605,6 +605,14 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 		sector.SectorNumber, collateral, baseFee, parentBaseFee)
 	mcid, err := m.api.SendMsg(ctx.Context(), from, m.maddr, miner.Methods.ProveCommitSector, collateral, baseFee, enc.Bytes())
 	if err != nil {
+		mw, err := m.api.StateWaitMsg(ctx.Context(), mcid)
+		if err != nil {
+			return ctx.Send(SectorCommitFailed{xerrors.Errorf("failed to wait for porep inclusion: %w", err)})
+		}
+		switch mw.Receipt.ExitCode {
+		case exitcode.SysErrInsufficientFunds:
+			return ctx.Send(SectorRetrySubmitCommit{})
+		}
 		return ctx.Send(SectorCommitFailed{xerrors.Errorf("pushing message to mpool: %w", err)})
 	}
 

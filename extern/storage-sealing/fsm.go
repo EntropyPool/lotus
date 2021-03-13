@@ -84,6 +84,7 @@ var fsmPlanners = map[SectorState]func(events []statemachine.Event, state *Secto
 		on(SectorCommitSubmitted{}, CommitWait),
 		on(SectorCommitFailed{}, CommitFailed),
 		on(SectorTicketExpired{}, Removing),
+		on(SectorRetrySubmitCommit{}, SubmitCommit),
 	),
 	CommitWait: planOne(
 		on(SectorProving{}, Proving),
