@@ -40,8 +40,6 @@ func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 		return xerrors.Errorf("MULTI_MINER_API_INFOS is not defined")
 	}
 
-	fmt.Printf("Multi miner env: %v\n", env)
-
 	if env == multiMiner.envValue {
 		return nil
 	}
@@ -65,8 +63,6 @@ func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 			fmt.Printf("Cannot check if it's myself %v\n", err)
 			continue
 		}
-
-		fmt.Printf("Myself = %v for %v\n", mySelf, apiInfo)
 
 		if mySelf {
 			if role == MinerLord {
@@ -99,14 +95,11 @@ func newMultiMiner(cctx *cli.Context) (*MultiMiner, error) {
 func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 	var err error
 
-	fmt.Printf("Try to announce master to all slave\n")
-
 	for _, candidate := range multiMiner.candidates {
 		if candidate.mySelf {
 			continue
 		}
 
-		fmt.Printf("Announce me as master to %v\n", candidate.envValue)
 		nerr := lcli.AnnounceMaster(cctx, candidate.envValue)
 		if nerr != nil {
 			err = nerr
@@ -147,8 +140,6 @@ func MultiMinerRun(cctx *cli.Context) {
 	var err error
 	ticker := time.NewTicker(20 * time.Second)
 
-	fmt.Printf("Run multi miner daemon\n")
-
 waitForMiner:
 	for {
 		select {
@@ -156,10 +147,8 @@ waitForMiner:
 			if multiMiner == nil {
 				multiMiner, err = newMultiMiner(cctx)
 				if err == nil {
-					fmt.Printf("Success to parse multi miner\n")
 					break waitForMiner
 				}
-				fmt.Printf("Parse multi miner error %v\n", err)
 			}
 		}
 	}
