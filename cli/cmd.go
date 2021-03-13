@@ -303,12 +303,22 @@ func AnnounceMaster(ctx *cli.Context, apiInfo string) error {
 	}
 	defer closer()
 
-	addr, headers, err := GetRawAPI(ctx, repo.StorageMiner)
+	addrMaster, headersMaster, err := GetRawAPI(ctx, repo.StorageMiner)
 	if err != nil {
 		return err
 	}
 
-	return minerApi.AnnounceMaster(ctx.Context, addr, headers)
+	ainfo, err := GetAPIInfoWithEnvValue(ctx, apiInfo)
+	if err != nil {
+		return err
+	}
+
+	addrSlave, headersSlave, err := GetRawAPIWithAPIInfo(ctx, ainfo)
+	if err != nil {
+		return err
+	}
+
+	return minerApi.AnnounceMaster(ctx.Context, addrMaster, headersMaster, addrSlave, headersSlave)
 }
 
 func GetStorageMinerAPI(ctx *cli.Context, opts ...GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {

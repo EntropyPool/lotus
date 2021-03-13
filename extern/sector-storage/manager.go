@@ -18,6 +18,10 @@ import (
 	"github.com/filecoin-project/go-statestore"
 	"github.com/filecoin-project/specs-storage/storage"
 
+	"github.com/filecoin-project/go-jsonrpc"
+
+	"github.com/filecoin-project/lotus/api"
+
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
 	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
 	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
@@ -202,6 +206,11 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 
 func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 	return m.sched.runWorker(ctx, w)
+}
+
+func (m *Manager) SlaveProverConnect(ctx context.Context, nodeApi api.StorageMiner, closer jsonrpc.ClientCloser) error {
+	log.Infof("Slave prover connect")
+	return nil
 }
 
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {

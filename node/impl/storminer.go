@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/filecoin-project/lotus/api/client"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -346,9 +347,24 @@ func (sm *StorageMinerAPI) SectorMarkForUpgrade(ctx context.Context, id abi.Sect
 	return sm.Miner.MarkForUpgrade(id)
 }
 
-func (sm *StorageMinerAPI) AnnounceMaster(ctx context.Context, addr string, headers http.Header) error {
-	log.Infof("Master notification from %v / %v", addr, headers)
-	return nil
+func (sm *StorageMinerAPI) AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, addrSlave string, headersSlave http.Header) error {
+	minerApi, closer, err := client.NewStorageMinerRPC(ctx, addrMaster, headersMaster)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	return minerApi.SlaveConnect(ctx, addrSlave, headersSlave)
+}
+
+func (sm *StorageMinerAPI) SlaveConnect(ctx context.Context, addr string, headers http.Header) error {
+	minerApi, closer, err := client.NewStorageMinerRPC(ctx, addr, headers)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	return sm.StorageMgr.SlaveProverConnect(ctx, minerApi, closer)
 }
 
 func (sm *StorageMinerAPI) CheckMaster(ctx context.Context) error {

@@ -84,7 +84,8 @@ type StorageMiner interface {
 	StorageLocal(ctx context.Context) (map[stores.ID]string, error)
 	StorageStat(ctx context.Context, id stores.ID) (fsutil.FsStat, error)
 
-	AnnounceMaster(ctx context.Context, addr string, headers http.Header) error
+	AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, addrSlave string, headersSlave http.Header) error
+	SlaveConnect(ctx context.Context, addr string, headers http.Header) error
 	CheckMaster(ctx context.Context) error
 
 	// WorkerConnect tells the node to connect to workers RPC
