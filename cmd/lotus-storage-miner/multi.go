@@ -195,12 +195,20 @@ waitForMiner:
 }
 
 var multiMinerConfigCmd = &cli.Command{
-	Name:      "config",
-	Usage:     "Config miner apis info for multi miner",
-	ArgsUsage: "[miner_api_infos]",
+	Name:  "multi",
+	Usage: "Config multi miner attributes",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:  "multi-miner-api-infos",
+			Value: "",
+			Usage: "miner apis separated by ';', in each value, you can use ',' to specific the miner as a lord. only lord can do sealing function",
+		},
+	},
 	Action: func(cctx *cli.Context) error {
-		if cctx.Args().Len() != 1 {
-			return xerrors.Errorf("expected 1 argument")
+		minerApiInfos := cctx.String("multi-miner-api-infos")
+
+		if "" == minerApiInfos {
+			return xerrors.Errorf("multi-miner-api-infos should not empty")
 		}
 
 		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
@@ -211,6 +219,6 @@ var multiMinerConfigCmd = &cli.Command{
 
 		ctx := lcli.ReqContext(cctx)
 
-		return nodeApi.SetEnvironment(ctx, multiMinerApiInfosEnvKey, cctx.Args().First())
+		return nodeApi.SetEnvironment(ctx, multiMinerApiInfosEnvKey, cctx.String("multi-miner-api-infos"))
 	},
 }
