@@ -3,6 +3,7 @@ package apistruct
 import (
 	"context"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -330,6 +331,11 @@ type StorageMinerStruct struct {
 		SectorTerminateFlush   func(ctx context.Context) (*cid.Cid, error)          `perm:"admin"`
 		SectorTerminatePending func(ctx context.Context) ([]abi.SectorID, error)    `perm:"admin"`
 		SectorMarkForUpgrade   func(ctx context.Context, id abi.SectorNumber) error `perm:"admin"`
+
+		CheckCurrentMaster func(context.Context, string) error                                   `perm:"admin"`
+		AnnounceMaster     func(context.Context, string, http.Header, string, http.Header) error `perm:"admin" retry:"true"`
+		SlaveConnect       func(context.Context, string, http.Header) error                      `perm:"admin" retry:"true"`
+		CheckMaster        func(context.Context) error                                           `perm:"admin" retry:"true"`
 
 		WorkerConnect func(context.Context, string) error                                `perm:"admin" retry:"true"` // TODO: worker perm
 		WorkerStats   func(context.Context) (map[uuid.UUID]storiface.WorkerStats, error) `perm:"admin"`
@@ -1383,6 +1389,22 @@ func (c *StorageMinerStruct) SectorTerminatePending(ctx context.Context) ([]abi.
 
 func (c *StorageMinerStruct) SectorMarkForUpgrade(ctx context.Context, number abi.SectorNumber) error {
 	return c.Internal.SectorMarkForUpgrade(ctx, number)
+}
+
+func (c *StorageMinerStruct) CheckMaster(ctx context.Context) error {
+	return c.Internal.CheckMaster(ctx)
+}
+
+func (c *StorageMinerStruct) SlaveConnect(ctx context.Context, addr string, headers http.Header) error {
+	return c.Internal.SlaveConnect(ctx, addr, headers)
+}
+
+func (c *StorageMinerStruct) CheckCurrentMaster(ctx context.Context, addr string) error {
+	return c.Internal.CheckCurrentMaster(ctx, addr)
+}
+
+func (c *StorageMinerStruct) AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, addrSlave string, headersSlave http.Header) error {
+	return c.Internal.AnnounceMaster(ctx, addrMaster, headersMaster, addrSlave, headersSlave)
 }
 
 func (c *StorageMinerStruct) WorkerConnect(ctx context.Context, url string) error {

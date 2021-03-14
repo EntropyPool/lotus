@@ -215,6 +215,8 @@ var runCmd = &cli.Command{
 		}()
 		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
+		go MultiMinerRun(cctx)
+
 		return srv.Serve(manet.NetListener(lst))
 	},
 }

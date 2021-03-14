@@ -19,6 +19,10 @@ import (
 	"github.com/filecoin-project/go-statestore"
 	"github.com/filecoin-project/specs-storage/storage"
 
+	"github.com/filecoin-project/go-jsonrpc"
+
+	"github.com/filecoin-project/lotus/api"
+
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
 	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
 	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
@@ -71,7 +75,8 @@ type Manager struct {
 	remoteHnd  *stores.FetchHandler
 	index      stores.SectorIndex
 
-	sched *scheduler
+	sched     *scheduler
+	postSched *PoStScheduler
 
 	storage.Prover
 
@@ -127,7 +132,8 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, sc 
 		remoteHnd:  &stores.FetchHandler{Local: lstor},
 		index:      si,
 
-		sched: newScheduler(),
+		sched:     newScheduler(),
+		postSched: NewPoStScheduler(),
 
 		work:       mss,
 		callToWork: map[storiface.CallID]WorkID{},
@@ -210,6 +216,20 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 
 func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 	return m.sched.runWorker(ctx, w)
+}
+
+func (m *Manager) SlaveProverConnect(ctx context.Context, addr string, nodeApi api.StorageMiner, closer jsonrpc.ClientCloser) error {
+	m.postSched.AddSlaveProver(addr, nodeApi, closer)
+	return nil
+}
+
+func (m *Manager) SetMasterProver(ctx context.Context, addr string) error {
+	m.postSched.SetMasterProver(addr)
+	return nil
+}
+
+func (m *Manager) GetMasterProver(ctx context.Context) (string, error) {
+	return m.postSched.GetMasterProver(), nil
 }
 
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {

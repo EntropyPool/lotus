@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/filecoin-project/lotus/api/client"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -385,6 +386,46 @@ func (sm *StorageMinerAPI) SectorTerminatePending(ctx context.Context) ([]abi.Se
 
 func (sm *StorageMinerAPI) SectorMarkForUpgrade(ctx context.Context, id abi.SectorNumber) error {
 	return sm.Miner.MarkForUpgrade(id)
+}
+
+func (sm *StorageMinerAPI) CheckCurrentMaster(ctx context.Context, addr string) error {
+	masterProver, err := sm.StorageMgr.GetMasterProver(ctx)
+	if err != nil {
+		return err
+	}
+
+	if masterProver != addr {
+		return xerrors.Errorf("master address %v != %v", masterProver, addr)
+	}
+
+	return nil
+}
+
+func (sm *StorageMinerAPI) AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, addrSlave string, headersSlave http.Header) error {
+	minerApi, closer, err := client.NewStorageMinerRPC(ctx, addrMaster, headersMaster)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	sm.StorageMgr.SetMasterProver(ctx, addrMaster)
+
+	return minerApi.SlaveConnect(ctx, addrSlave, headersSlave)
+}
+
+func (sm *StorageMinerAPI) SlaveConnect(ctx context.Context, addr string, headers http.Header) error {
+	minerApi, closer, err := client.NewStorageMinerRPC(ctx, addr, headers)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	return sm.StorageMgr.SlaveProverConnect(ctx, addr, minerApi, closer)
+}
+
+func (sm *StorageMinerAPI) CheckMaster(ctx context.Context) error {
+	log.Infof("Master check from")
+	return nil
 }
 
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {
