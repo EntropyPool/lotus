@@ -324,9 +324,10 @@ type StorageMinerStruct struct {
 		SectorTerminatePending        func(ctx context.Context) ([]abi.SectorID, error)                                             `perm:"admin"`
 		SectorMarkForUpgrade          func(ctx context.Context, id abi.SectorNumber) error                                          `perm:"admin"`
 
-		AnnounceMaster func(context.Context, string, http.Header, string, http.Header) error `perm:"admin" retry:"true"`
-		SlaveConnect   func(context.Context, string, http.Header) error                      `perm:"admin" retry:"true"`
-		CheckMaster    func(context.Context) error                                           `perm:"admin" retry:"true"`
+		CurrentMasterIndex func(ctx context.Context) int                                              `perm:"admin"`
+		AnnounceMaster     func(context.Context, string, http.Header, int, string, http.Header) error `perm:"admin" retry:"true"`
+		SlaveConnect       func(context.Context, string, http.Header) error                           `perm:"admin" retry:"true"`
+		CheckMaster        func(context.Context) error                                                `perm:"admin" retry:"true"`
 
 		WorkerConnect func(context.Context, string) error                                `perm:"admin" retry:"true"` // TODO: worker perm
 		WorkerStats   func(context.Context) (map[uuid.UUID]storiface.WorkerStats, error) `perm:"admin"`
@@ -1358,8 +1359,12 @@ func (c *StorageMinerStruct) SlaveConnect(ctx context.Context, addr string, head
 	return c.Internal.SlaveConnect(ctx, addr, headers)
 }
 
-func (c *StorageMinerStruct) AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, addrSlave string, headersSlave http.Header) error {
-	return c.Internal.AnnounceMaster(ctx, addrMaster, headersMaster, addrSlave, headersSlave)
+func (c *StorageMinerStruct) CurrentMasterIndex(ctx context.Context) int {
+	return c.Internal.CurrentMasterIndex(ctx)
+}
+
+func (c *StorageMinerStruct) AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, masterIndex int, addrSlave string, headersSlave http.Header) error {
+	return c.Internal.AnnounceMaster(ctx, addrMaster, headersMaster, masterIndex, addrSlave, headersSlave)
 }
 
 func (c *StorageMinerStruct) WorkerConnect(ctx context.Context, url string) error {

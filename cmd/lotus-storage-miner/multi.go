@@ -95,12 +95,12 @@ func newMultiMiner(cctx *cli.Context) (*MultiMiner, error) {
 func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 	var err error
 
-	for _, candidate := range multiMiner.candidates {
+	for index, candidate := range multiMiner.candidates {
 		if candidate.mySelf {
 			continue
 		}
 
-		nerr := lcli.AnnounceMaster(cctx, candidate.envValue)
+		nerr := lcli.AnnounceMaster(cctx, candidate.envValue, index)
 		if nerr != nil {
 			err = nerr
 		}
@@ -110,6 +110,12 @@ func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 }
 
 func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
+	masterIndex := lcli.CurrentMasterIndex(cctx)
+	if 0 <= masterIndex && masterIndex != multiMiner.masterIndex {
+		multiMiner.masterIndex = masterIndex
+		multiMiner.masterFailCount = 0
+	}
+
 	err := lcli.CheckMaster(cctx, multiMiner.candidates[multiMiner.masterIndex].envValue)
 	if err != nil {
 		multiMiner.masterFailCount += 1
@@ -122,7 +128,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 	}
 
 	if multiMiner.candidates[multiMiner.masterIndex].mySelf {
-		return lcli.AnnounceMaster(cctx, multiMiner.candidates[multiMiner.masterIndex].envValue)
+		return multiMiner.notifyMaster(cctx)
 	}
 
 	return nil
