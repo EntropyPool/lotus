@@ -151,6 +151,8 @@ type StorageMiner interface {
 	CreateBackup(ctx context.Context, fpath string) error
 
 	CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, expensive bool) (map[abi.SectorNumber]string, error)
+
+	SetEnvironment(ctx context.Context, envName string, envVal string) error
 }
 
 type SealRes struct {

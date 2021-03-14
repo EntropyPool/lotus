@@ -33,10 +33,12 @@ type MultiMiner struct {
 	masterFailCount int
 }
 
+const multiMinerApiInfosEnvKey = "MULTI_MINER_API_INFOS"
+
 func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
-	env, ok := os.LookupEnv("MULTI_MINER_API_INFOS")
+	env, ok := os.LookupEnv(multiMinerApiInfosEnvKey)
 	if !ok {
-		return xerrors.Errorf("MULTI_MINER_API_INFOS is not defined")
+		return xerrors.Errorf("%v is not defined", multiMinerApiInfosEnvKey)
 	}
 
 	if env == multiMiner.envValue {
@@ -190,4 +192,25 @@ waitForMiner:
 			}
 		}
 	}
+}
+
+var multiMinerConfigCmd = &cli.Command{
+	Name:      "config",
+	Usage:     "Config miner apis info for multi miner",
+	ArgsUsage: "[miner_api_infos]",
+	Action: func(cctx *cli.Context) error {
+		if cctx.Args().Len() != 1 {
+			return xerrors.Errorf("expected 1 argument")
+		}
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		ctx := lcli.ReqContext(cctx)
+
+		return nodeApi.SetEnvironment(ctx, multiMinerApiInfosEnvKey, cctx.Args().First())
+	},
 }
