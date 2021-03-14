@@ -12,6 +12,7 @@ import (
 	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 
 	"github.com/filecoin-project/lotus/chain/gen/slashfilter"
+	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
@@ -98,6 +99,12 @@ type Miner struct {
 
 	evtTypes [1]journal.EventType
 	journal  journal.Journal
+
+	sealer sectorstorage.SectorManager
+}
+
+func (m *Miner) SetSealer(sealer sectorstorage.SectorManager) {
+	m.sealer = sealer
 }
 
 func (m *Miner) Address() address.Address {
@@ -163,6 +170,12 @@ minerLoop:
 			return
 
 		default:
+		}
+
+		if !m.sealer.GetPlayAsMaster(ctx) {
+			log.Infof("I'm not master, do not process block producing")
+			m.niceSleep(time.Second * 10)
+			continue
 		}
 
 		var base *MiningBase
