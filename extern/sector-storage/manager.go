@@ -225,8 +225,8 @@ func (m *Manager) GetMasterProver(ctx context.Context) (string, error) {
 	return m.postSched.GetMasterProver(), nil
 }
 
-func (m *Manager) SetPlayAsMaster(ctx context.Context, master bool) error {
-	return m.postSched.SetPlayAsMaster(master)
+func (m *Manager) SetPlayAsMaster(ctx context.Context, master bool, addr string) error {
+	return m.postSched.SetPlayAsMaster(master, addr)
 }
 
 func (m *Manager) GetPlayAsMaster(ctx context.Context) bool {

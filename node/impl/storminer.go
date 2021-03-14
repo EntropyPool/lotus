@@ -386,8 +386,8 @@ func (sm *StorageMinerAPI) CheckMaster(ctx context.Context) error {
 	return nil
 }
 
-func (sm *StorageMinerAPI) SetPlayAsMaster(ctx context.Context, master bool) error {
-	return sm.StorageMgr.SetPlayAsMaster(ctx, master)
+func (sm *StorageMinerAPI) SetPlayAsMaster(ctx context.Context, master bool, addr string) error {
+	return sm.StorageMgr.SetPlayAsMaster(ctx, master, addr)
 }
 
 func (sm *StorageMinerAPI) GetPlayAsMaster(ctx context.Context) bool {

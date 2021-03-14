@@ -297,13 +297,18 @@ func CheckMaster(ctx *cli.Context, apiInfo string) error {
 }
 
 func SetPlayAsMaster(ctx *cli.Context, master bool) error {
+	addr, _, err := GetRawAPI(ctx, repo.StorageMiner)
+	if err != nil {
+		return err
+	}
+
 	minerApi, closer, err := GetStorageMinerAPI(ctx)
 	if err != nil {
 		return err
 	}
 	defer closer()
 
-	return minerApi.SetPlayAsMaster(ctx.Context, master)
+	return minerApi.SetPlayAsMaster(ctx.Context, master, addr)
 }
 
 func CheckCurrentMaster(ctx *cli.Context, apiInfo string) error {

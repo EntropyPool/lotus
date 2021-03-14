@@ -127,6 +127,9 @@ func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 	var err error
 
 	for index, candidate := range multiMiner.Candidates {
+		if candidate.mySelf {
+			continue
+		}
 		nerr := lcli.AnnounceMaster(cctx, candidate.EnvValue)
 		if nerr != nil {
 			log.Infof("Fail to announce master to [%v] %v: %v", index, candidate.EnvValue, nerr)

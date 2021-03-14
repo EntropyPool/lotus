@@ -60,8 +60,9 @@ func (s *PoStScheduler) schedule() {
 	}
 }
 
-func (s *PoStScheduler) SetPlayAsMaster(master bool) error {
+func (s *PoStScheduler) SetPlayAsMaster(master bool, addr string) error {
 	playAsMaster = master
+	s.MasterProver = addr
 	return nil
 }
 
