@@ -22,6 +22,9 @@ func NewPoStScheduler() *PoStScheduler {
 		slaveProver: make(map[string]*SlaveProver),
 		newProver:   make(chan *SlaveProver, 10),
 	}
+
+	go sched.schedule()
+
 	return sched
 }
 
