@@ -53,8 +53,6 @@ func (s *PoStScheduler) schedule() {
 			if _, ok := s.slaveProver[prover.addr]; !ok {
 				log.Infof("new prover: %v", prover.addr)
 				s.slaveProver[prover.addr] = prover
-			} else {
-				prover.closer()
 			}
 		}
 	}
