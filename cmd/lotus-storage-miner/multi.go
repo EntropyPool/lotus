@@ -189,6 +189,10 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 
 func (multiMiner *MultiMiner) keepaliveProcess(cctx *cli.Context) error {
 	if multiMiner.IMLord {
+		err := lcli.SetPlayAsMaster(cctx, true)
+		if err != nil {
+			return err
+		}
 		log.Infof("I'm lord, always announce I'm master")
 		return multiMiner.notifyMaster(cctx)
 	}
@@ -204,27 +208,23 @@ func MultiMinerRun(cctx *cli.Context, rootPath string) {
 
 waitForMiner:
 	for {
-		select {
-		case <-ticker.C:
-			if multiMiner == nil {
-				multiMiner, err = newMultiMiner(cctx, rootPath)
-				if err == nil {
-					log.Infof("Success to create multi miner")
-					break waitForMiner
-				}
+		if multiMiner == nil {
+			multiMiner, err = newMultiMiner(cctx, rootPath)
+			if err == nil {
+				log.Infof("Success to create multi miner")
+				break waitForMiner
 			}
 		}
+		<-ticker.C
 	}
 
 	for {
-		select {
-		case <-ticker.C:
-			multiMiner.updateMultiMiner(cctx)
-			err := multiMiner.keepaliveProcess(cctx)
-			if err != nil {
-				log.Errorf("Fail to keepalive to slave %v\n", err)
-			}
+		multiMiner.updateMultiMiner(cctx)
+		err := multiMiner.keepaliveProcess(cctx)
+		if err != nil {
+			log.Errorf("Fail to keepalive to slave %v\n", err)
 		}
+		<-ticker.C
 	}
 }
 
