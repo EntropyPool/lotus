@@ -173,7 +173,6 @@ minerLoop:
 		}
 
 		if !m.sealer.GetPlayAsMaster(ctx) {
-			log.Infof("I'm not master, do not process block producing")
 			m.niceSleep(time.Second * 10)
 			continue
 		}
