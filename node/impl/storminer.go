@@ -61,7 +61,6 @@ type StorageMinerAPI struct {
 	Host          host.Host
 	AddrSel       *storage.AddressSelector
 	DealPublisher *storageadapter.DealPublisher
-	MasterIndex   int
 
 	DS dtypes.MetadataDS
 
@@ -348,18 +347,27 @@ func (sm *StorageMinerAPI) SectorMarkForUpgrade(ctx context.Context, id abi.Sect
 	return sm.Miner.MarkForUpgrade(id)
 }
 
-func (sm *StorageMinerAPI) CurrentMasterIndex(ctx context.Context) int {
-	return sm.MasterIndex
+func (sm *StorageMinerAPI) CheckCurrentMaster(ctx context.Context, addr string) error {
+	masterProver, err := sm.StorageMgr.GetMasterProver(ctx)
+	if err != nil {
+		return err
+	}
+
+	if masterProver != addr {
+		return xerrors.Errorf("master address %v != %v", masterProver, addr)
+	}
+
+	return nil
 }
 
-func (sm *StorageMinerAPI) AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, masterIndex int, addrSlave string, headersSlave http.Header) error {
+func (sm *StorageMinerAPI) AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, addrSlave string, headersSlave http.Header) error {
 	minerApi, closer, err := client.NewStorageMinerRPC(ctx, addrMaster, headersMaster)
 	if err != nil {
 		return err
 	}
 	defer closer()
 
-	sm.MasterIndex = masterIndex
+	sm.StorageMgr.SetMasterProver(ctx, addrMaster)
 
 	return minerApi.SlaveConnect(ctx, addrSlave, headersSlave)
 }

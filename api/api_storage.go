@@ -84,8 +84,8 @@ type StorageMiner interface {
 	StorageLocal(ctx context.Context) (map[stores.ID]string, error)
 	StorageStat(ctx context.Context, id stores.ID) (fsutil.FsStat, error)
 
-	CurrentMasterIndex(ctx context.Context) int
-	AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, masterIndex int, addrSlave string, headersSlave http.Header) error
+	CheckCurrentMaster(ctx context.Context, addr string) error
+	AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, addrSlave string, headersSlave http.Header) error
 	SlaveConnect(ctx context.Context, addr string, headers http.Header) error
 	CheckMaster(ctx context.Context) error
 

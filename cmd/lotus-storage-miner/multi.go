@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
@@ -44,6 +43,8 @@ func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 		return nil
 	}
 
+	log.Infof("Update multi miner %v -> %v", multiMiner.envValue, env)
+
 	multiMiner.envValue = env
 	minerApiInfos := strings.Split(env, ";")
 	multiMiner.candidates = []*candidateMiner{}
@@ -60,7 +61,7 @@ func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 
 		mySelf, err := lcli.StorageMinerIsMySelf(cctx, apiInfo)
 		if err != nil {
-			fmt.Printf("Cannot check if it's myself %v\n", err)
+			log.Errorf("Cannot check if it's myself %v\n", err)
 			continue
 		}
 
@@ -100,8 +101,9 @@ func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 			continue
 		}
 
-		nerr := lcli.AnnounceMaster(cctx, candidate.envValue, index)
+		nerr := lcli.AnnounceMaster(cctx, candidate.envValue)
 		if nerr != nil {
+			log.Infof("Fail to announce master to [%v] %v: %v", index, candidate.envValue, err)
 			err = nerr
 		}
 	}
@@ -109,14 +111,32 @@ func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 	return err
 }
 
-func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
-	masterIndex := lcli.CurrentMasterIndex(cctx)
-	if 0 <= masterIndex && masterIndex != multiMiner.masterIndex {
-		multiMiner.masterIndex = masterIndex
-		multiMiner.masterFailCount = 0
+func (multiMiner *MultiMiner) getCurrentNodeMasterIndex(cctx *cli.Context) (int, error) {
+	for index, candidate := range multiMiner.candidates {
+		err := lcli.CheckCurrentMaster(cctx, candidate.envValue)
+		if err == nil {
+			return index, nil
+		}
 	}
 
-	err := lcli.CheckMaster(cctx, multiMiner.candidates[multiMiner.masterIndex].envValue)
+	return -1, xerrors.Errorf("None of my list is played as a master")
+}
+
+func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
+	masterIndex, err := multiMiner.getCurrentNodeMasterIndex(cctx)
+	if err == nil {
+		if masterIndex != multiMiner.masterIndex {
+			log.Infof("Master is switch from %v -> %v", multiMiner.masterIndex, masterIndex)
+			multiMiner.masterIndex = masterIndex
+			multiMiner.masterFailCount = 0
+		}
+	} else {
+		log.Errorf("Fail to get current master index: %v", err)
+	}
+
+	currentMasterEnv := multiMiner.candidates[multiMiner.masterIndex].envValue
+
+	err = lcli.CheckMaster(cctx, currentMasterEnv)
 	if err != nil {
 		multiMiner.masterFailCount += 1
 	}
@@ -128,6 +148,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 	}
 
 	if multiMiner.candidates[multiMiner.masterIndex].mySelf {
+		log.Infof("I'm master now, announce to others")
 		return multiMiner.notifyMaster(cctx)
 	}
 
@@ -136,6 +157,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 
 func (multiMiner *MultiMiner) keepaliveProcess(cctx *cli.Context) error {
 	if multiMiner.iMLord {
+		log.Infof("I'm lord, always announce I'm master")
 		return multiMiner.notifyMaster(cctx)
 	}
 	return multiMiner.selectAndCheckMaster(cctx)
@@ -146,6 +168,8 @@ func MultiMinerRun(cctx *cli.Context) {
 	var err error
 	ticker := time.NewTicker(20 * time.Second)
 
+	log.Infof("Run multi miner elector")
+
 waitForMiner:
 	for {
 		select {
@@ -153,6 +177,7 @@ waitForMiner:
 			if multiMiner == nil {
 				multiMiner, err = newMultiMiner(cctx)
 				if err == nil {
+					log.Infof("Success to create multi miner")
 					break waitForMiner
 				}
 			}
@@ -165,7 +190,7 @@ waitForMiner:
 			multiMiner.updateMultiMiner(cctx)
 			err := multiMiner.keepaliveProcess(cctx)
 			if err != nil {
-				fmt.Printf("Fail to keepalive to slave %v\n", err)
+				log.Errorf("Fail to keepalive to slave %v\n", err)
 			}
 		}
 	}

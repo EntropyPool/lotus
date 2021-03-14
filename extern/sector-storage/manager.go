@@ -213,6 +213,14 @@ func (m *Manager) SlaveProverConnect(ctx context.Context, nodeApi api.StorageMin
 	return nil
 }
 
+func (m *Manager) SetMasterProver(ctx context.Context, addr string) error {
+	return nil
+}
+
+func (m *Manager) GetMasterProver(ctx context.Context) (string, error) {
+	return "", nil
+}
+
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.remoteHnd.ServeHTTP(w, r)
 }

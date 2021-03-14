@@ -296,17 +296,27 @@ func CheckMaster(ctx *cli.Context, apiInfo string) error {
 	return minerApi.CheckMaster(ctx.Context)
 }
 
-func CurrentMasterIndex(ctx *cli.Context) int {
-	api, closer, err := GetStorageMinerAPI(ctx)
+func CheckCurrentMaster(ctx *cli.Context, apiInfo string) error {
+	minerApi, closer, err := GetStorageMinerAPI(ctx)
 	if err != nil {
-		return -1
+		return err
 	}
 	defer closer()
 
-	return api.CurrentMasterIndex(ctx.Context)
+	ainfo, err := GetAPIInfoWithEnvValue(ctx, apiInfo)
+	if err != nil {
+		return err
+	}
+
+	addr, _, err := GetRawAPIWithAPIInfo(ctx, ainfo)
+	if err != nil {
+		return err
+	}
+
+	return minerApi.CheckCurrentMaster(ctx.Context, addr)
 }
 
-func AnnounceMaster(ctx *cli.Context, apiInfo string, index int) error {
+func AnnounceMaster(ctx *cli.Context, apiInfo string) error {
 	minerApi, closer, err := GetStorageMinerAPIWithAPIInfo(ctx, apiInfo)
 	if err != nil {
 		return err
@@ -328,7 +338,7 @@ func AnnounceMaster(ctx *cli.Context, apiInfo string, index int) error {
 		return err
 	}
 
-	return minerApi.AnnounceMaster(ctx.Context, addrMaster, headersMaster, index, addrSlave, headersSlave)
+	return minerApi.AnnounceMaster(ctx.Context, addrMaster, headersMaster, addrSlave, headersSlave)
 }
 
 func GetStorageMinerAPI(ctx *cli.Context, opts ...GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {
