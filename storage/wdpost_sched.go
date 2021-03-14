@@ -94,7 +94,6 @@ func (s *WindowPoStScheduler) Run(ctx context.Context) {
 	// not fine to panic after this point
 	for {
 		if !s.sealer.GetPlayAsMaster(ctx) {
-			log.Infof("I'm not master, do not process chain notify")
 			build.Clock.Sleep(10 * time.Second)
 			continue
 		}
