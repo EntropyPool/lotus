@@ -35,6 +35,7 @@ type MultiMiner struct {
 	masterIndex     int
 	masterFailCount int
 	rootPath        string
+	newCreated      bool
 }
 
 const multiMinerApiInfosEnvKey = "MULTI_MINER_API_INFOS"
@@ -46,7 +47,7 @@ func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 		return xerrors.Errorf("%v is not defined", multiMinerApiInfosEnvKey)
 	}
 
-	if env == multiMiner.EnvValue {
+	if env == multiMiner.EnvValue && !multiMiner.newCreated {
 		return nil
 	}
 
@@ -96,12 +97,15 @@ func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 		return xerrors.Errorf("persisting storage metadata (%s): %w", filepath.Join(multiMiner.rootPath, multiMinerMetaFile), err)
 	}
 
+	multiMiner.newCreated = false
+
 	return nil
 }
 
 func newMultiMiner(cctx *cli.Context, rootPath string) (*MultiMiner, error) {
 	multiMiner := &MultiMiner{
-		rootPath: rootPath,
+		rootPath:   rootPath,
+		newCreated: true,
 	}
 
 	metaFile := filepath.Join(multiMiner.rootPath, multiMinerMetaFile)
@@ -127,6 +131,9 @@ func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 	var err error
 
 	for index, candidate := range multiMiner.Candidates {
+		if candidate.mySelf {
+			continue
+		}
 		nerr := lcli.AnnounceMaster(cctx, candidate.EnvValue)
 		if nerr != nil {
 			log.Infof("Fail to announce master to [%v] %v: %v", index, candidate.EnvValue, nerr)
@@ -164,6 +171,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 
 	err = lcli.CheckMaster(cctx, currentMasterEnv)
 	if err != nil {
+		log.Errorf("Check master %v fail: %v [%v / %v]", currentMasterEnv, err, multiMiner.masterIndex, multiMiner.masterFailCount)
 		multiMiner.masterFailCount += 1
 	}
 
@@ -176,6 +184,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 	if multiMiner.Candidates[multiMiner.masterIndex].mySelf {
 		err = lcli.SetPlayAsMaster(cctx, true)
 		if err != nil {
+			log.Errorf("CANNOT set myself play as master: %v", err)
 			return err
 		}
 		log.Infof("I'm master now, announce to others")
