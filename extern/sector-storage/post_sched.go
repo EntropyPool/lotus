@@ -5,6 +5,8 @@ import (
 	"github.com/filecoin-project/lotus/api"
 )
 
+var playAsMaster = false
+
 type SlaveProver struct {
 	addr    string
 	nodeApi api.StorageMiner
@@ -56,4 +58,13 @@ func (s *PoStScheduler) schedule() {
 			}
 		}
 	}
+}
+
+func (s *PoStScheduler) SetPlayAsMaster(master bool) error {
+	playAsMaster = master
+	return nil
+}
+
+func (s *PoStScheduler) GetPlayAsMaster() bool {
+	return playAsMaster
 }

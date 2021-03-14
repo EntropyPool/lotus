@@ -424,8 +424,15 @@ func (sm *StorageMinerAPI) SlaveConnect(ctx context.Context, addr string, header
 }
 
 func (sm *StorageMinerAPI) CheckMaster(ctx context.Context) error {
-	log.Infof("Master check from")
 	return nil
+}
+
+func (sm *StorageMinerAPI) SetPlayAsMaster(ctx context.Context, master bool) error {
+	return sm.StorageMgr.SetPlayAsMaster(ctx, master)
+}
+
+func (sm *StorageMinerAPI) GetPlayAsMaster(ctx context.Context) bool {
+	return sm.StorageMgr.GetPlayAsMaster(ctx)
 }
 
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {
