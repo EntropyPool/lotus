@@ -3,6 +3,8 @@ package storage
 import (
 	"bytes"
 	"context"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -754,7 +756,12 @@ func (s *WindowPoStScheduler) batchPartitions(partitions []api.Partition) ([][]a
 		return nil, xerrors.Errorf("getting sectors per partition: %w", err)
 	}
 
-	partitionsPerMsg = 1
+	minerPostBatchPartitionTest, err := strconv.ParseBool(os.Getenv("MINER_POST_BATCH_PARTITION_TEST"))
+	if err == nil {
+		if minerPostBatchPartitionTest {
+			partitionsPerMsg = 1
+		}
+	}
 
 	// The number of messages will be:
 	// ceiling(number of partitions / partitions per message)
