@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -19,21 +22,23 @@ const (
 )
 
 type candidateMiner struct {
-	nativeRole  string
-	runtimeRole string
-	envValue    string
-	mySelf      bool
+	NativeRole  string `json:"native_role"`
+	RuntimeRole string `json:"runtime_role"`
+	EnvValue    string `json:"env_value"`
+	mySelf      bool   `json:"my_self"`
 }
 
 type MultiMiner struct {
-	candidates      []*candidateMiner
-	iMLord          bool
-	envValue        string
+	Candidates      []*candidateMiner `json:"Candidates"`
+	IMLord          bool              `json:"lord"`
+	EnvValue        string            `json: "env_value"`
 	masterIndex     int
 	masterFailCount int
+	rootPath        string
 }
 
 const multiMinerApiInfosEnvKey = "MULTI_MINER_API_INFOS"
+const multiMinerMetaFile = "multiminerpeers.conf"
 
 func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 	env, ok := os.LookupEnv(multiMinerApiInfosEnvKey)
@@ -41,15 +46,15 @@ func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 		return xerrors.Errorf("%v is not defined", multiMinerApiInfosEnvKey)
 	}
 
-	if env == multiMiner.envValue {
+	if env == multiMiner.EnvValue {
 		return nil
 	}
 
-	log.Infof("Update multi miner %v -> %v", multiMiner.envValue, env)
+	log.Infof("Update multi miner %v -> %v", multiMiner.EnvValue, env)
 
-	multiMiner.envValue = env
+	multiMiner.EnvValue = env
 	minerApiInfos := strings.Split(env, ";")
-	multiMiner.candidates = []*candidateMiner{}
+	multiMiner.Candidates = []*candidateMiner{}
 
 	for _, info := range minerApiInfos {
 		role := MinerSlave
@@ -69,25 +74,48 @@ func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 
 		if mySelf {
 			if role == MinerLord {
-				multiMiner.iMLord = true
+				multiMiner.IMLord = true
 			}
 		}
 
-		multiMiner.candidates = append(multiMiner.candidates, &candidateMiner{
-			nativeRole:  role,
-			runtimeRole: role,
-			envValue:    apiInfo,
+		multiMiner.Candidates = append(multiMiner.Candidates, &candidateMiner{
+			NativeRole:  role,
+			RuntimeRole: role,
+			EnvValue:    apiInfo,
 			mySelf:      mySelf,
 		})
+	}
+
+	b, err := json.MarshalIndent(multiMiner, "", "  ")
+	if err != nil {
+		return xerrors.Errorf("marshaling storage config: %w", err)
+	}
+
+	metaFile := filepath.Join(multiMiner.rootPath, multiMinerMetaFile)
+	if err := ioutil.WriteFile(metaFile, b, 0644); err != nil {
+		return xerrors.Errorf("persisting storage metadata (%s): %w", filepath.Join(multiMiner.rootPath, multiMinerMetaFile), err)
 	}
 
 	return nil
 }
 
-func newMultiMiner(cctx *cli.Context) (*MultiMiner, error) {
-	multiMiner := &MultiMiner{}
+func newMultiMiner(cctx *cli.Context, rootPath string) (*MultiMiner, error) {
+	multiMiner := &MultiMiner{
+		rootPath: rootPath,
+	}
 
-	err := multiMiner.updateMultiMiner(cctx)
+	metaFile := filepath.Join(multiMiner.rootPath, multiMinerMetaFile)
+	b, err := ioutil.ReadFile(metaFile)
+	if err == nil {
+		err = json.Unmarshal(b, multiMiner)
+		if err != nil {
+			log.Errorf("CANNOT parse %v", metaFile)
+		}
+	} else {
+		log.Errorf("Fail to read %v", metaFile)
+	}
+
+	err = multiMiner.updateMultiMiner(cctx)
 	if err != nil {
 		return nil, err
 	}
@@ -98,10 +126,10 @@ func newMultiMiner(cctx *cli.Context) (*MultiMiner, error) {
 func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 	var err error
 
-	for index, candidate := range multiMiner.candidates {
-		nerr := lcli.AnnounceMaster(cctx, candidate.envValue)
+	for index, candidate := range multiMiner.Candidates {
+		nerr := lcli.AnnounceMaster(cctx, candidate.EnvValue)
 		if nerr != nil {
-			log.Infof("Fail to announce master to [%v] %v: %v", index, candidate.envValue, nerr)
+			log.Infof("Fail to announce master to [%v] %v: %v", index, candidate.EnvValue, nerr)
 			err = nerr
 		}
 	}
@@ -110,8 +138,8 @@ func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 }
 
 func (multiMiner *MultiMiner) getCurrentNodeMasterIndex(cctx *cli.Context) (int, error) {
-	for index, candidate := range multiMiner.candidates {
-		err := lcli.CheckCurrentMaster(cctx, candidate.envValue)
+	for index, candidate := range multiMiner.Candidates {
+		err := lcli.CheckCurrentMaster(cctx, candidate.EnvValue)
 		if err == nil {
 			return index, nil
 		}
@@ -132,7 +160,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 		log.Errorf("Fail to get current master index: %v", err)
 	}
 
-	currentMasterEnv := multiMiner.candidates[multiMiner.masterIndex].envValue
+	currentMasterEnv := multiMiner.Candidates[multiMiner.masterIndex].EnvValue
 
 	err = lcli.CheckMaster(cctx, currentMasterEnv)
 	if err != nil {
@@ -141,11 +169,11 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 
 	if 6 < multiMiner.masterFailCount {
 		multiMiner.masterIndex += 1
-		multiMiner.masterIndex %= len(multiMiner.candidates)
+		multiMiner.masterIndex %= len(multiMiner.Candidates)
 		multiMiner.masterFailCount = 0
 	}
 
-	if multiMiner.candidates[multiMiner.masterIndex].mySelf {
+	if multiMiner.Candidates[multiMiner.masterIndex].mySelf {
 		log.Infof("I'm master now, announce to others")
 		return multiMiner.notifyMaster(cctx)
 	}
@@ -154,14 +182,14 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 }
 
 func (multiMiner *MultiMiner) keepaliveProcess(cctx *cli.Context) error {
-	if multiMiner.iMLord {
+	if multiMiner.IMLord {
 		log.Infof("I'm lord, always announce I'm master")
 		return multiMiner.notifyMaster(cctx)
 	}
 	return multiMiner.selectAndCheckMaster(cctx)
 }
 
-func MultiMinerRun(cctx *cli.Context) {
+func MultiMinerRun(cctx *cli.Context, rootPath string) {
 	var multiMiner *MultiMiner
 	var err error
 	ticker := time.NewTicker(20 * time.Second)
@@ -173,7 +201,7 @@ waitForMiner:
 		select {
 		case <-ticker.C:
 			if multiMiner == nil {
-				multiMiner, err = newMultiMiner(cctx)
+				multiMiner, err = newMultiMiner(cctx, rootPath)
 				if err == nil {
 					log.Infof("Success to create multi miner")
 					break waitForMiner
