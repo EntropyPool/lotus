@@ -167,7 +167,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 
 	err = lcli.CheckMaster(cctx, currentMasterEnv)
 	if err != nil {
-		log.Errorf("Check master %v fail: %v [%v / %v]", currentMasterEnv, err, multiMiner.masterFailCount, multiMiner.masterFailCount)
+		log.Errorf("Check master %v fail: %v [%v / %v]", currentMasterEnv, err, multiMiner.masterIndex, multiMiner.masterFailCount)
 		multiMiner.masterFailCount += 1
 	}
 
