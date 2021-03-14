@@ -379,7 +379,7 @@ func (sm *StorageMinerAPI) SlaveConnect(ctx context.Context, addr string, header
 	}
 	defer closer()
 
-	return sm.StorageMgr.SlaveProverConnect(ctx, minerApi, closer)
+	return sm.StorageMgr.SlaveProverConnect(ctx, addr, minerApi, closer)
 }
 
 func (sm *StorageMinerAPI) CheckMaster(ctx context.Context) error {

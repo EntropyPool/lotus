@@ -73,7 +73,8 @@ type Manager struct {
 	remoteHnd  *stores.FetchHandler
 	index      stores.SectorIndex
 
-	sched *scheduler
+	sched     *scheduler
+	postSched *PoStScheduler
 
 	storage.Prover
 
@@ -129,7 +130,8 @@ func New(ctx context.Context, ls stores.LocalStorage, si stores.SectorIndex, sc 
 		remoteHnd:  &stores.FetchHandler{Local: lstor},
 		index:      si,
 
-		sched: newScheduler(),
+		sched:     newScheduler(),
+		postSched: NewPoStScheduler(),
 
 		Prover: prover,
 
@@ -208,17 +210,18 @@ func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
 	return m.sched.runWorker(ctx, w)
 }
 
-func (m *Manager) SlaveProverConnect(ctx context.Context, nodeApi api.StorageMiner, closer jsonrpc.ClientCloser) error {
-	log.Infof("Slave prover connect")
+func (m *Manager) SlaveProverConnect(ctx context.Context, addr string, nodeApi api.StorageMiner, closer jsonrpc.ClientCloser) error {
+	m.postSched.AddSlaveProver(addr, nodeApi, closer)
 	return nil
 }
 
 func (m *Manager) SetMasterProver(ctx context.Context, addr string) error {
+	m.postSched.SetMasterProver(addr)
 	return nil
 }
 
 func (m *Manager) GetMasterProver(ctx context.Context) (string, error) {
-	return "", nil
+	return m.postSched.GetMasterProver(), nil
 }
 
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
