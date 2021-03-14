@@ -224,7 +224,7 @@ func (s *WindowPoStScheduler) checkSectors(ctx context.Context, check bitfield.B
 		delete(sectors, id.Number)
 	}
 
-	log.Warnw("Checked sectors", "checked", len(tocheck), "good", len(sectors))
+	log.Warnw("Checked sectors", "checked", len(tocheck), "good", len(sectors), "sectors", len(sectorInfos))
 
 	sbf := bitfield.New()
 	for s := range sectors {
@@ -312,7 +312,7 @@ func (s *WindowPoStScheduler) checkNextRecoveries(ctx context.Context, dlIdx uin
 		return recoveries, sm, xerrors.Errorf("pushing message to mpool: %w", err)
 	}
 
-	log.Warnw("declare faults recovered Message CID", "cid", sm.Cid())
+	log.Warnw("declare faults recovered Message CID", "cid", sm.Cid(), "deadline", dlIdx)
 
 	rec, err := s.api.StateWaitMsg(context.TODO(), sm.Cid(), build.MessageConfidence)
 	if err != nil {
@@ -514,7 +514,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 
 		postWaitGroup.Add(1)
 
-		go func(ctx context.Context, di dline.Info, ts *types.TipSet) {
+		go func(ctx context.Context, di dline.Info, ts *types.TipSet, batch []api.Partition, batchIdx int, batchPartitionStartIdx int) {
 			defer postWaitGroup.Done()
 
 			params := miner.SubmitWindowedPoStParams{
@@ -627,7 +627,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 				}
 
 				if len(sinfos) == 0 {
-					log.Infof("nothing to be proved deadline %v", di.Index)
+					log.Infof("nothing to be proved deadline %v of batch %v", di.Index, batchIdx)
 					return
 				}
 
@@ -636,7 +636,9 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 					"chain-random", rand,
 					"deadline", di,
 					"height", ts.Height(),
-					"skipped", skipCount)
+					"skipped", skipCount,
+					"deadline", di.Index,
+					"batch", batchIdx)
 
 				tsStart := build.Clock.Now()
 
@@ -709,7 +711,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 					postSkipped.Set(uint64(sector.Number))
 				}
 			}
-		}(ctx, di, ts)
+		}(ctx, di, ts, batch, batchIdx, batchPartitionStartIdx)
 	}
 
 	go func() {
@@ -751,6 +753,8 @@ func (s *WindowPoStScheduler) batchPartitions(partitions []api.Partition) ([][]a
 	if err != nil {
 		return nil, xerrors.Errorf("getting sectors per partition: %w", err)
 	}
+
+	partitionsPerMsg = 1
 
 	// The number of messages will be:
 	// ceiling(number of partitions / partitions per message)
