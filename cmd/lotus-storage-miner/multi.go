@@ -164,6 +164,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 
 	err = lcli.CheckMaster(cctx, currentMasterEnv)
 	if err != nil {
+		log.Errorf("Check master %v fail: %v [%v]", currentMasterEnv, err, multiMiner.masterFailCount)
 		multiMiner.masterFailCount += 1
 	}
 
@@ -176,6 +177,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 	if multiMiner.Candidates[multiMiner.masterIndex].mySelf {
 		err = lcli.SetPlayAsMaster(cctx, true)
 		if err != nil {
+			log.Errorf("CANNOT set myself play as master: %v", err)
 			return err
 		}
 		log.Infof("I'm master now, announce to others")
