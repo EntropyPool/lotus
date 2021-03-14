@@ -29,6 +29,7 @@ type WindowPoStScheduler struct {
 	addrSel          *AddressSelector
 	prover           storage.Prover
 	verifier         ffiwrapper.Verifier
+	sealer           sectorstorage.SectorManager
 	faultTracker     sectorstorage.FaultTracker
 	proofType        abi.RegisteredPoStProof
 	partitionSectors uint64
@@ -70,6 +71,10 @@ func NewWindowedPoStScheduler(api storageMinerApi, fc config.MinerFeeConfig, as 
 	}, nil
 }
 
+func (s *WindowPoStScheduler) SetSealer(sealer sectorstorage.SectorManager) {
+	s.sealer = sealer
+}
+
 type changeHandlerAPIImpl struct {
 	storageMinerApi
 	*WindowPoStScheduler
@@ -88,6 +93,12 @@ func (s *WindowPoStScheduler) Run(ctx context.Context) {
 
 	// not fine to panic after this point
 	for {
+		if !s.sealer.GetPlayAsMaster(ctx) {
+			log.Infof("I'm not master, do not process chain notify")
+			build.Clock.Sleep(10 * time.Second)
+			continue
+		}
+
 		if notifs == nil {
 			notifs, err = s.api.ChainNotify(ctx)
 			if err != nil {

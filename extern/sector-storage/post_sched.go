@@ -15,6 +15,7 @@ type PoStScheduler struct {
 	MasterProver string
 	slaveProver  map[string]*SlaveProver
 	newProver    chan *SlaveProver
+	PlayAsMaster bool
 }
 
 func NewPoStScheduler() *PoStScheduler {
@@ -56,4 +57,13 @@ func (s *PoStScheduler) schedule() {
 			}
 		}
 	}
+}
+
+func (s *PoStScheduler) SetPlayAsMaster(master bool) error {
+	s.PlayAsMaster = master
+	return nil
+}
+
+func (s *PoStScheduler) GetPlayAsMaster() bool {
+	return s.PlayAsMaster
 }

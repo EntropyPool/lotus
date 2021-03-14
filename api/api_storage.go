@@ -88,6 +88,8 @@ type StorageMiner interface {
 	AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, addrSlave string, headersSlave http.Header) error
 	SlaveConnect(ctx context.Context, addr string, headers http.Header) error
 	CheckMaster(ctx context.Context) error
+	SetPlayAsMaster(ctx context.Context, master bool) error
+	GetPlayAsMaster(context.Context) bool
 
 	// WorkerConnect tells the node to connect to workers RPC
 	WorkerConnect(context.Context, string) error

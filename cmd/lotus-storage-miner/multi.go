@@ -174,9 +174,15 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 	}
 
 	if multiMiner.Candidates[multiMiner.masterIndex].mySelf {
+		err = lcli.SetPlayAsMaster(cctx, true)
+		if err != nil {
+			return err
+		}
 		log.Infof("I'm master now, announce to others")
 		return multiMiner.notifyMaster(cctx)
 	}
+
+	lcli.SetPlayAsMaster(cctx, false)
 
 	return nil
 }

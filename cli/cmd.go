@@ -296,6 +296,16 @@ func CheckMaster(ctx *cli.Context, apiInfo string) error {
 	return minerApi.CheckMaster(ctx.Context)
 }
 
+func SetPlayAsMaster(ctx *cli.Context, master bool) error {
+	minerApi, closer, err := GetStorageMinerAPI(ctx)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	return minerApi.SetPlayAsMaster(ctx.Context, master)
+}
+
 func CheckCurrentMaster(ctx *cli.Context, apiInfo string) error {
 	minerApi, closer, err := GetStorageMinerAPI(ctx)
 	if err != nil {

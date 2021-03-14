@@ -52,6 +52,7 @@ type Worker interface {
 
 type SectorManager interface {
 	ReadPiece(context.Context, io.Writer, storage.SectorRef, storiface.UnpaddedByteIndex, abi.UnpaddedPieceSize, abi.SealRandomness, cid.Cid) error
+	GetPlayAsMaster(ctx context.Context) bool
 
 	ffiwrapper.StorageSealer
 	storage.Prover
@@ -222,6 +223,14 @@ func (m *Manager) SetMasterProver(ctx context.Context, addr string) error {
 
 func (m *Manager) GetMasterProver(ctx context.Context) (string, error) {
 	return m.postSched.GetMasterProver(), nil
+}
+
+func (m *Manager) SetPlayAsMaster(ctx context.Context, master bool) error {
+	return m.postSched.SetPlayAsMaster(master)
+}
+
+func (m *Manager) GetPlayAsMaster(ctx context.Context) bool {
+	return m.postSched.GetPlayAsMaster()
 }
 
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
