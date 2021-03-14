@@ -406,6 +406,8 @@ type StorageMinerStruct struct {
 		CreateBackup func(ctx context.Context, fpath string) error `perm:"admin"`
 
 		CheckProvable func(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, expensive bool) (map[abi.SectorNumber]string, error) `perm:"admin"`
+
+		SetEnvironment func(ctx context.Context, envName string, envVal string) error `perm:"admin"`
 	}
 }
 
@@ -1709,6 +1711,10 @@ func (c *StorageMinerStruct) CreateBackup(ctx context.Context, fpath string) err
 
 func (c *StorageMinerStruct) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, expensive bool) (map[abi.SectorNumber]string, error) {
 	return c.Internal.CheckProvable(ctx, pp, sectors, expensive)
+}
+
+func (c *StorageMinerStruct) SetEnvironment(ctx context.Context, envName string, envVal string) error {
+	return c.Internal.SetEnvironment(ctx, envName, envVal)
 }
 
 // WorkerStruct

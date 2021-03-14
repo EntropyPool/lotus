@@ -774,6 +774,11 @@ func (sm *StorageMinerAPI) CheckProvable(ctx context.Context, pp abi.RegisteredP
 	return out, nil
 }
 
+func (sm *StorageMinerAPI) SetEnvironment(ctx context.Context, envName string, envVal string) error {
+	os.Setenv(envName, envVal)
+	return nil
+}
+
 func (sm *StorageMinerAPI) ActorAddressConfig(ctx context.Context) (api.AddressConfig, error) {
 	return sm.AddrSel.AddressConfig, nil
 }

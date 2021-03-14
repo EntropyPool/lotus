@@ -33,10 +33,12 @@ type MultiMiner struct {
 	masterFailCount int
 }
 
+const multiMinerApiInfosEnvKey = "MULTI_MINER_API_INFOS"
+
 func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
-	env, ok := os.LookupEnv("MULTI_MINER_API_INFOS")
+	env, ok := os.LookupEnv(multiMinerApiInfosEnvKey)
 	if !ok {
-		return xerrors.Errorf("MULTI_MINER_API_INFOS is not defined")
+		return xerrors.Errorf("%v is not defined", multiMinerApiInfosEnvKey)
 	}
 
 	if env == multiMiner.envValue {
@@ -190,4 +192,33 @@ waitForMiner:
 			}
 		}
 	}
+}
+
+var multiMinerConfigCmd = &cli.Command{
+	Name:  "multi",
+	Usage: "Config multi miner attributes",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:  "multi-miner-api-infos",
+			Value: "",
+			Usage: "miner apis separated by ';', in each value, you can use ',' to specific the miner as a lord. only lord can do sealing function",
+		},
+	},
+	Action: func(cctx *cli.Context) error {
+		minerApiInfos := cctx.String("multi-miner-api-infos")
+
+		if "" == minerApiInfos {
+			return xerrors.Errorf("multi-miner-api-infos should not empty")
+		}
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		ctx := lcli.ReqContext(cctx)
+
+		return nodeApi.SetEnvironment(ctx, multiMinerApiInfosEnvKey, cctx.String("multi-miner-api-infos"))
+	},
 }
