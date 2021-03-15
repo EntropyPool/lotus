@@ -253,21 +253,7 @@ func (m *Manager) SectorProving(ctx context.Context, sector storage.SectorRef) e
 }
 
 func (m *Manager) NotifySectorProving(ctx context.Context, sector storage.SectorRef) error {
-	fetchSel := newAllocSelector(m.index, storiface.FTCache|storiface.FTSealed, storiface.PathStorage)
-
-	err := m.sched.Schedule(ctx, sector, sealtasks.TTFetch, fetchSel,
-		m.schedFetch(sector, storiface.FTCache|storiface.FTSealed, storiface.PathStorage, storiface.AcquireMove),
-		func(ctx context.Context, w Worker) error {
-			_, err := m.waitSimpleCall(ctx)(w.MoveStorage(ctx, sector, storiface.FTCache|storiface.FTSealed))
-			return err
-		})
-	if err != nil {
-		return xerrors.Errorf("moving sector to storage: %w", err)
-	}
-
-	log.Infof("notification sector proving: %v", sector)
-
-	return nil
+	return m.localStore.NotifySectorProving(ctx, sector)
 }
 
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
