@@ -150,7 +150,11 @@ func (s *PoStScheduler) checkProverHeartbeat() {
 		if prover.running {
 			continue
 		}
-		err := prover.nodeApi.CheckMaster(context.TODO())
+
+		ctx, cancel := context.WithTimeout(context.TODO(), 3*time.Second)
+		defer cancel()
+
+		err := prover.nodeApi.CheckMaster(ctx)
 		if err != nil {
 			log.Errorf("fail to check heartbeat to %v", addr)
 			prover.heartbeatFails += 1
