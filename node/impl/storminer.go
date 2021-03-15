@@ -378,7 +378,6 @@ func (sm *StorageMinerAPI) SlaveConnect(ctx context.Context, addr string, header
 	if err != nil {
 		return err
 	}
-	defer closer()
 
 	return sm.StorageMgr.SlaveProverConnect(ctx, addr, minerApi, closer)
 }
