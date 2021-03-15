@@ -128,6 +128,10 @@ func (s *PoStScheduler) scheduleWaitQueue() {
 				continue
 			}
 
+			if 0 < prover.heartbeatFails {
+				continue
+			}
+
 			prover.running = true
 			task.scheduled = true
 
@@ -152,7 +156,7 @@ func (s *PoStScheduler) checkProverHeartbeat() {
 			prover.heartbeatFails += 1
 		}
 		if 5 < prover.heartbeatFails {
-			delete(s.slaveProver[addr])
+			delete(s.slaveProver, addr)
 		}
 	}
 }
