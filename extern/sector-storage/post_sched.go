@@ -174,11 +174,6 @@ func (s *PoStScheduler) checkProverHeartbeat() {
 
 func (s *PoStScheduler) notifySectorProving(sector storage.SectorRef) {
 	for addr, prover := range s.slaveProver {
-		if playAsMaster {
-			if s.MasterProver == addr {
-				continue
-			}
-		}
 		log.Infof("notify sector %v proving to %v", sector, addr)
 		err := prover.nodeApi.NotifySectorProving(context.TODO(), sector)
 		if err != nil {
