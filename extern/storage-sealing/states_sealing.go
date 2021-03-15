@@ -533,6 +533,8 @@ func (m *Sealing) handleProvingSector(ctx statemachine.Context, sector SectorInf
 		return xerrors.Errorf("getting sealing config: %w", err)
 	}
 
+	m.sealer.SectorProving(ctx.Context(), m.minerSector(sector.SectorType, sector.SectorNumber))
+
 	if err := m.sealer.ReleaseUnsealed(ctx.Context(), m.minerSector(sector.SectorType, sector.SectorNumber), sector.keepUnsealedRanges(true, cfg.AlwaysKeepUnsealedCopy)); err != nil {
 		log.Error(err)
 	}

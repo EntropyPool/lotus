@@ -30,6 +30,7 @@ import (
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	sealing "github.com/filecoin-project/lotus/extern/storage-sealing"
 	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
+	storage2 "github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/api/apistruct"
@@ -400,6 +401,10 @@ func (sm *StorageMinerAPI) GenerateWindowPoSt(ctx context.Context, minerID abi.A
 		Proofs:  proofs,
 		Sectors: sectors,
 	}, err
+}
+
+func (sm *StorageMinerAPI) NotifySectorProving(ctx context.Context, sector storage2.SectorRef) error {
+	return sm.StorageMgr.NotifySectorProving(ctx, sector)
 }
 
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {

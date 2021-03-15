@@ -55,6 +55,7 @@ type SectorManager interface {
 	ReadPiece(context.Context, io.Writer, storage.SectorRef, storiface.UnpaddedByteIndex, abi.UnpaddedPieceSize, abi.SealRandomness, cid.Cid) error
 	GetPlayAsMaster(ctx context.Context) bool
 	GenerateWindowPoStRemote(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) ([]proof2.PoStProof, []abi.SectorID, error)
+	SectorProving(ctx context.Context, sector storage.SectorRef) error
 
 	ffiwrapper.StorageSealer
 	storage.Prover
@@ -237,6 +238,28 @@ func (m *Manager) GetPlayAsMaster(ctx context.Context) bool {
 
 func (m *Manager) GenerateWindowPoStRemote(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) ([]proof2.PoStProof, []abi.SectorID, error) {
 	return m.postSched.GenerateWindowPoSt(ctx, minerID, sectorInfo, randomness)
+}
+
+func (m *Manager) SectorProving(ctx context.Context, sector storage.SectorRef) error {
+	return m.postSched.SectorProving(ctx, sector)
+}
+
+func (m *Manager) NotifySectorProving(ctx context.Context, sector storage.SectorRef) error {
+	fetchSel := newAllocSelector(m.index, storiface.FTCache|storiface.FTSealed, storiface.PathStorage)
+
+	err := m.sched.Schedule(ctx, sector, sealtasks.TTFetch, fetchSel,
+		m.schedFetch(sector, storiface.FTCache|storiface.FTSealed, storiface.PathStorage, storiface.AcquireMove),
+		func(ctx context.Context, w Worker) error {
+			_, err := m.waitSimpleCall(ctx)(w.MoveStorage(ctx, sector, storiface.FTCache|storiface.FTSealed))
+			return err
+		})
+	if err != nil {
+		return xerrors.Errorf("moving sector to storage: %w", err)
+	}
+
+	log.Infof("notification sector proving: %v", sector)
+
+	return nil
 }
 
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
