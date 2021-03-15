@@ -344,6 +344,17 @@ func (st *Local) Redeclare(ctx context.Context) error {
 	return nil
 }
 
+func (st *Local) NotifySectorProving(ctx context.Context, sector storage.SectorRef) error {
+	for id, _ := range st.paths {
+		if err := st.index.StorageDeclareSector(ctx, id, sector.ID, storiface.FTCache|storiface.FTSealed, true); err != nil {
+			log.Errorf("declare sector proving %d -> %s: %w", sector, id, err)
+			continue
+		}
+		return nil
+	}
+	return xerrors.Errorf("cannot found suitable path to declare sector %v", sector)
+}
+
 func (st *Local) declareSectorsFromOss(ctx context.Context, cli *OSSClient, id ID, primary bool, p string) error {
 	for _, t := range storiface.PathTypes {
 		os.MkdirAll(filepath.Join(p, t.String()), 0755) // nolint
