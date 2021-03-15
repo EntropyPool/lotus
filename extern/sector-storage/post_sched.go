@@ -137,9 +137,12 @@ func (s *PoStScheduler) scheduleWaitQueue() {
 
 			prover.running = true
 			task.scheduled = true
+			task.dueTime = time.Now().Add(postExpectFinishedTime)
 
 			log.Infof("run task %v by %v", task.taskId, addr)
 			s.runTask(prover, task)
+
+			break
 		}
 
 		if !scheduled {
