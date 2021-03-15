@@ -161,6 +161,7 @@ func (s *PoStScheduler) checkProverHeartbeat() {
 		}
 		if 5 < prover.heartbeatFails {
 			delete(s.slaveProver, addr)
+			s.slaveProver.closer()
 		}
 	}
 }
