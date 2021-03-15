@@ -1,8 +1,12 @@
 package sectorstorage
 
 import (
+	"context"
 	"github.com/filecoin-project/go-jsonrpc"
+	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/api"
+	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
+	"golang.org/x/xerrors"
 )
 
 var playAsMaster = false
@@ -70,4 +74,8 @@ func (s *PoStScheduler) SetPlayAsMaster(master bool, addr string) error {
 
 func (s *PoStScheduler) GetPlayAsMaster() bool {
 	return playAsMaster
+}
+
+func (s *PoStScheduler) GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) ([]proof2.PoStProof, []abi.SectorID, error) {
+	return nil, nil, xerrors.Errorf("REMOTE POST IS NOT IMPLEMENTED")
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-statestore"
+	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 	"github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/go-jsonrpc"
@@ -53,6 +54,7 @@ type Worker interface {
 type SectorManager interface {
 	ReadPiece(context.Context, io.Writer, storage.SectorRef, storiface.UnpaddedByteIndex, abi.UnpaddedPieceSize, abi.SealRandomness, cid.Cid) error
 	GetPlayAsMaster(ctx context.Context) bool
+	GenerateWindowPoStRemote(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) ([]proof2.PoStProof, []abi.SectorID, error)
 
 	ffiwrapper.StorageSealer
 	storage.Prover
@@ -231,6 +233,10 @@ func (m *Manager) SetPlayAsMaster(ctx context.Context, master bool, addr string)
 
 func (m *Manager) GetPlayAsMaster(ctx context.Context) bool {
 	return m.postSched.GetPlayAsMaster()
+}
+
+func (m *Manager) GenerateWindowPoStRemote(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) ([]proof2.PoStProof, []abi.SectorID, error) {
+	return m.postSched.GenerateWindowPoSt(ctx, minerID, sectorInfo, randomness)
 }
 
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {

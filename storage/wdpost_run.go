@@ -650,7 +650,8 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 					return
 				}
 
-				postOut, ps, err := s.prover.GenerateWindowPoSt(ctx, abi.ActorID(mid), sinfos, abi.PoStRandomness(rand))
+				// postOut, ps, err := s.prover.GenerateWindowPoSt(ctx, abi.ActorID(mid), sinfos, abi.PoStRandomness(rand))
+				postOut, ps, err := s.sealer.GenerateWindowPoStRemote(ctx, abi.ActorID(mid), sinfos, abi.PoStRandomness(rand))
 				elapsed := time.Since(tsStart)
 
 				log.Infow("computing window post", "batch", batchIdx, "elapsed", elapsed)
