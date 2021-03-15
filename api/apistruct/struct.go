@@ -333,13 +333,14 @@ type StorageMinerStruct struct {
 		SectorTerminatePending func(ctx context.Context) ([]abi.SectorID, error)    `perm:"admin"`
 		SectorMarkForUpgrade   func(ctx context.Context, id abi.SectorNumber) error `perm:"admin"`
 
-		CheckCurrentMaster func(context.Context, string) error                                                                                                           `perm:"admin"`
-		AnnounceMaster     func(context.Context, string, http.Header, string, http.Header) error                                                                         `perm:"admin" retry:"true"`
-		SlaveConnect       func(context.Context, string, http.Header) error                                                                                              `perm:"admin" retry:"true"`
-		CheckMaster        func(context.Context) error                                                                                                                   `perm:"admin" retry:"true"`
-		SetPlayAsMaster    func(context.Context, bool, string) error                                                                                                     `perm:"admin"`
-		GetPlayAsMaster    func(context.Context) bool                                                                                                                    `perm:"admin"`
-		GenerateWindowPoSt func(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) `perm:"admin"`
+		CheckCurrentMaster  func(context.Context, string) error                                                                                                           `perm:"admin"`
+		AnnounceMaster      func(context.Context, string, http.Header, string, http.Header) error                                                                         `perm:"admin" retry:"true"`
+		SlaveConnect        func(context.Context, string, http.Header) error                                                                                              `perm:"admin" retry:"true"`
+		CheckMaster         func(context.Context) error                                                                                                                   `perm:"admin" retry:"true"`
+		SetPlayAsMaster     func(context.Context, bool, string) error                                                                                                     `perm:"admin"`
+		GetPlayAsMaster     func(context.Context) bool                                                                                                                    `perm:"admin"`
+		GenerateWindowPoSt  func(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) `perm:"admin"`
+		NotifySectorProving func(ctx context.Context, sector storage.SectorRef) error                                                                                     `perm:"admin"`
 
 		WorkerConnect func(context.Context, string) error                                `perm:"admin" retry:"true"` // TODO: worker perm
 		WorkerStats   func(context.Context) (map[uuid.UUID]storiface.WorkerStats, error) `perm:"admin"`
@@ -1407,6 +1408,10 @@ func (c *StorageMinerStruct) SetPlayAsMaster(ctx context.Context, master bool, a
 
 func (c *StorageMinerStruct) GetPlayAsMaster(ctx context.Context) bool {
 	return c.Internal.GetPlayAsMaster(ctx)
+}
+
+func (c *StorageMinerStruct) NotifySectorProving(ctx context.Context, sector storage.SectorRef) error {
+	return c.Internal.NotifySectorProving(ctx, sector)
 }
 
 func (c *StorageMinerStruct) GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) {
