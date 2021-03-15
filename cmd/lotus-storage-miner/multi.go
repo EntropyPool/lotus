@@ -131,9 +131,6 @@ func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 	var err error
 
 	for index, candidate := range multiMiner.Candidates {
-		if candidate.mySelf {
-			continue
-		}
 		nerr := lcli.AnnounceMaster(cctx, candidate.EnvValue)
 		if nerr != nil {
 			log.Infof("Fail to announce master to [%v] %v: %v", index, candidate.EnvValue, nerr)
@@ -187,7 +184,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 			log.Errorf("CANNOT set myself play as master: %v", err)
 			return err
 		}
-		log.Infof("I'm master now, announce to others")
+		log.Debugf("I'm master now, announce to others")
 		return multiMiner.notifyMaster(cctx)
 	}
 
@@ -202,7 +199,7 @@ func (multiMiner *MultiMiner) keepaliveProcess(cctx *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		log.Infof("I'm lord, always announce I'm master")
+		log.Debugf("I'm lord, always announce I'm master")
 		return multiMiner.notifyMaster(cctx)
 	}
 	return multiMiner.selectAndCheckMaster(cctx)

@@ -29,6 +29,7 @@ import (
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	sealing "github.com/filecoin-project/lotus/extern/storage-sealing"
+	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/api/apistruct"
@@ -418,7 +419,6 @@ func (sm *StorageMinerAPI) SlaveConnect(ctx context.Context, addr string, header
 	if err != nil {
 		return err
 	}
-	defer closer()
 
 	return sm.StorageMgr.SlaveProverConnect(ctx, addr, minerApi, closer)
 }
@@ -433,6 +433,14 @@ func (sm *StorageMinerAPI) SetPlayAsMaster(ctx context.Context, master bool, add
 
 func (sm *StorageMinerAPI) GetPlayAsMaster(ctx context.Context) bool {
 	return sm.StorageMgr.GetPlayAsMaster(ctx)
+}
+
+func (sm *StorageMinerAPI) GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) {
+	proofs, sectors, err := sm.StorageMgr.GenerateWindowPoSt(ctx, minerID, sectorInfo, randomness)
+	return api.GeneratePoStOutput{
+		Proofs:  proofs,
+		Sectors: sectors,
+	}, err
 }
 
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {

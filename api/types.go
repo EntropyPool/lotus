@@ -6,6 +6,7 @@ import (
 
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-state-types/abi"
+	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 	"github.com/ipfs/go-cid"
 
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -98,4 +99,9 @@ type NetBlockList struct {
 	Peers     []peer.ID
 	IPAddrs   []string
 	IPSubnets []string
+}
+
+type GeneratePoStOutput struct {
+	Proofs  []proof2.PoStProof
+	Sectors []abi.SectorID
 }
