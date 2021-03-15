@@ -13,14 +13,16 @@ import (
 var playAsMaster = false
 
 type SlaveProver struct {
-	addr    string
-	nodeApi api.StorageMiner
-	closer  jsonrpc.ClientCloser
-	running bool
+	addr           string
+	nodeApi        api.StorageMiner
+	closer         jsonrpc.ClientCloser
+	running        bool
+	heartbeatFails int
 }
 
 const postExpectFinishedTime = 8 * time.Minute
 const postWorstFinishedTime = 30 * time.Minute
+const postSlaveProverHeartbeatInterval = 5 * time.Second
 
 type postTask struct {
 	ctx        context.Context
@@ -139,8 +141,26 @@ func (s *PoStScheduler) scheduleWaitQueue() {
 	}
 }
 
+func (s *PoStScheduler) checkProverHeartbeat() {
+	for addr, prover := range s.slaveProver {
+		if prover.running {
+			continue
+		}
+		err := prover.nodeApi.CheckMaster(context.TODO())
+		if err != nil {
+			log.Errorf("fail to check heartbeat to %v", addr)
+			prover.heartbeatFails += 1
+		}
+		if 5 < prover.heartbeatFails {
+			delete(s.slaveProver[addr])
+		}
+	}
+}
+
 func (s *PoStScheduler) schedule() {
 	ticker := time.NewTicker(postExpectFinishedTime)
+	checker := time.NewTicker(postSlaveProverHeartbeatInterval)
+
 	for {
 		select {
 		case prover := <-s.newProver:
@@ -166,6 +186,8 @@ func (s *PoStScheduler) schedule() {
 			s.scheduleWaitQueue()
 		case <-ticker.C:
 			s.scheduleWaitQueue()
+		case <-checker.C:
+			s.checkProverHeartbeat()
 		}
 	}
 }
