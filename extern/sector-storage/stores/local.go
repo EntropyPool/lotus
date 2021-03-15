@@ -354,6 +354,14 @@ func (st *Local) Redeclare(ctx context.Context) error {
 
 func (st *Local) NotifySectorProving(ctx context.Context, sector storage.SectorRef) error {
 	for id, _ := range st.paths {
+		ssize, err := sector.ProofType.SectorSize()
+		if err != nil {
+			return err
+		}
+		_, err = st.index.StorageFindSector(ctx, sector.ID, storiface.FTCache|storiface.FTSealed, ssize, false)
+		if err == nil {
+			return nil
+		}
 		if err := st.index.StorageDeclareSector(ctx, id, sector.ID, storiface.FTCache|storiface.FTSealed, true); err != nil {
 			log.Errorf("declare sector proving %d -> %s: %w", sector, id, err)
 			continue
