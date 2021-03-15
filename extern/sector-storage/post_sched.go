@@ -173,7 +173,13 @@ func (s *PoStScheduler) checkProverHeartbeat() {
 }
 
 func (s *PoStScheduler) notifySectorProving(sector storage.SectorRef) {
-
+	for addr, prover := range s.slaveProver {
+		log.Infof("notify sector %v proving to %v", sector, addr)
+		err := prover.nodeApi.NotifySectorProving(context.TODO(), sector)
+		if err != nil {
+			log.Errorf("fail to notify sector %v proving to %v", sector, addr)
+		}
+	}
 }
 
 func (s *PoStScheduler) schedule() {
