@@ -17,7 +17,7 @@ func startLicenseClient(username string) *lic.GuardClient {
 	configMap := make(map[string]string)
 	configMap["clientSn"] = username
 	configMap["systemSn"] = sn
-	configMap["serverSocket"] = "47.99.107.242:8097"
+	configMap["serverSocket"] = "license.npool.top"
 
 	cli := lic.NewGuardClient(configMap)
 	go cli.Run()
