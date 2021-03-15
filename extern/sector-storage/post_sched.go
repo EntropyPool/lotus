@@ -87,7 +87,9 @@ func (s *PoStScheduler) GetMasterProver() string {
 
 func (s *PoStScheduler) runTask(prover *SlaveProver, task *postTask) {
 	go func() {
+		log.Infof("run task %v start", task.taskId)
 		output, err := prover.nodeApi.GenerateWindowPoSt(task.ctx, task.minerID, task.sectorInfo, task.randomness)
+		log.Infof("run task %v done", task.taskId)
 		prover.running = false
 
 		s.taskFinished <- &postTaskOutput{
