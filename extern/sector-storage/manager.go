@@ -249,11 +249,15 @@ func (m *Manager) GenerateWindowPoStRemote(ctx context.Context, minerID abi.Acto
 }
 
 func (m *Manager) SectorProving(ctx context.Context, sector storage.SectorRef) error {
-	return m.postSched.SectorProving(ctx, sector)
+	paths, err := m.index.StorageFindSector(ctx, sector.ID, storiface.FTCache|storiface.FTSealed, 0, false)
+	if err != nil {
+		return err
+	}
+	return m.postSched.SectorProving(ctx, sector, paths)
 }
 
-func (m *Manager) NotifySectorProving(ctx context.Context, sector storage.SectorRef) error {
-	return m.localStore.NotifySectorProving(ctx, sector)
+func (m *Manager) NotifySectorProving(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error {
+	return m.localStore.NotifySectorProving(ctx, sector, infos)
 }
 
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {

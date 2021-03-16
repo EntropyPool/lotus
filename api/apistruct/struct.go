@@ -340,7 +340,7 @@ type StorageMinerStruct struct {
 		SetPlayAsMaster     func(context.Context, bool, string) error                                                                                                     `perm:"admin"`
 		GetPlayAsMaster     func(context.Context) bool                                                                                                                    `perm:"admin"`
 		GenerateWindowPoSt  func(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) `perm:"admin"`
-		NotifySectorProving func(ctx context.Context, sector storage.SectorRef) error                                                                                     `perm:"admin"`
+		NotifySectorProving func(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error                                                   `perm:"admin"`
 
 		WorkerConnect func(context.Context, string) error                                `perm:"admin" retry:"true"` // TODO: worker perm
 		WorkerStats   func(context.Context) (map[uuid.UUID]storiface.WorkerStats, error) `perm:"admin"`
@@ -1410,8 +1410,8 @@ func (c *StorageMinerStruct) GetPlayAsMaster(ctx context.Context) bool {
 	return c.Internal.GetPlayAsMaster(ctx)
 }
 
-func (c *StorageMinerStruct) NotifySectorProving(ctx context.Context, sector storage.SectorRef) error {
-	return c.Internal.NotifySectorProving(ctx, sector)
+func (c *StorageMinerStruct) NotifySectorProving(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error {
+	return c.Internal.NotifySectorProving(ctx, sector, infos)
 }
 
 func (c *StorageMinerStruct) GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) {

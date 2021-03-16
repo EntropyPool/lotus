@@ -50,7 +50,8 @@ type SectorStorageInfo struct {
 	CanSeal  bool
 	CanStore bool
 
-	Primary bool
+	Primary  bool
+	PathType storiface.SectorFileType
 
 	Oss     bool
 	OssInfo StorageOSSInfo
@@ -305,6 +306,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft storif
 
 	storageIDs := map[ID]uint64{}
 	isprimary := map[ID]bool{}
+	storageIDType := map[ID]storiface.SectorFileType{}
 
 	for _, pathType := range storiface.PathTypes {
 		if ft&pathType == 0 {
@@ -315,6 +317,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft storif
 			log.Debugf("%v/%v has %v", id, i.stores[id.storage].info.URLs, s)
 			storageIDs[id.storage]++
 			isprimary[id.storage] = isprimary[id.storage] || id.primary
+			storageIDType[id.storage] |= pathType
 		}
 	}
 
@@ -345,6 +348,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft storif
 
 			CanSeal:  st.info.CanSeal,
 			CanStore: st.info.CanStore,
+			PathType: storageIDType[id],
 
 			Primary: isprimary[id],
 		})

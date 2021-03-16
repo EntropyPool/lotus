@@ -5,6 +5,7 @@ import (
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 	"github.com/filecoin-project/specs-storage/storage"
 	"golang.org/x/xerrors"
@@ -50,10 +51,15 @@ type PoStScheduler struct {
 	newProver     chan *SlaveProver
 	newTask       chan *postTask
 	taskFinished  chan *postTaskOutput
-	sectorProving chan storage.SectorRef
+	sectorProving chan SectorProvingInput
 	scheduleTask  chan struct{}
 	postTasks     []*postTask
 	currentId     uint64
+}
+
+type SectorProvingInput struct {
+	sector storage.SectorRef
+	paths  []stores.SectorStorageInfo
 }
 
 func NewPoStScheduler() *PoStScheduler {
@@ -62,7 +68,7 @@ func NewPoStScheduler() *PoStScheduler {
 		newProver:     make(chan *SlaveProver, 10),
 		newTask:       make(chan *postTask, 20),
 		taskFinished:  make(chan *postTaskOutput, 20),
-		sectorProving: make(chan storage.SectorRef, 20),
+		sectorProving: make(chan SectorProvingInput, 20),
 		scheduleTask:  make(chan struct{}, 20),
 		postTasks:     make([]*postTask, 0),
 	}
@@ -172,10 +178,10 @@ func (s *PoStScheduler) checkProverHeartbeat() {
 	}
 }
 
-func (s *PoStScheduler) notifySectorProving(sector storage.SectorRef) {
+func (s *PoStScheduler) notifySectorProving(sector storage.SectorRef, paths []stores.SectorStorageInfo) {
 	for addr, prover := range s.slaveProver {
 		log.Infof("notify sector %v proving to %v", sector, addr)
-		err := prover.nodeApi.NotifySectorProving(context.TODO(), sector)
+		err := prover.nodeApi.NotifySectorProving(context.TODO(), sector, paths)
 		if err != nil {
 			log.Errorf("fail to notify sector %v proving to %v", sector, addr)
 		}
@@ -207,8 +213,8 @@ func (s *PoStScheduler) schedule() {
 				}
 			}
 			s.scheduleTask <- struct{}{}
-		case sector := <-s.sectorProving:
-			s.notifySectorProving(sector)
+		case input := <-s.sectorProving:
+			s.notifySectorProving(input.sector, input.paths)
 		case <-s.scheduleTask:
 			s.scheduleWaitQueue()
 		case <-ticker.C:
@@ -253,7 +259,12 @@ func (s *PoStScheduler) GenerateWindowPoSt(ctx context.Context, minerID abi.Acto
 	return nil, nil, xerrors.Errorf("WE SHOULD NOT BE HERE")
 }
 
-func (s *PoStScheduler) SectorProving(ctx context.Context, sector storage.SectorRef) error {
-	go func() { s.sectorProving <- sector }()
+func (s *PoStScheduler) SectorProving(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error {
+	go func() {
+		s.sectorProving <- SectorProvingInput{
+			sector: sector,
+			paths:  infos,
+		}
+	}()
 	return nil
 }
