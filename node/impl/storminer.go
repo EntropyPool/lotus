@@ -432,6 +432,10 @@ func (sm *StorageMinerAPI) SetPlayAsMaster(ctx context.Context, master bool, add
 	return sm.StorageMgr.SetPlayAsMaster(ctx, master, addr)
 }
 
+func (sm *StorageMinerAPI) SetPlayAsLord(ctx context.Context, lord bool) error {
+	return sm.StorageMgr.SetPlayAsLord(ctx, lord)
+}
+
 func (sm *StorageMinerAPI) GetPlayAsMaster(ctx context.Context) bool {
 	return sm.StorageMgr.GetPlayAsMaster(ctx)
 }

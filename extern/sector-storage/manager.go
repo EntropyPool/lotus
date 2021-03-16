@@ -79,8 +79,9 @@ type Manager struct {
 	remoteHnd  *stores.FetchHandler
 	index      stores.SectorIndex
 
-	sched     *scheduler
-	postSched *PoStScheduler
+	sched      *scheduler
+	postSched  *PoStScheduler
+	playAsLord bool
 
 	storage.Prover
 
@@ -219,6 +220,9 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 }
 
 func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
+	if !m.playAsLord {
+		return xerrors.Errorf("only lord can add worker")
+	}
 	return m.sched.runWorker(ctx, w)
 }
 
@@ -238,6 +242,11 @@ func (m *Manager) GetMasterProver(ctx context.Context) (string, error) {
 
 func (m *Manager) SetPlayAsMaster(ctx context.Context, master bool, addr string) error {
 	return m.postSched.SetPlayAsMaster(master, addr)
+}
+
+func (m *Manager) SetPlayAsLord(ctx context.Context, lord bool) error {
+	m.playAsLord = lord
+	return nil
 }
 
 func (m *Manager) GetPlayAsMaster(ctx context.Context) bool {
@@ -431,6 +440,10 @@ func sealingElapseStatistic(ctx context.Context, worker Worker, taskType sealtas
 }
 
 func (m *Manager) AddPiece(ctx context.Context, sector storage.SectorRef, existingPieces []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, r io.Reader) (abi.PieceInfo, error) {
+	if !m.playAsLord {
+		return abi.PieceInfo{}, xerrors.Errorf("only lord can add worker")
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

@@ -346,6 +346,16 @@ func SetPlayAsMaster(ctx *cli.Context, master bool) error {
 	return minerApi.SetPlayAsMaster(ctx.Context, master, addr)
 }
 
+func SetPlayAsLord(ctx *cli.Context, lord bool) error {
+	minerApi, closer, err := GetStorageMinerAPI(ctx)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	return minerApi.SetPlayAsLord(ctx.Context, lord)
+}
+
 func CheckCurrentMaster(ctx *cli.Context, apiInfo string) error {
 	minerApi, closer, err := GetStorageMinerAPI(ctx)
 	if err != nil {

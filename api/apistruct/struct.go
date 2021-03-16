@@ -338,6 +338,7 @@ type StorageMinerStruct struct {
 		SlaveConnect        func(context.Context, string, http.Header) error                                                                                              `perm:"admin" retry:"true"`
 		CheckMaster         func(context.Context) error                                                                                                                   `perm:"admin" retry:"true"`
 		SetPlayAsMaster     func(context.Context, bool, string) error                                                                                                     `perm:"admin"`
+		SetPlayAsLord       func(ctx context.Context, lord bool) error                                                                                                    `perm:"admin"`
 		GetPlayAsMaster     func(context.Context) bool                                                                                                                    `perm:"admin"`
 		GenerateWindowPoSt  func(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) `perm:"admin"`
 		NotifySectorProving func(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error                                                   `perm:"admin"`
@@ -1404,6 +1405,10 @@ func (c *StorageMinerStruct) CheckMaster(ctx context.Context) error {
 
 func (c *StorageMinerStruct) SetPlayAsMaster(ctx context.Context, master bool, addr string) error {
 	return c.Internal.SetPlayAsMaster(ctx, master, addr)
+}
+
+func (c *StorageMinerStruct) SetPlayAsLord(ctx context.Context, lord bool) error {
+	return c.Internal.SetPlayAsLord(ctx, lord)
 }
 
 func (c *StorageMinerStruct) GetPlayAsMaster(ctx context.Context) bool {
