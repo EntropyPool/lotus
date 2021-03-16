@@ -403,8 +403,8 @@ func (sm *StorageMinerAPI) GenerateWindowPoSt(ctx context.Context, minerID abi.A
 	}, err
 }
 
-func (sm *StorageMinerAPI) NotifySectorProving(ctx context.Context, sector storage2.SectorRef) error {
-	return sm.StorageMgr.NotifySectorProving(ctx, sector)
+func (sm *StorageMinerAPI) NotifySectorProving(ctx context.Context, sector storage2.SectorRef, infos []stores.SectorStorageInfo) error {
+	return sm.StorageMgr.NotifySectorProving(ctx, sector, infos)
 }
 
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {
