@@ -5,172 +5,187 @@ import (
 	"encoding/json"
 	"fmt"
 	log "github.com/EntropyPool/entropy-logger"
+	crypto "github.com/NpoolDevOps/fbc-license-service/crypto"
+	fbctypes "github.com/NpoolDevOps/fbc-license-service/types"
 	httpdaemon "github.com/NpoolRD/http-daemon"
-	"github.com/filecoin-project/lotus/rsa_crypto"
+	"github.com/google/uuid"
+	"golang.org/x/xerrors"
 	"time"
-)
-
-var (
-	exchangeUrl  = "/api_client/exchange_key"
-	testUrl      = "/api_client/test"
-	startUpUrl   = "/api_client/startup"
-	heartBeatUrl = "/api_client/heartbeat"
 )
 
 const (
 	ExchangeKey = 1
-	StartUp     = 2
+	Login       = 2
 	Running     = 3
 )
 
-type GuardClient struct {
-	RemoteRsaObj *rsa_crypto.RsaCrypto
-	LocalRsaObj  *rsa_crypto.RsaCrypto
-	sessionId    string
-	clientSn     string
-	systemSn     string
-	serverSocket string
-	SoftwareUuid string
-	state        int
-	shouldStop   bool
+type LicenseClient struct {
+	RemoteRsaObj  *crypto.RsaCrypto
+	LocalRsaObj   *crypto.RsaCrypto
+	sessionId     uuid.UUID
+	clientUser    string
+	clientSn      string
+	licenseServer string
+	clientUuid    uuid.UUID
+	state         int
+	shouldStop    bool
+	scheme        string
 }
 
-func NewGuardClient(config map[string]string) *GuardClient {
-	localRsaObj := rsa_crypto.NewRsaCrypto(2048)
+type LicenseConfig struct {
+	ClientUser    string
+	ClientSn      string
+	LicenseServer string
+	Scheme        string
+}
 
-	return &GuardClient{
-		LocalRsaObj:  localRsaObj,
-		state:        ExchangeKey,
-		clientSn:     config["clientSn"],
-		systemSn:     config["systemSn"],
-		serverSocket: config["serverSocket"],
-		shouldStop:   true,
+func NewLicenseClient(config LicenseConfig) *LicenseClient {
+	return &LicenseClient{
+		LocalRsaObj:   crypto.NewRsaCrypto(2048),
+		clientUser:    config.ClientUser,
+		clientSn:      config.ClientSn,
+		licenseServer: config.LicenseServer,
+		state:         ExchangeKey,
+		shouldStop:    true,
+		scheme:        config.Scheme,
 	}
 }
 
-func (self *GuardClient) Exchangekey() error {
-	param := make(map[string]interface{})
-	param["public_key"] = string(self.LocalRsaObj.GetPubkey())
-	targetUri := fmt.Sprintf("http://%v%v", self.serverSocket, exchangeUrl)
+func (self *LicenseClient) Exchangekey() error {
+	targetUri := fmt.Sprintf("%v://%v%v", self.scheme, self.licenseServer, fbctypes.ExchangeKeyAPI)
 
 	resp, err := httpdaemon.R().
 		SetHeader("Content-Type", "application/json").
-		SetBody(param).
+		SetBody(fbctypes.ExchangeKeyInput{
+			PublicKey: string(self.LocalRsaObj.GetPubkey()),
+		}).
 		Post(targetUri)
 	if err != nil {
-		log.Errorf(log.Fields{}, "exchange key error [%v]", param)
+		log.Errorf(log.Fields{}, "exchange key error: %v", err)
 		return err
 	}
 
 	apiResp, err := httpdaemon.ParseResponse(resp)
 	if err != nil {
-		log.Errorf(log.Fields{}, "exchange api response error [%v]", param)
+		log.Errorf(log.Fields{}, "exchange api response error: %v", err)
 		return err
 	}
 
-	pubKey := apiResp.Body.(map[string]interface{})["public_key"]
-	remoteRsaObj := rsa_crypto.NewRsaCryptoWithParam([]byte(pubKey.(string)), nil)
-	self.RemoteRsaObj = remoteRsaObj
-	sessionId := apiResp.Body.(map[string]interface{})["sessionId"]
-	self.sessionId = string(sessionId.(string))
+	if apiResp.Code != 0 {
+		log.Errorf(log.Fields{}, "exchange api response error: %v", apiResp.Msg)
+		return xerrors.Errorf(apiResp.Msg)
+	}
 
-	self.state = StartUp
+	output := fbctypes.ExchangeKeyOutput{}
+	b, _ := json.Marshal(apiResp.Body)
+	err = json.Unmarshal(b, &output)
+	if err != nil {
+		log.Errorf(log.Fields{}, "parse api response error: %v", err)
+		return err
+	}
+
+	self.RemoteRsaObj = crypto.NewRsaCryptoWithParam([]byte(output.PublicKey), nil)
+	self.sessionId = output.SessionId
+	self.state = Login
 
 	return nil
 }
 
-func (self *GuardClient) StartUpClient() error {
-	targetUri := fmt.Sprintf("http://%v%v", self.serverSocket, startUpUrl)
+func (self *LicenseClient) Login() error {
+	targetUri := fmt.Sprintf("%v://%v%v", self.scheme, self.licenseServer, fbctypes.LoginAPI)
 
-	param := make(map[string]interface{})
-	param["ClientSn"] = self.clientSn
-	param["SystemSn"] = self.systemSn
-
-	jparam, err := json.Marshal(param)
-	if err != nil {
-		log.Errorf(log.Fields{}, "setup client (marshal param) [%v]", param)
-		return err
+	input := fbctypes.ClientLoginInput{
+		ClientUser: self.clientSn,
+		ClientSN:   self.clientSn,
 	}
-
-	ciphertext, err := self.RemoteRsaObj.Encrypt([]byte(jparam))
-	req := make(map[string]interface{})
-	req["data"] = hex.EncodeToString(ciphertext)
-	req["sessionId"] = self.sessionId
+	input.SessionId = self.sessionId
 
 	resp, err := httpdaemon.R().
 		SetHeader("Content-Type", "application/json").
-		SetBody(req).
+		SetBody(input).
 		Post(targetUri)
 	if err != nil {
-		log.Errorf(log.Fields{}, "setup client error [%v]", param)
+		log.Errorf(log.Fields{}, "client login response error: %v", err)
 		return err
 	}
 
 	apiResp, err := httpdaemon.ParseResponse(resp)
 	if err != nil {
-		log.Errorf(log.Fields{}, "setup client api response error [%v]", param)
+		log.Errorf(log.Fields{}, "client login response error %v", err)
 		return err
 	}
 
-	ctext := apiResp.Body.(string)
-	htext, _ := hex.DecodeString(ctext)
-	data, _ := self.LocalRsaObj.Decrypt([]byte(htext))
+	if apiResp.Code != 0 {
+		log.Errorf(log.Fields{}, "client login response error: %v", apiResp.Msg)
+		return xerrors.Errorf(apiResp.Msg)
+	}
 
-	var startupMap map[string]interface{}
-	err = json.Unmarshal(data, &startupMap)
+	var output = fbctypes.ClientLoginOutput{}
+
+	b, _ := json.Marshal(apiResp.Body)
+	err = json.Unmarshal(b, &output)
 	if err != nil {
-		log.Errorf(log.Fields{}, "setup client (parse response) [%v]", param)
+		log.Errorf(log.Fields{}, "client login parse response: %v", err)
 		return err
 	}
 
-	if startupMap["startUp"] == true {
-		self.state = Running
-		self.SoftwareUuid = startupMap["softwareUuid"].(string)
-	}
+	self.state = Running
+	self.clientUuid = output.ClientUuid
 
 	return nil
 }
 
-func (self *GuardClient) SendHeartBeat() error {
-	reqParam := make(map[string]interface{})
-	reqParam["sessionId"] = self.sessionId
-	reqParam["softwareUuid"] = self.SoftwareUuid
-	targetUri := fmt.Sprintf("http://%v%v", self.serverSocket, heartBeatUrl)
+func (self *LicenseClient) Heartbeat() error {
+	targetUri := fmt.Sprintf("http://%v%v", self.licenseServer, fbctypes.HeartbeatAPI)
+
+	input := fbctypes.HeartbeatInput{
+		ClientUuid: self.clientUuid,
+	}
+	input.SessionId = self.sessionId
 
 	resp, err := httpdaemon.R().
 		SetHeader("Content-Type", "application/json").
-		SetBody(reqParam).
+		SetBody(input).
 		Post(targetUri)
 	if err != nil {
-		log.Errorf(log.Fields{}, "heartbeat error [%v]", reqParam)
+		log.Errorf(log.Fields{}, "heartbeat error: %v", err)
 		return err
 	}
 
 	apiResp, err := httpdaemon.ParseResponse(resp)
 	if err != nil {
-		log.Errorf(log.Fields{}, "heartbeat api response error [%v]", reqParam)
+		log.Errorf(log.Fields{}, "heartbeat api response error: %v", err)
 		return err
+	}
+
+	if apiResp.Code != 0 {
+		log.Errorf(log.Fields{}, "client login response error: %v", apiResp.Msg)
+		return xerrors.Errorf(apiResp.Msg)
+	}
+
+	if apiResp.Body == nil {
+		log.Errorf(log.Fields{}, "client login response error: empty body")
+		return xerrors.Errorf("client login response error: empty body")
 	}
 
 	body := apiResp.Body
 	hBody, _ := hex.DecodeString(body.(string))
 	data, _ := self.LocalRsaObj.Decrypt([]byte(hBody))
 
-	var heartbeatMap map[string]interface{}
-	err = json.Unmarshal(data, &heartbeatMap)
+	var output = fbctypes.HeartbeatOutput{}
+
+	err = json.Unmarshal(data, &output)
 	if err != nil {
-		log.Errorf(log.Fields{}, "heartbeat (parse response) [%v]", reqParam)
+		log.Errorf(log.Fields{}, "heartbeat parse response error: %v", err)
 		return err
 	}
 
-	if _, ok := heartbeatMap["stop"]; ok {
-		self.shouldStop = heartbeatMap["stop"].(bool)
-	}
+	self.shouldStop = output.ShouldStop
 
 	return nil
 }
 
-func (self *GuardClient) Validate() bool {
+func (self *LicenseClient) Validate() bool {
 	switch self.state {
 	case Running:
 		return true
@@ -178,11 +193,11 @@ func (self *GuardClient) Validate() bool {
 	return false
 }
 
-func (self *GuardClient) ShouldStop() bool {
+func (self *LicenseClient) ShouldStop() bool {
 	return self.shouldStop
 }
 
-func (self *GuardClient) Run() {
+func (self *LicenseClient) Run() {
 	ticker1 := time.NewTicker(10 * time.Second)
 	ticker2 := time.NewTicker(10 * time.Second)
 	for {
@@ -190,11 +205,11 @@ func (self *GuardClient) Run() {
 		case ExchangeKey:
 			self.Exchangekey()
 			<-ticker2.C
-		case StartUp:
-			self.StartUpClient()
+		case Login:
+			self.Login()
 			<-ticker2.C
 		case Running:
-			self.SendHeartBeat()
+			self.Heartbeat()
 			<-ticker1.C
 		}
 	}

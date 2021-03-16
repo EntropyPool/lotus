@@ -9,23 +9,23 @@ import (
 
 var shouldStop = false
 
-func startLicenseClient(username string) *lic.GuardClient {
+func startLicenseClient(username string) *lic.LicenseClient {
 	spec := machspec.NewMachineSpec()
 	spec.PrepareLowLevel()
 	sn := spec.SN()
 
-	configMap := make(map[string]string)
-	configMap["clientSn"] = username
-	configMap["systemSn"] = sn
-	configMap["serverSocket"] = "license.npool.top"
-
-	cli := lic.NewGuardClient(configMap)
+	cli := lic.NewLicenseClient(lic.LicenseConfig{
+		ClientUser:    username,
+		ClientSn:      sn,
+		LicenseServer: "license.npool.top",
+		Scheme:        "https",
+	})
 	go cli.Run()
 
 	return cli
 }
 
-func checkLicense(cli *lic.GuardClient) {
+func checkLicense(cli *lic.LicenseClient) {
 	shouldStop = false
 
 	validate := cli.Validate()
