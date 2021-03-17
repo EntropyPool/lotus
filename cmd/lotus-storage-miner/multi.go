@@ -194,7 +194,7 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 }
 
 func (multiMiner *MultiMiner) keepaliveProcess(cctx *cli.Context) error {
-	if multiMiner.IMLord {
+	if multiMiner.IMLord || len(multiMiner.Candidates) == 0 {
 		err := lcli.SetPlayAsLord(cctx, true)
 		if err != nil {
 			return err

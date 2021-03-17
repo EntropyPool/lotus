@@ -220,9 +220,6 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 }
 
 func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
-	if !m.playAsLord {
-		return xerrors.Errorf("only lord can add worker")
-	}
 	return m.sched.runWorker(ctx, w)
 }
 
