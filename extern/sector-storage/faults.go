@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"golang.org/x/xerrors"
 
@@ -24,34 +25,53 @@ type FaultTracker interface {
 
 // CheckProvable returns unprovable sectors
 func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, rg storiface.RGetter) (map[abi.SectorID]string, error) {
-	var bad = make(map[abi.SectorID]string)
-
 	ssize, err := pp.SectorSize()
 	if err != nil {
 		return nil, err
 	}
 
+	var bad = make(map[abi.SectorID]string)
+	var waitGroup sync.WaitGroup
+
+	type badSector struct {
+		sid abi.SectorID
+		err string
+	}
+	chanBad := make(chan badSector)
+	chanErr := make(chan error)
+
 	// TODO: More better checks
 	for _, sector := range sectors {
-		err := func() error {
+		waitGroup.Add(1)
+
+		go func(sector storage.SectorRef) error {
+			defer waitGroup.Done()
+
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
 			locked, err := m.index.StorageTryLock(ctx, sector.ID, storiface.FTSealed|storiface.FTCache, storiface.FTNone)
 			if err != nil {
-				return xerrors.Errorf("acquiring sector lock: %w", err)
+				chanErr <- xerrors.Errorf("acquiring sector lock: %w", err)
+				return nil
 			}
 
 			if !locked {
 				log.Warnw("CheckProvable Sector FAULT: can't acquire read lock", "sector", sector)
-				bad[sector.ID] = fmt.Sprint("can't acquire read lock")
+				chanBad <- badSector{
+					sid: sector.ID,
+					err: fmt.Sprint("can't acquire read lock"),
+				}
 				return nil
 			}
 
 			lp, _, err := m.localStore.AcquireSector(ctx, sector, storiface.FTSealed|storiface.FTCache, storiface.FTNone, storiface.PathStorage, storiface.AcquireMove)
 			if err != nil {
 				log.Warnw("CheckProvable Sector FAULT: acquire sector in checkProvable", "sector", sector, "error", err)
-				bad[sector.ID] = fmt.Sprintf("acquire sector failed: %s", err)
+				chanBad <- badSector{
+					sid: sector.ID,
+					err: fmt.Sprintf("acquire sector failed: %s", err),
+				}
 				return nil
 			}
 
@@ -62,7 +82,10 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 
 			if sealedPath == "" || cachePath == "" {
 				log.Warnw("CheckProvable Sector FAULT: cache and/or sealed paths not found", "sector", sector, "sealed", sealedPath, "cache", cachePath)
-				bad[sector.ID] = fmt.Sprintf("cache and/or sealed paths not found, cache %q, sealed %q", cachePath, sealedPath)
+				chanBad <- badSector{
+					sid: sector.ID,
+					err: fmt.Sprintf("cache and/or sealed paths not found, cache %q, sealed %q", cachePath, sealedPath),
+				}
 				return nil
 			}
 
@@ -119,14 +142,20 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 				st, err := os.Stat(p)
 				if err != nil {
 					log.Warnw("CheckProvable Sector FAULT: sector file stat error", "sector", sector, "sealed", lp.Sealed, "cache", lp.Cache, "file", p, "err", err)
-					bad[sector.ID] = fmt.Sprintf("%s", err)
+					chanBad <- badSector{
+						sid: sector.ID,
+						err: fmt.Sprintf("%s", err),
+					}
 					return nil
 				}
 
 				if sz != 0 {
 					if st.Size() != int64(ssize)*sz {
 						log.Warnw("CheckProvable Sector FAULT: sector file is wrong size", "sector", sector, "sealed", lp.Sealed, "cache", lp.Cache, "file", p, "size", st.Size(), "expectSize", int64(ssize)*sz)
-						bad[sector.ID] = fmt.Sprintf("%s is wrong size (got %d, expect %d)", p, st.Size(), int64(ssize)*sz)
+						chanBad <- badSector{
+							sid: sector.ID,
+							err: fmt.Sprintf("%s is wrong size (got %d, expect %d)", p, st.Size(), int64(ssize)*sz),
+						}
 						return nil
 					}
 				}
@@ -135,7 +164,10 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 			for _, check := range ossToCheck {
 				if err = m.localStore.CheckSectorInOss(ctx, check.sectorPath, check.sectorFiles, check.fileType, ssize, check.checkSize); err != nil {
 					log.Warnw("CheckProvable Sector FAULT: oss check error", "sector", sector, "sealed", sealedPath, "cache", cachePath, "files", check.sectorFiles)
-					bad[sector.ID] = fmt.Sprintf("%s is wrong in oss (%v)", check.sectorPath.OssInfo.SectorName, err)
+					chanBad <- badSector{
+						sid: sector.ID,
+						err: fmt.Sprintf("%s is wrong in oss (%v)", check.sectorPath.OssInfo.SectorName, err),
+					}
 					return nil
 				}
 			}
@@ -155,14 +187,20 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 				})
 				if err != nil {
 					log.Warnw("CheckProvable Sector FAULT: generating challenges", "sector", sector, "sealed", lp.Sealed, "cache", lp.Cache, "err", err)
-					bad[sector.ID] = fmt.Sprintf("generating fallback challenges: %s", err)
+					chanBad <- badSector{
+						sid: sector.ID,
+						err: fmt.Sprintf("generating fallback challenges: %s", err),
+					}
 					return nil
 				}
 
 				commr, err := rg(ctx, sector.ID)
 				if err != nil {
 					log.Warnw("CheckProvable Sector FAULT: getting commR", "sector", sector, "sealed", lp.Sealed, "cache", lp.Cache, "err", err)
-					bad[sector.ID] = fmt.Sprintf("getting commR: %s", err)
+					chanBad <- badSector{
+						sid: sector.ID,
+						err: fmt.Sprintf("getting commR: %s", err),
+					}
 					return nil
 				}
 
@@ -182,14 +220,35 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 				}, ch.Challenges[sector.ID.Number])
 				if err != nil {
 					log.Warnw("CheckProvable Sector FAULT: generating vanilla proof", "sector", sector, "sealed", lp.Sealed, "cache", lp.Cache, "err", err)
-					bad[sector.ID] = fmt.Sprintf("generating vanilla proof: %s", err)
+					chanBad <- badSector{
+						sid: sector.ID,
+						err: fmt.Sprintf("generating vanilla proof: %s", err),
+					}
 					return nil
 				}
 			}
 			return nil
-		}()
-		if err != nil {
-			return nil, err
+		}(sector)
+	}
+
+	go func() {
+		waitGroup.Wait()
+		close(chanBad)
+		close(chanErr)
+	}()
+
+waitForCheck:
+	for {
+		select {
+		case badSector, ok := <-chanBad:
+			if !ok {
+				break waitForCheck
+			}
+			bad[badSector.sid] = badSector.err
+		case err, _ := <-chanErr:
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
