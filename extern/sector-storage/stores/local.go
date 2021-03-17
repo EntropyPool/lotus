@@ -1,6 +1,7 @@
 package stores
 
 import (
+	"fmt"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -524,65 +525,110 @@ func (st *Local) Reserve(ctx context.Context, sid storage.SectorRef, ft storifac
 	return done, nil
 }
 
-func (st *Local) checkPathIntegrity(ctx context.Context, path string, ssize abi.SectorSize) bool {
+func getCacheFilesForSectorSize(cacheDir string, ssize abi.SectorSize) []string {
+	files := []string{}
+
+	switch ssize {
+	case 2 << 10:
+		fallthrough
+	case 8 << 20:
+		fallthrough
+	case 512 << 20:
+		files = append(files, filepath.Join(cacheDir, "sc-02-data-tree-r-last.dat"))
+	case 32 << 30:
+		for i := 0; i < 8; i++ {
+			files = append(files, filepath.Join(cacheDir, fmt.Sprintf("sc-02-data-tree-r-last-%d.dat", i)))
+		}
+	case 64 << 30:
+		for i := 0; i < 16; i++ {
+			files = append(files, filepath.Join(cacheDir, fmt.Sprintf("sc-02-data-tree-r-last-%d.dat", i)))
+		}
+	default:
+		log.Warnf("not checking cache files of %s sectors for faults", ssize)
+	}
+	return files
+}
+
+func (st *Local) checkPathIntegrity(ctx context.Context, ssize abi.SectorSize, p *path, sector storage.SectorRef, fileType storiface.SectorFileType) bool {
+	spath := p.sectorPath(sector.ID, fileType)
 	if int(ssize) == -1 || int(ssize) == 0 || int(ssize) == 2048 {
-		log.Infof("%s: hack spt from stupid case, just ignore", path)
+		log.Infof("%s: hack spt from stupid case, just ignore", spath)
 		return true
 	}
 
 	sectorSize := ssize
 
-	fileInfo, err := os.Stat(path)
-	if nil != err {
-		log.Errorf("%s: stat [%v]", path, err)
-		return false
-	}
-	if strings.Contains(path, "/sealed/") {
-		if int64(sectorSize) != fileInfo.Size() {
-			log.Errorf("%s: %v != %v", path, sectorSize, fileInfo.Size())
-			return false
-		}
-	} else if strings.Contains(path, "/unsealed/") {
-		// DONT know how to check unseal size
-	} else if strings.Contains(path, "/cache/") {
-		if !fileInfo.IsDir() {
-			log.Errorf("%s: is not directory", path)
-			os.RemoveAll(path)
-			return false
-		}
-		files, err := ioutil.ReadDir(path)
-		if nil != err {
-			log.Errorf("%s: readdir [%v]", path, err)
-			return false
-		}
-		for _, file := range files {
-			if !file.Mode().IsRegular() {
-				continue
-			}
-			fileName := path + "/" + file.Name()
-			if strings.HasSuffix(fileName, ".fp") {
-				continue
-			}
+	if p.oss {
+		files := []string{spath}
+		var err error
 
-			fileInfo, err := os.Stat(fileName)
-			if nil != err {
-				log.Errorf("%s in %s: stat %v", fileName, path, err)
+		log.Infof("check %s exists in oss start", spath)
+        if fileType == storiface.FTCache {
+			files = getCacheFilesForSectorSize(spath, ssize)
+			err = st.checkSectorInOss(ctx, p.ossClient, p.local, storiface.SectorName(sector.ID), files, fileType, ssize, false)
+		} else {
+			err = st.checkSectorInOss(ctx, p.ossClient, p.local, storiface.SectorName(sector.ID), files, fileType, ssize, true)
+		}
+		log.Infof("check %s exists in oss end: %v", spath, err)
+		if err != nil {
+			log.Errorf("%s: stat [%v]", spath, err)
+			return false
+		}
+	} else {
+		fileInfo, err := os.Stat(spath)
+		if nil != err {
+			log.Errorf("%s: stat [%v]", spath, err)
+			return false
+		}
+
+		if strings.Contains(spath, "/sealed/") {
+			if int64(sectorSize) != fileInfo.Size() {
+				log.Errorf("%s: %v != %v", spath, sectorSize, fileInfo.Size())
 				return false
 			}
-			if strings.Contains(fileName, "data-layer") {
-				if int64(sectorSize) != fileInfo.Size() {
-					log.Errorf("%s in %s: %v != %v", fileName, path, sectorSize, fileInfo.Size())
+		} else if strings.Contains(spath, "/unsealed/") {
+			// DONT know how to check unseal size
+		} else if strings.Contains(spath, "/cache/") {
+			if !fileInfo.IsDir() {
+				log.Errorf("%s: is not directory", spath)
+				os.RemoveAll(spath)
+				return false
+			}
+			files, err := ioutil.ReadDir(spath)
+			if nil != err {
+				log.Errorf("%s: readdir [%v]", spath, err)
+				return false
+			}
+			for _, file := range files {
+				if !file.Mode().IsRegular() {
+					continue
+				}
+				fileName := spath + "/" + file.Name()
+				if strings.HasSuffix(fileName, ".fp") {
+					continue
+				}
+
+				fileInfo, err := os.Stat(fileName)
+				if nil != err {
+					log.Errorf("%s in %s: stat %v", fileName, spath, err)
 					return false
 				}
-			} else if strings.Contains(fileName, "data-tree-d") {
-				var treeSize int64 = int64(sectorSize)*2 - 32
-				if treeSize != fileInfo.Size() {
-					log.Errorf("%s in %s: %v != %v", fileName, path, treeSize, fileInfo.Size())
-					return false
+				if strings.Contains(fileName, "data-layer") {
+					if int64(sectorSize) != fileInfo.Size() {
+						log.Errorf("%s in %s: %v != %v", fileName, spath, sectorSize, fileInfo.Size())
+						return false
+					}
+				} else if strings.Contains(fileName, "data-tree-d") {
+					var treeSize int64 = int64(sectorSize)*2 - 32
+					if treeSize != fileInfo.Size() {
+						log.Errorf("%s in %s: %v != %v", fileName, spath, treeSize, fileInfo.Size())
+						return false
+					}
 				}
 			}
 		}
 	}
+
 	return true
 }
 
@@ -624,7 +670,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 			}
 
 			spath := p.sectorPath(sid.ID, fileType)
-			if !st.checkPathIntegrity(ctx, spath, ssize) {
+			if !st.checkPathIntegrity(ctx, ssize, p, sid, fileType) {
 				continue
 			}
 
@@ -1294,12 +1340,15 @@ func (st *Local) FsStat(ctx context.Context, id ID) (fsutil.FsStat, error) {
 }
 
 func (st *Local) CheckSectorInOss(ctx context.Context, p storiface.SectorPath, files []string, ft storiface.SectorFileType, ssize abi.SectorSize, checkSize bool) error {
-	ossCli := p.Private.(*OSSClient)
+	return st.checkSectorInOss(ctx, p.Private.(*OSSClient), p.OssInfo.LandedDir, p.OssInfo.SectorName, files, ft, ssize, checkSize)
+}
+
+func (st *Local) checkSectorInOss(ctx context.Context, ossCli *OSSClient, landedDir string, sectorName string, files []string, ft storiface.SectorFileType, ssize abi.SectorSize, checkSize bool) error {
 	prefix := ft.String()
 
 	if 0 < len(files) {
 		for _, file := range files {
-			objName := strings.TrimPrefix(file, p.OssInfo.LandedDir)
+			objName := strings.TrimPrefix(file, landedDir)
 			objName = strings.TrimPrefix(objName, "/")
 			objName = strings.TrimPrefix(objName, prefix)
 			size, err := ossCli.HeadObject(prefix, objName)
@@ -1311,7 +1360,7 @@ func (st *Local) CheckSectorInOss(ctx context.Context, p storiface.SectorPath, f
 			}
 		}
 	} else {
-		objName := p.OssInfo.SectorName
+		objName := sectorName
 		size, err := ossCli.HeadObject(prefix, objName)
 		if err != nil {
 			return xerrors.Errorf("fail to query object %v in oss (%v)", objName, err)

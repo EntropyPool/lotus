@@ -200,31 +200,41 @@ func (oss *OSSClient) ListSectors(prefix string) ([]OSSSector, error) {
 		return nil, err
 	}
 
-	maxKeys := int64(10000000)
-	objs, err := oss.s3Client.ListObjects((&s3.ListObjectsInput{
-		Bucket: aws.String(bucketName),
-		Prefix: aws.String(prefix),
-	}).SetMaxKeys(maxKeys))
-	if err != nil {
-		return nil, err
-	}
-
+	var startMarker *string = nil
 	ossObjs := []OSSSector{}
 	sectorFind := map[string]struct{}{}
 
-	for _, obj := range objs.Contents {
-		keys := strings.Split(*obj.Key, ossKeySeparator)
-		if len(keys) < 2 {
-			return nil, xerrors.Errorf("error key %v from bucket %v", obj.Key, bucketName)
-		}
-		sectorName := keys[1]
-		if _, ok := sectorFind[sectorName]; ok {
-			continue
-		}
-		ossObjs = append(ossObjs, OSSSector{
-			name: sectorName,
+	for {
+		objs, err := oss.s3Client.ListObjects(&s3.ListObjectsInput{
+			Bucket: aws.String(bucketName),
+			Prefix: aws.String(prefix),
+			Marker: startMarker,
 		})
-		sectorFind[sectorName] = struct{}{}
+		if err != nil {
+			return nil, err
+		}
+
+		log.Infof("OSS: find %v sectors in %v/%v/%v", len(objs.Contents), oss.s3Info.URL, bucketName, prefix)
+
+		for _, obj := range objs.Contents {
+			keys := strings.Split(*obj.Key, ossKeySeparator)
+			if len(keys) < 2 {
+				return nil, xerrors.Errorf("error key %v from bucket %v", obj.Key, bucketName)
+			}
+			sectorName := keys[1]
+			if _, ok := sectorFind[sectorName]; ok {
+				continue
+			}
+			ossObjs = append(ossObjs, OSSSector{
+				name: sectorName,
+			})
+			sectorFind[sectorName] = struct{}{}
+		}
+
+		startMarker = objs.NextMarker
+		if !*objs.IsTruncated {
+			break
+		}
 	}
 
 	return ossObjs, nil
