@@ -44,7 +44,13 @@ const multiMinerMetaFile = "multiminerpeers.conf"
 func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 	env, ok := os.LookupEnv(multiMinerApiInfosEnvKey)
 	if !ok {
+		multiMiner.IMLord = true
 		return xerrors.Errorf("%v is not defined", multiMinerApiInfosEnvKey)
+	}
+
+	if env == "" {
+		multiMiner.IMLord = true
+		return xerrors.Errorf("%v is not empty", multiMinerApiInfosEnvKey)
 	}
 
 	if env == multiMiner.EnvValue && !multiMiner.newCreated {
@@ -194,12 +200,12 @@ func (multiMiner *MultiMiner) selectAndCheckMaster(cctx *cli.Context) error {
 }
 
 func (multiMiner *MultiMiner) keepaliveProcess(cctx *cli.Context) error {
-	if multiMiner.IMLord {
+	if multiMiner.IMLord || len(multiMiner.Candidates) == 0 {
 		err := lcli.SetPlayAsMaster(cctx, true)
 		if err != nil {
 			return err
 		}
-		log.Debugf("I'm lord, always announce I'm master")
+		log.Infof("I'm lord, always announce I'm master")
 		return multiMiner.notifyMaster(cctx)
 	}
 	return multiMiner.selectAndCheckMaster(cctx)
@@ -207,22 +213,10 @@ func (multiMiner *MultiMiner) keepaliveProcess(cctx *cli.Context) error {
 
 func MultiMinerRun(cctx *cli.Context, rootPath string) {
 	var multiMiner *MultiMiner
-	var err error
 	ticker := time.NewTicker(20 * time.Second)
 
 	log.Infof("Run multi miner elector")
-
-waitForMiner:
-	for {
-		if multiMiner == nil {
-			multiMiner, err = newMultiMiner(cctx, rootPath)
-			if err == nil {
-				log.Infof("Success to create multi miner")
-				break waitForMiner
-			}
-		}
-		<-ticker.C
-	}
+	multiMiner, _ = newMultiMiner(cctx, rootPath)
 
 	for {
 		multiMiner.updateMultiMiner(cctx)
