@@ -90,9 +90,10 @@ type StorageMiner interface {
 	SlaveConnect(ctx context.Context, addr string, headers http.Header) error
 	CheckMaster(ctx context.Context) error
 	SetPlayAsMaster(ctx context.Context, master bool, addr string) error
+	SetPlayAsLord(ctx context.Context, lord bool) error
 	GetPlayAsMaster(context.Context) bool
 	GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (GeneratePoStOutput, error)
-	NotifySectorProving(ctx context.Context, sector storage.SectorRef) error
+	NotifySectorProving(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error
 
 	// WorkerConnect tells the node to connect to workers RPC
 	WorkerConnect(context.Context, string) error

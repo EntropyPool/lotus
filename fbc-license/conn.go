@@ -76,6 +76,11 @@ func (self *LicenseClient) Exchangekey() error {
 		return xerrors.Errorf(apiResp.Msg)
 	}
 
+	if apiResp.Body == nil {
+		log.Errorf(log.Fields{}, "client exchange response error: empty body")
+		return xerrors.Errorf("client exchange response error: empty body")
+	}
+
 	output := fbctypes.ExchangeKeyOutput{}
 	b, _ := json.Marshal(apiResp.Body)
 	err = json.Unmarshal(b, &output)
@@ -95,7 +100,7 @@ func (self *LicenseClient) Login() error {
 	targetUri := fmt.Sprintf("%v://%v%v", self.scheme, self.licenseServer, fbctypes.LoginAPI)
 
 	input := fbctypes.ClientLoginInput{
-		ClientUser: self.clientSn,
+		ClientUser: self.clientUser,
 		ClientSN:   self.clientSn,
 	}
 	input.SessionId = self.sessionId
@@ -120,6 +125,11 @@ func (self *LicenseClient) Login() error {
 		return xerrors.Errorf(apiResp.Msg)
 	}
 
+	if apiResp.Body == nil {
+		log.Errorf(log.Fields{}, "client login response error: empty body")
+		return xerrors.Errorf("client login response error: empty body")
+	}
+
 	var output = fbctypes.ClientLoginOutput{}
 
 	b, _ := json.Marshal(apiResp.Body)
@@ -131,6 +141,7 @@ func (self *LicenseClient) Login() error {
 
 	self.state = Running
 	self.clientUuid = output.ClientUuid
+	self.shouldStop = false
 
 	return nil
 }
@@ -159,13 +170,13 @@ func (self *LicenseClient) Heartbeat() error {
 	}
 
 	if apiResp.Code != 0 {
-		log.Errorf(log.Fields{}, "client login response error: %v", apiResp.Msg)
+		log.Errorf(log.Fields{}, "client heartbeat response error: %v", apiResp.Msg)
 		return xerrors.Errorf(apiResp.Msg)
 	}
 
 	if apiResp.Body == nil {
-		log.Errorf(log.Fields{}, "client login response error: empty body")
-		return xerrors.Errorf("client login response error: empty body")
+		log.Errorf(log.Fields{}, "client heartbeat response error: empty body")
+		return xerrors.Errorf("client heartbeat response error: empty body")
 	}
 
 	body := apiResp.Body

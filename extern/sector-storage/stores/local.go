@@ -353,23 +353,45 @@ func (st *Local) Redeclare(ctx context.Context) error {
 	return nil
 }
 
-func (st *Local) NotifySectorProving(ctx context.Context, sector storage.SectorRef) error {
-	for id, _ := range st.paths {
-		ssize, err := sector.ProofType.SectorSize()
-		if err != nil {
-			return err
-		}
-		_, err = st.index.StorageFindSector(ctx, sector.ID, storiface.FTCache|storiface.FTSealed, ssize, false)
-		if err == nil {
-			return nil
-		}
-		if err := st.index.StorageDeclareSector(ctx, id, sector.ID, storiface.FTCache|storiface.FTSealed, true); err != nil {
-			log.Errorf("declare sector proving %d -> %s: %w", sector, id, err)
-			continue
-		}
+func (st *Local) NotifySectorProving(ctx context.Context, sector storage.SectorRef, infos []SectorStorageInfo) error {
+	ssize, err := sector.ProofType.SectorSize()
+	if err != nil {
+		return err
+	}
+	paths, err := st.index.StorageFindSector(ctx, sector.ID, storiface.FTCache|storiface.FTSealed, ssize, false)
+	if err != nil || 0 < len(paths) {
 		return nil
 	}
-	return xerrors.Errorf("cannot found suitable path to declare sector %v", sector)
+
+	declared := false
+
+	for _, info := range infos {
+		var foundPath *path = nil
+		var foundPathId ID
+
+		for id, p := range st.paths {
+			if info.Oss == p.oss && info.OssInfo.Equal(&p.ossInfo) {
+				foundPath = p
+				foundPathId = id
+				break
+			}
+		}
+
+		if foundPath == nil {
+			continue
+		}
+
+		if err := st.index.StorageDeclareSector(ctx, foundPathId, sector.ID, info.PathType, true); err != nil {
+			log.Errorf("declare sector proving %d -> %s: %w", sector, foundPathId, err)
+		}
+
+		declared = true
+	}
+
+	if !declared {
+		return xerrors.Errorf("cannot found suitable path to declare sector %v", sector)
+	}
+	return nil
 }
 
 func (st *Local) declareSectorsFromOss(ctx context.Context, cli *OSSClient, id ID, primary bool, p string) error {

@@ -432,6 +432,10 @@ func (sm *StorageMinerAPI) SetPlayAsMaster(ctx context.Context, master bool, add
 	return sm.StorageMgr.SetPlayAsMaster(ctx, master, addr)
 }
 
+func (sm *StorageMinerAPI) SetPlayAsLord(ctx context.Context, lord bool) error {
+	return sm.StorageMgr.SetPlayAsLord(ctx, lord)
+}
+
 func (sm *StorageMinerAPI) GetPlayAsMaster(ctx context.Context) bool {
 	return sm.StorageMgr.GetPlayAsMaster(ctx)
 }
@@ -444,8 +448,8 @@ func (sm *StorageMinerAPI) GenerateWindowPoSt(ctx context.Context, minerID abi.A
 	}, err
 }
 
-func (sm *StorageMinerAPI) NotifySectorProving(ctx context.Context, sector storage2.SectorRef) error {
-	return sm.StorageMgr.NotifySectorProving(ctx, sector)
+func (sm *StorageMinerAPI) NotifySectorProving(ctx context.Context, sector storage2.SectorRef, infos []stores.SectorStorageInfo) error {
+	return sm.StorageMgr.NotifySectorProving(ctx, sector, infos)
 }
 
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {

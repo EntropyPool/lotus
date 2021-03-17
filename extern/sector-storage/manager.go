@@ -79,8 +79,9 @@ type Manager struct {
 	remoteHnd  *stores.FetchHandler
 	index      stores.SectorIndex
 
-	sched     *scheduler
-	postSched *PoStScheduler
+	sched      *scheduler
+	postSched  *PoStScheduler
+	playAsLord bool
 
 	storage.Prover
 
@@ -219,6 +220,9 @@ func (m *Manager) AddLocalStorage(ctx context.Context, path string) error {
 }
 
 func (m *Manager) AddWorker(ctx context.Context, w Worker) error {
+	if !m.playAsLord {
+		return xerrors.Errorf("only lord can add worker")
+	}
 	return m.sched.runWorker(ctx, w)
 }
 
@@ -240,6 +244,11 @@ func (m *Manager) SetPlayAsMaster(ctx context.Context, master bool, addr string)
 	return m.postSched.SetPlayAsMaster(master, addr)
 }
 
+func (m *Manager) SetPlayAsLord(ctx context.Context, lord bool) error {
+	m.playAsLord = lord
+	return nil
+}
+
 func (m *Manager) GetPlayAsMaster(ctx context.Context) bool {
 	return m.postSched.GetPlayAsMaster()
 }
@@ -249,11 +258,15 @@ func (m *Manager) GenerateWindowPoStRemote(ctx context.Context, minerID abi.Acto
 }
 
 func (m *Manager) SectorProving(ctx context.Context, sector storage.SectorRef) error {
-	return m.postSched.SectorProving(ctx, sector)
+	paths, err := m.index.StorageFindSector(ctx, sector.ID, storiface.FTCache|storiface.FTSealed, 0, false)
+	if err != nil {
+		return err
+	}
+	return m.postSched.SectorProving(ctx, sector, paths)
 }
 
-func (m *Manager) NotifySectorProving(ctx context.Context, sector storage.SectorRef) error {
-	return m.localStore.NotifySectorProving(ctx, sector)
+func (m *Manager) NotifySectorProving(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error {
+	return m.localStore.NotifySectorProving(ctx, sector, infos)
 }
 
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -427,6 +440,10 @@ func sealingElapseStatistic(ctx context.Context, worker Worker, taskType sealtas
 }
 
 func (m *Manager) AddPiece(ctx context.Context, sector storage.SectorRef, existingPieces []abi.UnpaddedPieceSize, sz abi.UnpaddedPieceSize, r io.Reader) (abi.PieceInfo, error) {
+	if !m.playAsLord {
+		return abi.PieceInfo{}, xerrors.Errorf("only lord can add worker")
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
