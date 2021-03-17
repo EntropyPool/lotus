@@ -127,7 +127,7 @@ func newMultiMiner(cctx *cli.Context, rootPath string) (*MultiMiner, error) {
 
 	err = multiMiner.updateMultiMiner(cctx)
 	if err != nil {
-		return nil, err
+		log.Errorf("Fail to update multi miner")
 	}
 
 	return multiMiner, nil
