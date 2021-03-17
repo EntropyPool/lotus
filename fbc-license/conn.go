@@ -100,7 +100,7 @@ func (self *LicenseClient) Login() error {
 	targetUri := fmt.Sprintf("%v://%v%v", self.scheme, self.licenseServer, fbctypes.LoginAPI)
 
 	input := fbctypes.ClientLoginInput{
-		ClientUser: self.clientSn,
+		ClientUser: self.clientUser,
 		ClientSN:   self.clientSn,
 	}
 	input.SessionId = self.sessionId
