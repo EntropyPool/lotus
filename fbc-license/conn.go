@@ -141,6 +141,7 @@ func (self *LicenseClient) Login() error {
 
 	self.state = Running
 	self.clientUuid = output.ClientUuid
+	self.shouldStop = false
 
 	return nil
 }
