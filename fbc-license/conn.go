@@ -46,7 +46,7 @@ func NewLicenseClient(config LicenseConfig) *LicenseClient {
 		clientSn:      config.ClientSn,
 		licenseServer: config.LicenseServer,
 		state:         ExchangeKey,
-		shouldStop:    true,
+		shouldStop:    false,
 		scheme:        config.Scheme,
 	}
 }
@@ -141,7 +141,6 @@ func (self *LicenseClient) Login() error {
 
 	self.state = Running
 	self.clientUuid = output.ClientUuid
-	self.shouldStop = false
 
 	return nil
 }

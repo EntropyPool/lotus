@@ -3,7 +3,7 @@ package main
 import (
 	machspec "github.com/EntropyPool/machine-spec"
 	lic "github.com/filecoin-project/lotus/fbc-license"
-	_ "os"
+	"os"
 	"time"
 )
 
@@ -26,13 +26,6 @@ func startLicenseClient(username string) *lic.LicenseClient {
 }
 
 func checkLicense(cli *lic.LicenseClient) {
-	shouldStop = false
-
-	validate := cli.Validate()
-	if validate {
-		shouldStop = true
-		return
-	}
 	shouldStop := cli.ShouldStop()
 	if shouldStop {
 		shouldStop = true
@@ -51,7 +44,7 @@ func LicenseChecker(username string) {
 			checkLicense(cli)
 		case <-killTimer.C:
 			if shouldStop {
-				// os.Exit(-1)
+				os.Exit(-1)
 			}
 		}
 	}
