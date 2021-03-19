@@ -136,6 +136,8 @@ func newMultiMiner(cctx *cli.Context, rootPath string) (*MultiMiner, error) {
 func (multiMiner *MultiMiner) notifyMaster(cctx *cli.Context) error {
 	var err error
 
+	lcli.AnnounceMyselfAsMaster(cctx)
+
 	for index, candidate := range multiMiner.Candidates {
 		nerr := lcli.AnnounceMaster(cctx, candidate.EnvValue)
 		if nerr != nil {

@@ -80,6 +80,7 @@ func NewPoStScheduler() *PoStScheduler {
 
 func (s *PoStScheduler) AddSlaveProver(addr string, nodeApi api.StorageMiner, closer jsonrpc.ClientCloser) {
 	go func() {
+		log.Infof("add slave prover %v", addr)
 		s.newProver <- &SlaveProver{
 			addr:    addr,
 			nodeApi: nodeApi,

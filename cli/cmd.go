@@ -356,6 +356,20 @@ func AnnounceMaster(ctx *cli.Context, apiInfo string) error {
 	return minerApi.AnnounceMaster(ctx.Context, addrMaster, headersMaster, addrSlave, headersSlave)
 }
 
+func AnnounceMyselfAsMaster(ctx *cli.Context) error {
+	minerApi, closer, err := GetStorageMinerAPI(ctx)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	addr, headers, err := GetRawAPI(ctx, repo.StorageMiner)
+	if err != nil {
+		return err
+	}
+	return minerApi.AnnounceMaster(ctx.Context, addr, headers, addr, headers)
+}
+
 func GetStorageMinerAPI(ctx *cli.Context, opts ...GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {
 	var options GetStorageMinerOptions
 	for _, opt := range opts {
