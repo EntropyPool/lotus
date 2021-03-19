@@ -173,6 +173,7 @@ minerLoop:
 		}
 
 		if !m.sealer.GetPlayAsMaster(ctx) {
+			log.Infof("I'm not master, do not process mining")
 			m.niceSleep(time.Second * 10)
 			continue
 		}
