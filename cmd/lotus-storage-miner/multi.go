@@ -62,6 +62,7 @@ func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 	multiMiner.EnvValue = env
 	minerApiInfos := strings.Split(env, ";")
 	multiMiner.Candidates = []*candidateMiner{}
+	multiMiner.IMLord = false
 
 	for _, info := range minerApiInfos {
 		role := MinerSlave
