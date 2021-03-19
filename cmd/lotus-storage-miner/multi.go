@@ -35,7 +35,6 @@ type MultiMiner struct {
 	masterIndex     int
 	masterFailCount int
 	rootPath        string
-	newCreated      bool
 }
 
 const multiMinerApiInfosEnvKey = "MULTI_MINER_API_INFOS"
@@ -43,18 +42,13 @@ const multiMinerMetaFile = "multiminerpeers.conf"
 
 func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 	env, ok := os.LookupEnv(multiMinerApiInfosEnvKey)
-	if !ok {
-		multiMiner.IMLord = true
-		return xerrors.Errorf("%v is not defined", multiMinerApiInfosEnvKey)
+	if !ok || env == "" {
+		env = multiMiner.EnvValue
 	}
 
 	if env == "" {
 		multiMiner.IMLord = true
 		return xerrors.Errorf("%v is not empty", multiMinerApiInfosEnvKey)
-	}
-
-	if env == multiMiner.EnvValue && !multiMiner.newCreated {
-		return nil
 	}
 
 	log.Infof("Update multi miner %v -> %v", multiMiner.EnvValue, env)
@@ -104,15 +98,12 @@ func (multiMiner *MultiMiner) updateMultiMiner(cctx *cli.Context) error {
 		return xerrors.Errorf("persisting storage metadata (%s): %w", filepath.Join(multiMiner.rootPath, multiMinerMetaFile), err)
 	}
 
-	multiMiner.newCreated = false
-
 	return nil
 }
 
 func newMultiMiner(cctx *cli.Context, rootPath string) (*MultiMiner, error) {
 	multiMiner := &MultiMiner{
 		rootPath:   rootPath,
-		newCreated: true,
 	}
 
 	metaFile := filepath.Join(multiMiner.rootPath, multiMinerMetaFile)
