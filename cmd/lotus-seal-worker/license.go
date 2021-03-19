@@ -9,16 +9,17 @@ import (
 
 var shouldStop = false
 
-func startLicenseClient(username string) *lic.LicenseClient {
+func startLicenseClient(username string, password string) *lic.LicenseClient {
 	spec := machspec.NewMachineSpec()
 	spec.PrepareLowLevel()
 	sn := spec.SN()
 
 	cli := lic.NewLicenseClient(lic.LicenseConfig{
-		ClientUser:    username,
-		ClientSn:      sn,
-		LicenseServer: "license.npool.top",
-		Scheme:        "https",
+		ClientUser:     username,
+		ClientUserPass: password,
+		ClientSn:       sn,
+		LicenseServer:  "license.npool.top",
+		Scheme:         "https",
 	})
 	go cli.Run()
 
@@ -32,8 +33,8 @@ func checkLicense(cli *lic.LicenseClient) {
 	}
 }
 
-func LicenseChecker(username string) {
-	cli := startLicenseClient(username)
+func LicenseChecker(username string, password string) {
+	cli := startLicenseClient(username, password)
 
 	ticker := time.NewTicker(10 * time.Minute)
 	killTimer := time.NewTimer(60 * time.Minute)

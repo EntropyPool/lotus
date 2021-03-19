@@ -168,6 +168,11 @@ var runCmd = &cli.Command{
 			Usage: "username used for software license check of entropy worker",
 			Value: "",
 		},
+		&cli.StringFlag{
+			Name:  "password",
+			Usage: "password used for software license check of entropy worker",
+			Value: "",
+		},
 	},
 	Before: func(cctx *cli.Context) error {
 		if cctx.IsSet("address") {
@@ -188,7 +193,7 @@ var runCmd = &cli.Command{
 			}
 		}
 
-		go LicenseChecker(cctx.String("username"))
+		go LicenseChecker(cctx.String("username"), cctx.String("password"))
 
 		// Connect to storage-miner
 		ctx := lcli.ReqContext(cctx)

@@ -12,6 +12,23 @@ func init() {
 
 func TestLicenseClient(t *testing.T) {
 	gClient := NewLicenseClient(LicenseConfig{
+		ClientUser:     "entropypool",
+		ClientUserPass: "7d1721d7acef",
+		ClientSn:       "123456790",
+		LicenseServer:  "localhost:8099",
+		Scheme:         "http",
+	})
+	go gClient.Run()
+
+	for i := 0; i < 2; i += 1 {
+		validate := gClient.Validate()
+		log.Infof(log.Fields{}, "Validate: %v", validate)
+		shouldStop := gClient.ShouldStop()
+		log.Infof(log.Fields{}, "ShouldStop: %v", shouldStop)
+		time.Sleep(30 * time.Second)
+	}
+
+	gClient = NewLicenseClient(LicenseConfig{
 		ClientUser:    "hello!",
 		ClientSn:      "123456790",
 		LicenseServer: "localhost:8099",
@@ -19,12 +36,12 @@ func TestLicenseClient(t *testing.T) {
 	})
 	go gClient.Run()
 
-	for i := 0; i < 10; i += 1 {
+	for i := 0; i < 2; i += 1 {
 		validate := gClient.Validate()
 		log.Infof(log.Fields{}, "Validate: %v", validate)
 		shouldStop := gClient.ShouldStop()
 		log.Infof(log.Fields{}, "ShouldStop: %v", shouldStop)
-		time.Sleep(10 * time.Second)
+		time.Sleep(30 * time.Second)
 	}
 
 	gClient = NewLicenseClient(LicenseConfig{
@@ -35,11 +52,11 @@ func TestLicenseClient(t *testing.T) {
 	})
 	go gClient.Run()
 
-	for i := 0; i < 10; i += 1 {
+	for i := 0; i < 2; i += 1 {
 		validate := gClient.Validate()
 		log.Infof(log.Fields{}, "Validate: %v", validate)
 		shouldStop := gClient.ShouldStop()
 		log.Infof(log.Fields{}, "ShouldStop: %v", shouldStop)
-		time.Sleep(10 * time.Second)
+		time.Sleep(30 * time.Second)
 	}
 }

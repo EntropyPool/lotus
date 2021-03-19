@@ -20,34 +20,37 @@ const (
 )
 
 type LicenseClient struct {
-	RemoteRsaObj  *crypto.RsaCrypto
-	LocalRsaObj   *crypto.RsaCrypto
-	sessionId     uuid.UUID
-	clientUser    string
-	clientSn      string
-	licenseServer string
-	clientUuid    uuid.UUID
-	state         int
-	shouldStop    bool
-	scheme        string
+	RemoteRsaObj   *crypto.RsaCrypto
+	LocalRsaObj    *crypto.RsaCrypto
+	sessionId      uuid.UUID
+	clientUser     string
+	clientUserPass string
+	clientSn       string
+	licenseServer  string
+	clientUuid     uuid.UUID
+	state          int
+	shouldStop     bool
+	scheme         string
 }
 
 type LicenseConfig struct {
-	ClientUser    string
-	ClientSn      string
-	LicenseServer string
-	Scheme        string
+	ClientUser     string
+	ClientUserPass string
+	ClientSn       string
+	LicenseServer  string
+	Scheme         string
 }
 
 func NewLicenseClient(config LicenseConfig) *LicenseClient {
 	return &LicenseClient{
-		LocalRsaObj:   crypto.NewRsaCrypto(2048),
-		clientUser:    config.ClientUser,
-		clientSn:      config.ClientSn,
-		licenseServer: config.LicenseServer,
-		state:         ExchangeKey,
-		shouldStop:    false,
-		scheme:        config.Scheme,
+		LocalRsaObj:    crypto.NewRsaCrypto(2048),
+		clientUser:     config.ClientUser,
+		clientUserPass: config.ClientUserPass,
+		clientSn:       config.ClientSn,
+		licenseServer:  config.LicenseServer,
+		state:          ExchangeKey,
+		shouldStop:     true,
+		scheme:         config.Scheme,
 	}
 }
 
@@ -100,8 +103,9 @@ func (self *LicenseClient) Login() error {
 	targetUri := fmt.Sprintf("%v://%v%v", self.scheme, self.licenseServer, fbctypes.LoginAPI)
 
 	input := fbctypes.ClientLoginInput{
-		ClientUser: self.clientUser,
-		ClientSN:   self.clientSn,
+		ClientUser:   self.clientUser,
+		ClientPasswd: self.clientUserPass,
+		ClientSN:     self.clientSn,
 	}
 	input.SessionId = self.sessionId
 
