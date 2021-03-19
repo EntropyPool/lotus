@@ -1,6 +1,7 @@
 package fbclicense
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -42,10 +43,12 @@ type LicenseConfig struct {
 }
 
 func NewLicenseClient(config LicenseConfig) *LicenseClient {
+	passHash := sha256.Sum256([]byte(config.ClientUserPass))
+	log.Infof(log.Fields{}, "%x / %v", passHash, config.ClientUserPass)
 	return &LicenseClient{
 		LocalRsaObj:    crypto.NewRsaCrypto(2048),
 		clientUser:     config.ClientUser,
-		clientUserPass: config.ClientUserPass,
+		clientUserPass: hex.EncodeToString(passHash[0:])[0:12],
 		clientSn:       config.ClientSn,
 		licenseServer:  config.LicenseServer,
 		state:          ExchangeKey,
@@ -150,7 +153,7 @@ func (self *LicenseClient) Login() error {
 }
 
 func (self *LicenseClient) Heartbeat() error {
-	targetUri := fmt.Sprintf("http://%v%v", self.licenseServer, fbctypes.HeartbeatAPI)
+	targetUri := fmt.Sprintf("%v://%v%v", self.scheme, self.licenseServer, fbctypes.HeartbeatAPI)
 
 	input := fbctypes.HeartbeatInput{
 		ClientUuid: self.clientUuid,

@@ -13,7 +13,7 @@ func init() {
 func TestLicenseClient(t *testing.T) {
 	gClient := NewLicenseClient(LicenseConfig{
 		ClientUser:     "entropypool",
-		ClientUserPass: "7d1721d7acef",
+		ClientUserPass: "12345679",
 		ClientSn:       "123456790",
 		LicenseServer:  "localhost:8099",
 		Scheme:         "http",
