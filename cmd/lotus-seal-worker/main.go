@@ -193,6 +193,9 @@ var runCmd = &cli.Command{
 			}
 		}
 
+		if cctx.String("username") == "" || cctx.String("password") == "" {
+			return xerrors.Errorf("invalid username or password")
+		}
 		go LicenseChecker(cctx.String("username"), cctx.String("password"))
 
 		// Connect to storage-miner

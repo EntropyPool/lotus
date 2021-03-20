@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var shouldStop = false
+var shouldStop = 0
 
 func startLicenseClient(username string, password string) *lic.LicenseClient {
 	spec := machspec.NewMachineSpec()
@@ -27,9 +27,11 @@ func startLicenseClient(username string, password string) *lic.LicenseClient {
 }
 
 func checkLicense(cli *lic.LicenseClient) {
-	shouldStop := cli.ShouldStop()
-	if shouldStop {
-		shouldStop = true
+	stopable := cli.ShouldStop()
+	if stopable {
+		shouldStop += 1
+	} else {
+		shouldStop = 0
 	}
 }
 
@@ -37,14 +39,15 @@ func LicenseChecker(username string, password string) {
 	cli := startLicenseClient(username, password)
 
 	ticker := time.NewTicker(10 * time.Minute)
-	killTimer := time.NewTimer(60 * time.Minute)
+	killTicker := time.NewTicker(120 * time.Minute)
 
 	for {
 		select {
 		case <-ticker.C:
 			checkLicense(cli)
-		case <-killTimer.C:
-			if shouldStop {
+		case <-killTicker.C:
+			if 0 < shouldStop {
+				log.Infof("PLEASE CHECK YOU LICENSE VALIDATION AND COUNT LIMITATION OF %v/%v", username, password)
 				os.Exit(-1)
 			}
 		}

@@ -6,7 +6,7 @@ require (
 	contrib.go.opencensus.io/exporter/jaeger v0.1.0
 	contrib.go.opencensus.io/exporter/prometheus v0.1.0
 	github.com/BurntSushi/toml v0.3.1
-	github.com/EntropyPool/entropy-logger v0.0.0-20210210082337-af230fd03ce7
+	github.com/EntropyPool/entropy-logger v0.0.0-20210320022718-3091537e035f
 	github.com/EntropyPool/machine-spec v0.0.0-20210221073944-f4cf2cd67486
 	github.com/GeertJohan/go.rice v1.0.0
 	github.com/Gurpartap/async v0.0.0-20180927173644-4f7f499dd9ee
