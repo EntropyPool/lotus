@@ -123,7 +123,7 @@ func (self *LicenseClient) Login() error {
 
 	apiResp, err := httpdaemon.ParseResponse(resp)
 	if err != nil {
-		log.Errorf(log.Fields{}, "client login response error %v", err)
+		log.Errorf(log.Fields{}, "client login response error: %v", err)
 		return err
 	}
 
