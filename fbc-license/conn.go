@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	log "github.com/EntropyPool/entropy-logger"
+	machspec "github.com/EntropyPool/machine-spec"
 	crypto "github.com/NpoolDevOps/fbc-license-service/crypto"
 	fbctypes "github.com/NpoolDevOps/fbc-license-service/types"
 	httpdaemon "github.com/NpoolRD/http-daemon"
@@ -60,10 +61,14 @@ func NewLicenseClient(config LicenseConfig) *LicenseClient {
 func (self *LicenseClient) Exchangekey() error {
 	targetUri := fmt.Sprintf("%v://%v%v", self.scheme, self.licenseServer, fbctypes.ExchangeKeyAPI)
 
+	spec := machspec.NewMachineSpec()
+	spec.PrepareLowLevel()
+
 	resp, err := httpdaemon.R().
 		SetHeader("Content-Type", "application/json").
 		SetBody(fbctypes.ExchangeKeyInput{
 			PublicKey: string(self.LocalRsaObj.GetPubkey()),
+			Spec:      spec.SN(),
 		}).
 		Post(targetUri)
 	if err != nil {

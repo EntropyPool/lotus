@@ -11,7 +11,7 @@ require (
 	github.com/GeertJohan/go.rice v1.0.0
 	github.com/Gurpartap/async v0.0.0-20180927173644-4f7f499dd9ee
 	github.com/Jeffail/gabs v1.4.0
-	github.com/NpoolDevOps/fbc-license-service v0.0.0-20210319111912-ad4772e808f6
+	github.com/NpoolDevOps/fbc-license-service v0.0.0-20210321081651-b068925d48f3
 	github.com/NpoolRD/http-daemon v0.0.0-20210210091512-241ac31803ef
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
