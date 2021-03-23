@@ -228,7 +228,7 @@ func (s *PoStScheduler) schedule() {
 					break
 				}
 			}
-			s.scheduleTask <- struct{}{}
+			go func() { s.scheduleTask <- struct{}{} }()
 		case input := <-s.sectorProving:
 			s.notifySectorProving(input.sector, input.paths)
 		case <-s.scheduleTask:
