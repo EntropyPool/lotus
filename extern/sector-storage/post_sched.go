@@ -45,10 +45,16 @@ type postTaskOutput struct {
 	err     error
 }
 
+type slaveCheckInput struct {
+	addr string
+	resp chan bool
+}
+
 type PoStScheduler struct {
 	MasterProver  string
 	slaveProver   map[string]*SlaveProver
 	newProver     chan *SlaveProver
+	slaveChecker  chan slaveCheckInput
 	newTask       chan *postTask
 	taskFinished  chan *postTaskOutput
 	sectorProving chan SectorProvingInput
@@ -66,6 +72,7 @@ func NewPoStScheduler() *PoStScheduler {
 	sched := &PoStScheduler{
 		slaveProver:   make(map[string]*SlaveProver),
 		newProver:     make(chan *SlaveProver, 10),
+		slaveChecker:  make(chan slaveCheckInput, 10),
 		newTask:       make(chan *postTask, 20),
 		taskFinished:  make(chan *postTaskOutput, 20),
 		sectorProving: make(chan SectorProvingInput, 20),
@@ -200,6 +207,14 @@ func (s *PoStScheduler) schedule() {
 				log.Infof("new prover: %v", prover.addr)
 				s.slaveProver[prover.addr] = prover
 			}
+		case checker := <-s.slaveChecker:
+			exists := false
+			if _, ok := s.slaveProver[checker.addr]; ok {
+				exists = true
+			}
+			go func(checkout slaveCheckInput) {
+				checker.resp <- exists
+			}(checker)
 		case task := <-s.newTask:
 			task.taskId = s.currentId
 			s.currentId += 1
@@ -268,4 +283,21 @@ func (s *PoStScheduler) SectorProving(ctx context.Context, sector storage.Sector
 		}
 	}()
 	return nil
+}
+
+func (s *PoStScheduler) SlaveConnected(ctx context.Context, addr string) bool {
+	resp := make(chan bool)
+	go func() {
+		s.slaveChecker <- slaveCheckInput{
+			addr: addr,
+			resp: resp,
+		}
+	}()
+
+	select {
+	case connected := <-resp:
+		return connected
+	}
+
+	return false
 }

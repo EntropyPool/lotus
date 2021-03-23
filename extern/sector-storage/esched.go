@@ -2297,14 +2297,19 @@ func (sh *edispatcher) closeAllBuckets() {
 }
 
 func (sh *edispatcher) watchWorkerClosing(w *eWorkerHandle) {
+	lostHeartbeats := 0
 	for {
 		ctx, cancel := context.WithTimeout(context.TODO(), 180*time.Second)
 		session, err := w.w.Session(ctx)
 		cancel()
 		if nil != err || ClosedWorkerID == session || w.wid != session {
-			log.Warnf("drop worker %v by [%v]", w.wid, err)
-			sh.dropWorker <- w.wid
-			return
+			log.Warnf("fail heartbeat worker %v by [%v]", w.wid, err)
+			lostHeartbeats += 1
+			if 6 < lostHeartbeats {
+				log.Warnf("drop worker %v by [%v]", w.wid, err)
+				sh.dropWorker <- w.wid
+				return
+			}
 		}
 		time.Sleep(3 * time.Second)
 	}

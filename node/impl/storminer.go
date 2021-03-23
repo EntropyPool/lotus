@@ -416,6 +416,10 @@ func (sm *StorageMinerAPI) AnnounceMaster(ctx context.Context, addrMaster string
 }
 
 func (sm *StorageMinerAPI) SlaveConnect(ctx context.Context, addr string, headers http.Header) error {
+	if sm.StorageMgr.SlaveProverConnected(ctx, addr) {
+		return nil
+	}
+
 	minerApi, closer, err := client.NewStorageMinerRPC(ctx, addr, headers)
 	if err != nil {
 		return err

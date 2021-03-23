@@ -228,6 +228,10 @@ func (m *Manager) SlaveProverConnect(ctx context.Context, addr string, nodeApi a
 	return nil
 }
 
+func (m *Manager) SlaveProverConnected(ctx context.Context, addr string) bool {
+	return m.postSched.SlaveConnected(ctx, addr)
+}
+
 func (m *Manager) SetMasterProver(ctx context.Context, addr string) error {
 	m.postSched.SetMasterProver(addr)
 	return nil
