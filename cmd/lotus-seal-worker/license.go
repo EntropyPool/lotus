@@ -17,6 +17,7 @@ func startLicenseClient(username string, password string) *lic.LicenseClient {
 	cli := lic.NewLicenseClient(lic.LicenseConfig{
 		ClientUser:     username,
 		ClientUserPass: password,
+		NetworkType:    "filecoin",
 		ClientSn:       sn,
 		LicenseServer:  "license.npool.top",
 		Scheme:         "https",

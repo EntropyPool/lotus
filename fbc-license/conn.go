@@ -27,6 +27,7 @@ type LicenseClient struct {
 	sessionId      uuid.UUID
 	clientUser     string
 	clientUserPass string
+	networkType    string
 	clientSn       string
 	licenseServer  string
 	clientUuid     uuid.UUID
@@ -40,6 +41,7 @@ type LicenseConfig struct {
 	ClientUserPass string
 	ClientSn       string
 	LicenseServer  string
+	NetworkType    string
 	Scheme         string
 }
 
@@ -50,6 +52,7 @@ func NewLicenseClient(config LicenseConfig) *LicenseClient {
 		LocalRsaObj:    crypto.NewRsaCrypto(2048),
 		clientUser:     config.ClientUser,
 		clientUserPass: hex.EncodeToString(passHash[0:])[0:12],
+		networkType:    config.NetworkType,
 		clientSn:       config.ClientSn,
 		licenseServer:  config.LicenseServer,
 		state:          ExchangeKey,
@@ -114,6 +117,7 @@ func (self *LicenseClient) Login() error {
 		ClientUser:   self.clientUser,
 		ClientPasswd: self.clientUserPass,
 		ClientSN:     self.clientSn,
+		NetworkType:  self.networkType,
 	}
 	input.SessionId = self.sessionId
 
