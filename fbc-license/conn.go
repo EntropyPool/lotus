@@ -171,6 +171,7 @@ func (self *LicenseClient) Heartbeat() error {
 		Post(targetUri)
 	if err != nil {
 		log.Errorf(log.Fields{}, "heartbeat error: %v", err)
+		self.shouldStop = true
 		return err
 	}
 
