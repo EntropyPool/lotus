@@ -158,7 +158,7 @@ func (self *LicenseClient) Login() error {
 }
 
 func (self *LicenseClient) Heartbeat() error {
-	targetUri := fmt.Sprintf("%v://%v%v", self.scheme, self.licenseServer, fbctypes.HeartbeatAPI)
+	targetUri := fmt.Sprintf("%v://%v%v", self.scheme, self.licenseServer, fbctypes.HeartbeatV1API)
 
 	input := fbctypes.HeartbeatInput{
 		ClientUuid: self.clientUuid,
@@ -190,13 +190,14 @@ func (self *LicenseClient) Heartbeat() error {
 		return xerrors.Errorf("client heartbeat response error: empty body")
 	}
 
-	body := apiResp.Body
-	hBody, _ := hex.DecodeString(body.(string))
-	data, _ := self.LocalRsaObj.Decrypt([]byte(hBody))
+	// body := apiResp.Body
+	// hBody, _ := hex.DecodeString(body.(string))
+	// data, _ := self.LocalRsaObj.Decrypt([]byte(hBody))
 
 	var output = fbctypes.HeartbeatOutput{}
 
-	err = json.Unmarshal(data, &output)
+	b, _ := json.Marshal(apiResp.Body)
+	err = json.Unmarshal(b, &output)
 	if err != nil {
 		log.Errorf(log.Fields{}, "heartbeat parse response error: %v", err)
 		return err
