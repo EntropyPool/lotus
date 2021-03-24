@@ -336,7 +336,7 @@ type StorageMinerStruct struct {
 		CheckCurrentMaster  func(context.Context, string) error                                                                                                           `perm:"admin"`
 		AnnounceMaster      func(context.Context, string, http.Header, string, http.Header) error                                                                         `perm:"admin" retry:"true"`
 		SlaveConnect        func(context.Context, string, http.Header) error                                                                                              `perm:"admin" retry:"true"`
-		CheckMaster         func(context.Context) error                                                                                                                   `perm:"admin" retry:"true"`
+		CheckMaster         func(context.Context) error                                                                                                                   `perm:"admin"`
 		SetPlayAsMaster     func(context.Context, bool, string) error                                                                                                     `perm:"admin"`
 		SetPlayAsLord       func(ctx context.Context, lord bool) error                                                                                                    `perm:"admin"`
 		GetPlayAsMaster     func(context.Context) bool                                                                                                                    `perm:"admin"`
