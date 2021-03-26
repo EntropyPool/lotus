@@ -153,6 +153,12 @@ var DaemonCmd = &cli.Command{
 			Name:  "restore-config",
 			Usage: "config file to use when restoring from backup",
 		},
+		&cli.StringFlag{
+			Name: "username",
+		},
+		&cli.StringFlag{
+			Name: "password",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		isLite := cctx.Bool("lite")

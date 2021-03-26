@@ -55,6 +55,12 @@ var runCmd = &cli.Command{
 			Usage: "manage open file limit",
 			Value: true,
 		},
+		&cli.StringFlag{
+			Name: "username",
+		},
+		&cli.StringFlag{
+			Name: "password",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		if !cctx.Bool("enable-gpu-proving") {
