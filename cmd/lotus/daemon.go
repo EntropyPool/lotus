@@ -35,6 +35,7 @@ import (
 	"github.com/filecoin-project/lotus/chain/vm"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
+	lic "github.com/filecoin-project/lotus/fbc-license"
 	"github.com/filecoin-project/lotus/journal"
 	"github.com/filecoin-project/lotus/lib/peermgr"
 	"github.com/filecoin-project/lotus/lib/ulimit"
@@ -155,6 +156,11 @@ var DaemonCmd = &cli.Command{
 	},
 	Action: func(cctx *cli.Context) error {
 		isLite := cctx.Bool("lite")
+
+		if cctx.String("username") == "" || cctx.String("password") == "" {
+			return xerrors.Errorf("invalid username or password")
+		}
+		go lic.LicenseChecker(cctx.String("username"), cctx.String("password"), false, "filecoin")
 
 		err := runmetrics.Enable(runmetrics.RunMetricOptions{
 			EnableCPU:    true,

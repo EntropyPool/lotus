@@ -24,6 +24,7 @@ import (
 	"github.com/filecoin-project/lotus/api/apistruct"
 	"github.com/filecoin-project/lotus/build"
 	lcli "github.com/filecoin-project/lotus/cli"
+	lic "github.com/filecoin-project/lotus/fbc-license"
 	"github.com/filecoin-project/lotus/lib/ulimit"
 	"github.com/filecoin-project/lotus/metrics"
 	"github.com/filecoin-project/lotus/node"
@@ -63,6 +64,11 @@ var runCmd = &cli.Command{
 			}
 		}
 
+		if cctx.String("username") == "" || cctx.String("password") == "" {
+			return xerrors.Errorf("invalid username or password")
+		}
+		go lic.LicenseChecker(cctx.String("username"), cctx.String("password"), false, "filecoin")
+
 		nodeok := true
 		var (
 			ctx     context.Context
@@ -78,7 +84,7 @@ var runCmd = &cli.Command{
 		}
 		ctx = lcli.DaemonContext(cctx)
 
-		lbBackNode:
+	lbBackNode:
 		if !nodeok {
 			nodeApi, ncloser, ctx, err = lcli.GetBackNodeAPI(cctx)
 			if err != nil {

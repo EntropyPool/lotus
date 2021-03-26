@@ -1,23 +1,23 @@
-package main
+package fbclicense
 
 import (
+	log "github.com/EntropyPool/entropy-logger"
 	machspec "github.com/EntropyPool/machine-spec"
-	lic "github.com/filecoin-project/lotus/fbc-license"
 	"os"
 	"time"
 )
 
 var shouldStop = 0
 
-func startLicenseClient(username string, password string) *lic.LicenseClient {
+func startLicenseClient(username string, password string, appName string) *LicenseClient {
 	spec := machspec.NewMachineSpec()
 	spec.PrepareLowLevel()
 	sn := spec.SN()
 
-	cli := lic.NewLicenseClient(lic.LicenseConfig{
+	cli := NewLicenseClient(LicenseConfig{
 		ClientUser:     username,
 		ClientUserPass: password,
-		NetworkType:    "filecoin",
+		NetworkType:    appName,
 		ClientSn:       sn,
 		LicenseServer:  "license.npool.top",
 		Scheme:         "https",
@@ -27,7 +27,7 @@ func startLicenseClient(username string, password string) *lic.LicenseClient {
 	return cli
 }
 
-func checkLicense(cli *lic.LicenseClient) {
+func checkLicense(cli *LicenseClient) {
 	stopable := cli.ShouldStop()
 	if stopable {
 		shouldStop += 1
@@ -36,8 +36,8 @@ func checkLicense(cli *lic.LicenseClient) {
 	}
 }
 
-func LicenseChecker(username string, password string) {
-	cli := startLicenseClient(username, password)
+func LicenseChecker(username string, password string, stoppable bool, appName string) {
+	cli := startLicenseClient(username, password, appName)
 
 	ticker := time.NewTicker(10 * time.Minute)
 	killTicker := time.NewTicker(120 * time.Minute)
@@ -47,8 +47,8 @@ func LicenseChecker(username string, password string) {
 		case <-ticker.C:
 			checkLicense(cli)
 		case <-killTicker.C:
-			if 0 < shouldStop {
-				log.Infof("PLEASE CHECK YOU LICENSE VALIDATION AND COUNT LIMITATION OF %v/%v", username, password)
+			if 0 < shouldStop && stoppable {
+				log.Infof(log.Fields{}, "PLEASE CHECK YOU LICENSE VALIDATION AND COUNT LIMITATION OF %v/%v", username, password)
 				os.Exit(-1)
 			}
 		}

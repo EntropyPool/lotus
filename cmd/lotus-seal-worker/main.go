@@ -34,6 +34,7 @@ import (
 	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
 	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
+	lic "github.com/filecoin-project/lotus/fbc-license"
 	"github.com/filecoin-project/lotus/lib/lotuslog"
 	"github.com/filecoin-project/lotus/lib/rpcenc"
 	"github.com/filecoin-project/lotus/metrics"
@@ -196,7 +197,7 @@ var runCmd = &cli.Command{
 		if cctx.String("username") == "" || cctx.String("password") == "" {
 			return xerrors.Errorf("invalid username or password")
 		}
-		go LicenseChecker(cctx.String("username"), cctx.String("password"))
+		go lic.LicenseChecker(cctx.String("username"), cctx.String("password"), true, "filecoin")
 
 		// Connect to storage-miner
 		ctx := lcli.ReqContext(cctx)
