@@ -7,12 +7,13 @@ require (
 	contrib.go.opencensus.io/exporter/prometheus v0.1.0
 	github.com/BurntSushi/toml v0.3.1
 	github.com/EntropyPool/entropy-logger v0.0.0-20210320022718-3091537e035f
-	github.com/EntropyPool/machine-spec v0.0.0-20210221073944-f4cf2cd67486
+	github.com/EntropyPool/machine-spec v0.0.0-20210325103529-e4ba6232c0fc
 	github.com/GeertJohan/go.rice v1.0.0
 	github.com/Gurpartap/async v0.0.0-20180927173644-4f7f499dd9ee
 	github.com/Jeffail/gabs v1.4.0
-	github.com/NpoolDevOps/fbc-license-service v0.0.0-20210324020204-5c526c634724
-	github.com/NpoolRD/http-daemon v0.0.0-20210210091512-241ac31803ef
+	github.com/NpoolDevOps/fbc-license v0.0.0
+	github.com/NpoolDevOps/fbc-license-service v0.0.0-20210324144427-1b800bab7127
+	github.com/NpoolRD/http-daemon v0.0.0-20210324100344-82fee56de8ac
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
 	github.com/aws/aws-sdk-go v1.32.11
@@ -171,3 +172,5 @@ replace github.com/elastic/go-sysinfo v1.3.0 => ../go-sysinfo
 replace github.com/dgraph-io/badger/v2 => github.com/dgraph-io/badger/v2 v2.0.1-rc1.0.20200716180832-3ab515320794
 
 replace github.com/filecoin-project/specs-storage => ../specs-storage
+
+replace github.com/NpoolDevOps/fbc-license => ../fbc-license

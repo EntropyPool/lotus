@@ -27,6 +27,7 @@ import (
 	"golang.org/x/xerrors"
 	"gopkg.in/cheggaaa/pb.v1"
 
+	lic "github.com/NpoolDevOps/fbc-license"
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/stmgr"
@@ -35,7 +36,6 @@ import (
 	"github.com/filecoin-project/lotus/chain/vm"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
-	lic "github.com/filecoin-project/lotus/fbc-license"
 	"github.com/filecoin-project/lotus/journal"
 	"github.com/filecoin-project/lotus/lib/peermgr"
 	"github.com/filecoin-project/lotus/lib/ulimit"
