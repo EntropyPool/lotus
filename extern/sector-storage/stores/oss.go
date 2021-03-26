@@ -13,12 +13,15 @@ import (
 )
 
 type OSSInfo struct {
-	URL        string
-	AccessKey  string
-	SecretKey  string
-	BucketName string
-	Prefix     string
-	CanWrite   bool
+	URL            string
+	AccessKey      string
+	SecretKey      string
+	BucketName     string
+	Prefix         string
+	UniqueBucket   bool
+	UploadPartSize int64
+	CanWrite       bool
+	Vendor         string
 }
 
 type StorageOSSInfo = OSSInfo
@@ -43,12 +46,24 @@ func (obj *OSSSector) Name() string {
 
 const ossKeySeparator = "/"
 
+func (info *OSSInfo) uniqueBucket() string {
+	return fmt.Sprintf("%s-%s-unique", info.BucketName, info.Prefix)
+}
+
 func (info *OSSInfo) ProofBucket() string {
-	return fmt.Sprintf("%s-%s-proof", info.BucketName, info.Prefix)
+	if info.UniqueBucket {
+		return info.uniqueBucket()
+	} else {
+		return fmt.Sprintf("%s-%s-proof", info.BucketName, info.Prefix)
+	}
 }
 
 func (info *OSSInfo) DataBucket() string {
-	return fmt.Sprintf("%s-%s-data", info.BucketName, info.Prefix)
+	if info.UniqueBucket {
+		return info.uniqueBucket()
+	} else {
+		return fmt.Sprintf("%s-%s-data", info.BucketName, info.Prefix)
+	}
 }
 
 func (info *OSSInfo) Equal(another *OSSInfo) bool {
@@ -103,7 +118,9 @@ func NewOSSClientWithSingleBucket(info StorageOSSInfo) (*OSSClient, error) {
 
 	for _, bucket := range buckets.Buckets {
 		if *bucket.Name == info.BucketName {
-			ossCli.s3Uploader = s3manager.NewUploader(ossCli.s3Session)
+			ossCli.s3Uploader = s3manager.NewUploader(ossCli.s3Session, func(u *s3manager.Uploader) {
+				u.PartSize = int64(info.UploadPartSize)
+			})
 			ossCli.s3Downloader = s3manager.NewDownloader(ossCli.s3Session)
 			return ossCli, nil
 		}
@@ -144,21 +161,25 @@ func NewOSSClient(info StorageOSSInfo) (*OSSClient, error) {
 		return nil, fmt.Errorf("bucket %v is not exists", ossCli.proofBucket)
 	}
 
-	bucketExists = false
-	bucketName = info.DataBucket()
+	if !info.UniqueBucket {
+		bucketExists = false
+		bucketName = info.DataBucket()
 
-	for _, bucket := range buckets.Buckets {
-		if *bucket.Name == bucketName {
-			bucketExists = true
-			break
+		for _, bucket := range buckets.Buckets {
+			if *bucket.Name == bucketName {
+				bucketExists = true
+				break
+			}
+		}
+
+		if !bucketExists {
+			return nil, fmt.Errorf("bucket %v is not exists", ossCli.dataBucket)
 		}
 	}
 
-	if !bucketExists {
-		return nil, fmt.Errorf("bucket %v is not exists", ossCli.dataBucket)
-	}
-
-	ossCli.s3Uploader = s3manager.NewUploader(ossCli.s3Session)
+	ossCli.s3Uploader = s3manager.NewUploader(ossCli.s3Session, func(u *s3manager.Uploader) {
+		u.PartSize = int64(info.UploadPartSize)
+	})
 	ossCli.s3Downloader = s3manager.NewDownloader(ossCli.s3Session)
 
 	return ossCli, nil

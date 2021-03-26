@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/go-units"
 	"github.com/fatih/color"
 	"github.com/google/uuid"
 	"github.com/mitchellh/go-homedir"
@@ -109,6 +110,20 @@ over time
 			Name:  "oss-bucket-name",
 			Usage: "(for init) bucket name of object storage service",
 		},
+		&cli.BoolFlag{
+			Name:  "oss-unique-bucket",
+			Usage: "(fot init) use unique bucket for cache and sealed sdata",
+			Value: false,
+		},
+		&cli.StringFlag{
+			Name:  "oss-upload-part-size",
+			Usage: "(for init) set upload part size for cache",
+			Value: "5MiB",
+		},
+		&cli.StringFlag{
+			Name:  "oss-vendor",
+			Usage: "(for init) set oss storage vendor name [ceph | minio | ucloud | qiniu | inspur]",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
@@ -157,14 +172,26 @@ over time
 				}
 
 				cfg.Weight = 100
+				uploadPartSize, err := units.RAMInBytes(cctx.String("oss-upload-part-size"))
+				if err != nil {
+					return err
+				}
+
+				vendor := cctx.String("oss-vendor")
+				if vendor == "" {
+					return xerrors.Errorf("vendor is must")
+				}
 
 				cfg.OssInfo = stores.StorageOSSInfo{
-					CanWrite:   cctx.Bool("store"),
-					URL:        cctx.String("oss-url"),
-					AccessKey:  cctx.String("oss-access-key"),
-					SecretKey:  cctx.String("oss-secret-key"),
-					BucketName: cctx.String("oss-bucket-name"),
-					Prefix:     fmt.Sprintf("%v", ma),
+					CanWrite:       cctx.Bool("store"),
+					URL:            cctx.String("oss-url"),
+					AccessKey:      cctx.String("oss-access-key"),
+					SecretKey:      cctx.String("oss-secret-key"),
+					BucketName:     cctx.String("oss-bucket-name"),
+					UploadPartSize: uploadPartSize,
+					UniqueBucket:   cctx.Bool("oss-unique-bucket"),
+					Prefix:         fmt.Sprintf("%v", ma),
+					Vendor:         vendor,
 				}
 			}
 
