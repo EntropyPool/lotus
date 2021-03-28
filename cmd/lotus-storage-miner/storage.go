@@ -124,6 +124,11 @@ over time
 			Name:  "oss-vendor",
 			Usage: "(for init) set oss storage vendor name [ceph | minio | ucloud | qiniu | inspur]",
 		},
+		&cli.StringFlag{
+			Name:  "oss-region",
+			Usage: "(for init) set oss storage region",
+			Value: "us-west-2",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
@@ -192,6 +197,7 @@ over time
 					UniqueBucket:   cctx.Bool("oss-unique-bucket"),
 					Prefix:         fmt.Sprintf("%v", ma),
 					Vendor:         vendor,
+					Region:         cctx.String("oss-region"),
 				}
 			}
 

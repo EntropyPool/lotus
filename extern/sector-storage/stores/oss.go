@@ -22,6 +22,7 @@ type OSSInfo struct {
 	UploadPartSize int64
 	CanWrite       bool
 	Vendor         string
+	Region         string
 }
 
 type StorageOSSInfo = OSSInfo
@@ -78,7 +79,7 @@ func baseOSSClient(info StorageOSSInfo) (*OSSClient, error) {
 	sess, err := session.NewSession(&aws.Config{
 		Credentials:      credentials.NewStaticCredentials(info.AccessKey, info.SecretKey, ""),
 		Endpoint:         aws.String(info.URL),
-		Region:           aws.String("us-west-2"),
+		Region:           aws.String(info.Region),
 		DisableSSL:       aws.Bool(true),
 		S3ForcePathStyle: aws.Bool(true),
 	})
