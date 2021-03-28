@@ -713,6 +713,8 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 				ossInfo.Prefix = p.ossInfo.Prefix
 				ossInfo.LandedDir = p.local
 				ossInfo.SectorName = storiface.SectorName(sid.ID)
+				ossInfo.Region = p.ossInfo.Region
+				ossInfo.MultiRanges = p.ossInfo.MultiRanges
 			}
 
 			storiface.SetPathExtByType(&out, fileType, p.oss, p.ossClient, ossInfo)
@@ -785,6 +787,8 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 			ossInfo.Prefix = bestPath.ossInfo.Prefix
 			ossInfo.LandedDir = bestPath.local
 			ossInfo.SectorName = storiface.SectorName(sid.ID)
+			ossInfo.Region = bestPath.ossInfo.Region
+			ossInfo.MultiRanges = bestPath.ossInfo.MultiRanges
 		}
 
 		storiface.SetPathExtByType(&storageIDs, fileType, bestPath.oss, bestPath.ossClient, ossInfo)

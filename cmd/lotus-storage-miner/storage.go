@@ -129,6 +129,11 @@ over time
 			Usage: "(for init) set oss storage region",
 			Value: "us-west-2",
 		},
+		&cli.BoolFlag{
+			Name:  "oss-multi-ranges",
+			Usage: "(for init) set multi ranges get support",
+			Value: true,
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
@@ -198,6 +203,7 @@ over time
 					Prefix:         fmt.Sprintf("%v", ma),
 					Vendor:         vendor,
 					Region:         cctx.String("oss-region"),
+					MultiRanges:    cctx.Bool("oss-multi-ranges"),
 				}
 			}
 

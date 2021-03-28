@@ -98,6 +98,8 @@ func (sb *Sealer) pubSectorToPriv(ctx context.Context, mid abi.ActorID, sectorIn
 			sealedSectorPathInfo.LandedDir = sealedSectorPath.OssInfo.LandedDir
 			sealedSectorPathInfo.BucketName = sealedSectorPath.OssInfo.BucketName
 			sealedSectorPathInfo.SectorName = sealedSectorPath.OssInfo.SectorName
+			sealedSectorPathInfo.Region = sealedSectorPath.OssInfo.Region
+			sealedSectorPathInfo.MultiRanges = sealedSectorPath.OssInfo.MultiRanges
 		}
 
 		cacheSectorPath := storiface.PathExtByType(paths, storiface.FTCache)
@@ -110,6 +112,8 @@ func (sb *Sealer) pubSectorToPriv(ctx context.Context, mid abi.ActorID, sectorIn
 			cacheSectorPathInfo.LandedDir = cacheSectorPath.OssInfo.LandedDir
 			cacheSectorPathInfo.BucketName = cacheSectorPath.OssInfo.BucketName
 			cacheSectorPathInfo.SectorName = cacheSectorPath.OssInfo.SectorName
+			cacheSectorPathInfo.Region = cacheSectorPath.OssInfo.Region
+			cacheSectorPathInfo.MultiRanges = cacheSectorPath.OssInfo.MultiRanges
 		}
 
 		postProofType, err := rpt(s.SealProof)

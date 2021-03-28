@@ -31,6 +31,7 @@ type OSSInfo struct {
 	CanWrite       bool
 	Vendor         string
 	Region         string
+	MultiRanges    bool
 }
 
 type StorageOSSInfo = OSSInfo
