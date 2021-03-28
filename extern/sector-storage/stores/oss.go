@@ -12,6 +12,14 @@ import (
 	"strings"
 )
 
+/**
+ * Vendor - Region -    Part Size
+ * ucloud   sc-test     32MiB
+ * qiniu    cn-east-1   63MiB
+ * ceph     us-west-2   8MiB
+ * minio    us-west-2   8MiB
+ */
+
 type OSSInfo struct {
 	URL            string
 	AccessKey      string
