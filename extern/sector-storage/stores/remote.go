@@ -211,6 +211,8 @@ func (r *Remote) acquireFromRemoteWithOss(ctx context.Context, s abi.SectorID, f
 			urlWithOss = fmt.Sprintf("%s&oss_url=%v", urlWithOss, dest.OssInfo.URL)
 			urlWithOss = fmt.Sprintf("%s&oss_bucket_name=%v", urlWithOss, dest.OssInfo.BucketName)
 			urlWithOss = fmt.Sprintf("%s&oss_prefix=%v", urlWithOss, dest.OssInfo.Prefix)
+			urlWithOss = fmt.Sprintf("%s&oss_region=%v", urlWithOss, dest.OssInfo.Region)
+			urlWithOss = fmt.Sprintf("%s&oss_part_size=%v", urlWithOss, dest.OssInfo.UploadPartSize)
 
 			if err := os.RemoveAll(dest.Path); err != nil {
 				return "", xerrors.Errorf("removing dest: %w", err)

@@ -118,13 +118,21 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 	}
 
 	if oss {
+		partSize, err := strconv.ParseInt(r.Form["oss_part_size"][0], 10, 64)
+		if err != nil {
+			log.Errorf("fail to parse oss_part_size: %v", err)
+			partSize = 32 * 1024 * 1024 * 1024
+		}
+
 		ossCli, err := NewOSSClientWithSingleBucket(StorageOSSInfo{
-			URL:        r.Form["oss_url"][0],
-			AccessKey:  r.Form["oss_access_key"][0],
-			SecretKey:  r.Form["oss_secret_key"][0],
-			BucketName: r.Form["oss_bucket_name"][0],
-			Prefix:     r.Form["oss_prefix"][0],
-			CanWrite:   true,
+			URL:            r.Form["oss_url"][0],
+			AccessKey:      r.Form["oss_access_key"][0],
+			SecretKey:      r.Form["oss_secret_key"][0],
+			BucketName:     r.Form["oss_bucket_name"][0],
+			Prefix:         r.Form["oss_prefix"][0],
+			Region:         r.Form["oss_region"][0],
+			UploadPartSize: partSize,
+			CanWrite:       true,
 		})
 
 		if err != nil {

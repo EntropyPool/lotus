@@ -714,6 +714,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 				ossInfo.LandedDir = p.local
 				ossInfo.SectorName = storiface.SectorName(sid.ID)
 				ossInfo.Region = p.ossInfo.Region
+				ossInfo.UploadPartSize = p.ossInfo.UploadPartSize
 				ossInfo.MultiRanges = p.ossInfo.MultiRanges
 			}
 
@@ -789,6 +790,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 			ossInfo.SectorName = storiface.SectorName(sid.ID)
 			ossInfo.Region = bestPath.ossInfo.Region
 			ossInfo.MultiRanges = bestPath.ossInfo.MultiRanges
+			ossInfo.UploadPartSize = bestPath.ossInfo.UploadPartSize
 		}
 
 		storiface.SetPathExtByType(&storageIDs, fileType, bestPath.oss, bestPath.ossClient, ossInfo)

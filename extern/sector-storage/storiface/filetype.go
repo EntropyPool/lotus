@@ -84,15 +84,16 @@ func (t SectorFileType) All() [FileTypes]bool {
 }
 
 type SectorOSSInfo struct {
-	URL         string
-	LandedDir   string
-	AccessKey   string
-	SecretKey   string
-	BucketName  string
-	SectorName  string
-	Prefix      string
-	Region      string
-	MultiRanges bool
+	URL            string
+	LandedDir      string
+	AccessKey      string
+	SecretKey      string
+	BucketName     string
+	SectorName     string
+	Prefix         string
+	Region         string
+	UploadPartSize int64
+	MultiRanges    bool
 }
 
 type SectorPath struct {
