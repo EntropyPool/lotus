@@ -40,7 +40,7 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 	chanBad := make(chan badSector)
 	chanErr := make(chan error)
 
-	chanProofStart := make(chan struct{})
+	chanProofStart := make(chan struct{}, 2)
 	chanProofDone := make(chan struct{})
 	defer close(chanProofStart)
 	defer close(chanProofDone)
@@ -240,7 +240,7 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 		}(sector)
 	}
 
-	go func() { chanProofStart <- struct{}{} }()
+	chanProofStart <- struct{}{}
 
 	go func() {
 		waitGroup.Wait()
@@ -261,7 +261,7 @@ waitForCheck:
 				return nil, err
 			}
 		case <-chanProofDone:
-			go func() { chanProofStart <- struct{}{} }()
+			chanProofStart <- struct{}{}
 		}
 	}
 
