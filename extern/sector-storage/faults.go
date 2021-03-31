@@ -118,6 +118,8 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 				sealedSectorPathInfo.LandedDir = sealedSectorPath.OssInfo.LandedDir
 				sealedSectorPathInfo.BucketName = sealedSectorPath.OssInfo.BucketName
 				sealedSectorPathInfo.SectorName = sealedSectorPath.OssInfo.SectorName
+				sealedSectorPathInfo.Region = sealedSectorPath.OssInfo.Region
+				sealedSectorPathInfo.MultiRanges = sealedSectorPath.OssInfo.MultiRanges
 			} else {
 				localToCheck[sealedPath] = 1
 			}
@@ -137,6 +139,8 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 				cacheSectorPathInfo.LandedDir = cacheSectorPath.OssInfo.LandedDir
 				cacheSectorPathInfo.BucketName = cacheSectorPath.OssInfo.BucketName
 				cacheSectorPathInfo.SectorName = cacheSectorPath.OssInfo.SectorName
+				cacheSectorPathInfo.Region = cacheSectorPath.OssInfo.Region
+				cacheSectorPathInfo.MultiRanges = cacheSectorPath.OssInfo.MultiRanges
 			} else {
 				localToCheck[filepath.Join(cachePath, "t_aux")] = 0
 				localToCheck[filepath.Join(cachePath, "p_aux")] = 0
