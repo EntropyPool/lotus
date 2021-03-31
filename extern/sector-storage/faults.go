@@ -39,6 +39,8 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 	}
 	chanBad := make(chan badSector)
 	chanErr := make(chan error)
+	chanProofStart := make(chan struct{})
+	chanProofDone := make(chan struct{})
 
 	// TODO: More better checks
 	for _, sector := range sectors {
@@ -204,6 +206,8 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 					return nil
 				}
 
+				<-chanProofStart
+
 				_, err = ffi.GenerateSingleVanillaProof(ffi.PrivateSectorInfo{
 					SectorInfo: proof.SectorInfo{
 						SealProof:    sector.ProofType,
@@ -226,10 +230,14 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 					}
 					return nil
 				}
+
+				chanProofDone <- struct{}{}
 			}
 			return nil
 		}(sector)
 	}
+
+	chanProofStart <- struct{}{}
 
 	go func() {
 		waitGroup.Wait()
@@ -249,6 +257,8 @@ waitForCheck:
 			if err != nil {
 				return nil, err
 			}
+		case <-chanProofDone:
+			chanProofStart <- struct{}{}
 		}
 	}
 
