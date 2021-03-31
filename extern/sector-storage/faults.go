@@ -39,8 +39,11 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 	}
 	chanBad := make(chan badSector)
 	chanErr := make(chan error)
+
 	chanProofStart := make(chan struct{})
 	chanProofDone := make(chan struct{})
+	defer close(chanProofStart)
+	defer close(chanProofDone)
 
 	// TODO: More better checks
 	for _, sector := range sectors {
@@ -237,7 +240,7 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 		}(sector)
 	}
 
-	chanProofStart <- struct{}{}
+	go func() { chanProofStart <- struct{}{} }()
 
 	go func() {
 		waitGroup.Wait()
@@ -258,7 +261,7 @@ waitForCheck:
 				return nil, err
 			}
 		case <-chanProofDone:
-			chanProofStart <- struct{}{}
+			go func() { chanProofStart <- struct{}{} }()
 		}
 	}
 
