@@ -32,6 +32,7 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 
 	var bad = make(map[abi.SectorID]string)
 	var waitGroup sync.WaitGroup
+	var proofMutex sync.Mutex
 
 	type badSector struct {
 		sid abi.SectorID
@@ -40,16 +41,12 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 	chanBad := make(chan badSector, 10)
 	chanErr := make(chan error, 10)
 
-	chanProofStart := make(chan struct{}, 10)
-	chanProofDone := make(chan struct{}, 10)
-
 	// TODO: More better checks
 	for _, sector := range sectors {
 		waitGroup.Add(1)
 
 		go func(sector storage.SectorRef) error {
 			defer waitGroup.Done()
-			defer func() { chanProofDone <- struct{}{} }()
 
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
@@ -212,7 +209,8 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 					return nil
 				}
 
-				<-chanProofStart
+				proofMutex.Lock()
+				defer proofMutex.Unlock()
 
 				_, err = ffi.GenerateSingleVanillaProof(ffi.PrivateSectorInfo{
 					SectorInfo: proof.SectorInfo{
@@ -241,27 +239,10 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 		}(sector)
 	}
 
-	chanProofStart <- struct{}{}
-
 	go func() {
 		waitGroup.Wait()
 		close(chanBad)
 		close(chanErr)
-		close(chanProofDone)
-	}()
-
-	go func() {
-	waitProofDone:
-		for {
-			select {
-			case _, ok := <-chanProofDone:
-				if !ok {
-					close(chanProofStart)
-					break waitProofDone
-				}
-				chanProofStart <- struct{}{}
-			}
-		}
 	}()
 
 waitForCheck:
