@@ -61,9 +61,9 @@ func (adjuster *FeeAdjuster) adjustFeeForAddress(cctx *cli.Context, address addr
 
 	adjuster.nonceTss[address] = nts
 
-	if msgCount < 20 && time.Now().Before(nts.firstAppear.Add(20*time.Minute)) {
+	if false && msgCount < 20 && time.Now().Before(nts.firstAppear.Add(20*time.Minute)) {
 		log.Infof("%v | %v only have %v messages, and %v + 20Min < %v, wait for a moment",
-			name, address, nts.firstAppear, time.Now())
+			name, address, msgCount, nts.firstAppear, time.Now())
 		return
 	}
 
@@ -91,12 +91,14 @@ func (adjuster *FeeAdjuster) adjustFeeForAddresses(cctx *cli.Context, addresses 
 func (adjuster *FeeAdjuster) adjustFee(cctx *cli.Context) {
 	nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
 	if err != nil {
+		log.Errorf("cannot get storage miner api: %v", err)
 		return
 	}
 	defer closer()
 
 	api, acloser, err := lcli.GetFullNodeAPI(cctx)
 	if err != nil {
+		log.Errorf("cannot get node miner api: %v", err)
 		return
 	}
 	defer acloser()
@@ -105,16 +107,19 @@ func (adjuster *FeeAdjuster) adjustFee(cctx *cli.Context) {
 
 	maddr, err := nodeApi.ActorAddress(ctx)
 	if err != nil {
+		log.Errorf("cannot get miner address: %v", err)
 		return
 	}
 
 	mi, err := api.StateMinerInfo(ctx, maddr, types.EmptyTSK)
 	if err != nil {
+		log.Errorf("cannot state miner %v info: %v", maddr, err)
 		return
 	}
 
 	ac, err := nodeApi.ActorAddressConfig(ctx)
 	if err != nil {
+		log.Errorf("cannot get miner %v config: %v", maddr, err)
 		return
 	}
 
@@ -139,7 +144,6 @@ func (adjuster *FeeAdjuster) adjustFee(cctx *cli.Context) {
 		addrs[ca] = "CommitControl"
 	}
 
-	addrs[mi.Owner] = "Owner"
 	addrs[mi.Worker] = "Worker"
 
 	for addr, _ := range addrs {
