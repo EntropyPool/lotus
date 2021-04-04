@@ -41,13 +41,13 @@ func (adjuster *FeeAdjuster) adjustFeeForAddress(cctx *cli.Context, address addr
 		return
 	}
 
-	msgCount := 0
 	nts := adjuster.nonceTss[address]
 	var minNonce uint64 = 0
+	msgs := []*types.SignedMessage{}
 
 	for _, p := range pending {
 		if p.Message.From == address {
-			msgCount += 1
+			msgs = append(msgs, p)
 			if p.Message.Nonce < nts.nonce {
 				minNonce = p.Message.Nonce
 			}
@@ -61,9 +61,9 @@ func (adjuster *FeeAdjuster) adjustFeeForAddress(cctx *cli.Context, address addr
 
 	adjuster.nonceTss[address] = nts
 
-	if false && msgCount < 20 && time.Now().Before(nts.firstAppear.Add(20*time.Minute)) {
+	if len(msgs) < 20 && time.Now().Before(nts.firstAppear.Add(20*time.Minute)) {
 		log.Infof("%v | %v only have %v messages, and %v + 20Min < %v, wait for a moment",
-			name, address, msgCount, nts.firstAppear, time.Now())
+			name, address, len(msgs), nts.firstAppear, time.Now())
 		return
 	}
 
@@ -79,7 +79,46 @@ func (adjuster *FeeAdjuster) adjustFeeForAddress(cctx *cli.Context, address addr
 		return
 	}
 
-	log.Infof("balance: %v, account key: %v", b, k)
+	basefee := ts.MinTicketBlock().ParentBaseFee
+	basefee = big.Mul(basefee, big.NewInt(3))
+	if adjuster.maxFee.LessThan(basefee) {
+		log.Infof("basefee %v > %v, use limited one", basefee, adjuster.maxFee)
+		basefee = adjuster.maxFee
+	}
+
+	for _, msg := range msgs {
+		msg.Message.GasLimit = msg.Message.GasLimit * 110 / 100
+		msg.Message.GasPremium = big.Mul(msg.Message.GasPremium, big.NewInt(1252))
+		msg.Message.GasPremium = big.Div(msg.Message.GasPremium, big.NewInt(1000))
+
+		premium := big.Mul(msg.Message.GasPremium, big.NewInt(msg.Message.GasLimit))
+		feeLimit := big.Add(premium, basefee)
+
+		if adjuster.maxFee.LessThan(feeLimit) {
+			feeLimit = adjuster.maxFee
+		}
+
+		if b.LessThan(feeLimit) {
+			log.Errorf("%v | %v not enough funds - %v", name, address, k)
+			return
+		}
+
+		smsg, err := api.WalletSignMessage(ctx, msg.Message.From, &msg.Message)
+		if err != nil {
+			log.Errorf("fail to sign message: %v", err)
+			return
+		}
+
+		cid, err := api.MpoolPush(ctx, smsg)
+		if err != nil {
+			log.Errorf("failed to push new message to mempool: %w", err)
+			return
+		}
+
+		log.Infof("%v | %v Nonce %v: feecap -> %v | %v | %v",
+			name, address, msg.Message.Nonce,
+			msg.Message.GasFeeCap, basefee, cid)
+	}
 }
 
 func (adjuster *FeeAdjuster) adjustFeeForAddresses(cctx *cli.Context, addresses map[address.Address]string) {
