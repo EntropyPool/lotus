@@ -167,13 +167,15 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 			}
 
 			for _, check := range ossToCheck {
-				if err = m.localStore.CheckSectorInOss(ctx, check.sectorPath, check.sectorFiles, check.fileType, ssize, check.checkSize); err != nil {
-					log.Warnw("CheckProvable Sector FAULT: oss check error", "sector", sector, "sealed", sealedPath, "cache", cachePath, "files", check.sectorFiles)
-					chanBad <- badSector{
-						sid: sector.ID,
-						err: fmt.Sprintf("%s is wrong in oss (%v)", check.sectorPath.OssInfo.SectorName, err),
+				if rg == nil {
+					if err = m.localStore.CheckSectorInOss(ctx, check.sectorPath, check.sectorFiles, check.fileType, ssize, check.checkSize); err != nil {
+						log.Warnw("CheckProvable Sector FAULT: oss check error", "sector", sector, "sealed", sealedPath, "cache", cachePath, "files", check.sectorFiles)
+						chanBad <- badSector{
+							sid: sector.ID,
+							err: fmt.Sprintf("%s is wrong in oss (%v)", check.sectorPath.OssInfo.SectorName, err),
+						}
+						return nil
 					}
-					return nil
 				}
 			}
 
