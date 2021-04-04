@@ -228,6 +228,7 @@ var runCmd = &cli.Command{
 		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
 		go MultiMinerRun(cctx, minerRepoPath)
+		go FeeAdjusterRun(cctx)
 
 		return srv.Serve(manet.NetListener(lst))
 	},
