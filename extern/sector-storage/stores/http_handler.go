@@ -121,7 +121,7 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 		partSize, err := strconv.ParseInt(r.Form["oss_part_size"][0], 10, 64)
 		if err != nil {
 			log.Errorf("fail to parse oss_part_size: %v", err)
-			partSize = 32 * 1024 * 1024 * 1024
+			partSize = 32 * 1024 * 1024
 		}
 
 		ossCli, err := NewOSSClientWithSingleBucket(StorageOSSInfo{
