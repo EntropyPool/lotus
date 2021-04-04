@@ -1,10 +1,10 @@
 package stores
 
 import (
-	"fmt"
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"math/bits"
 	"math/rand"
@@ -154,10 +154,10 @@ func (p *path) sectorPath(sid abi.SectorID, fileType storiface.SectorFileType) s
 
 func NewLocal(ctx context.Context, ls LocalStorage, index SectorIndex, urls []string) (*Local, error) {
 	l := &Local{
-		localStorage:   ls,
-		index:          index,
-		urls:           urls,
-		paths:          map[ID]*path{},
+		localStorage: ls,
+		index:        index,
+		urls:         urls,
+		paths:        map[ID]*path{},
 	}
 	return l, l.open(ctx)
 }
@@ -581,21 +581,23 @@ func (st *Local) checkPathIntegrity(ctx context.Context, ssize abi.SectorSize, p
 	sectorSize := ssize
 
 	if p.oss {
-		files := []string{spath}
-		var err error
+		/*
+				files := []string{spath}
+				var err error
 
-		log.Infof("check %s exists in oss start", spath)
-        if fileType == storiface.FTCache {
-			files = getCacheFilesForSectorSize(spath, ssize)
-			err = st.checkSectorInOss(ctx, p.ossClient, p.local, storiface.SectorName(sector.ID), files, fileType, ssize, false)
-		} else {
-			err = st.checkSectorInOss(ctx, p.ossClient, p.local, storiface.SectorName(sector.ID), files, fileType, ssize, true)
-		}
-		log.Infof("check %s exists in oss end: %v", spath, err)
-		if err != nil {
-			log.Errorf("%s: stat [%v]", spath, err)
-			return false
-		}
+				log.Infof("check %s exists in oss start", spath)
+		        if fileType == storiface.FTCache {
+					files = getCacheFilesForSectorSize(spath, ssize)
+					err = st.checkSectorInOss(ctx, p.ossClient, p.local, storiface.SectorName(sector.ID), files, fileType, ssize, false)
+				} else {
+					err = st.checkSectorInOss(ctx, p.ossClient, p.local, storiface.SectorName(sector.ID), files, fileType, ssize, true)
+				}
+				log.Infof("check %s exists in oss end: %v", spath, err)
+				if err != nil {
+					log.Errorf("%s: stat [%v]", spath, err)
+					return false
+				}
+		*/
 	} else {
 		fileInfo, err := os.Stat(spath)
 		if nil != err {
