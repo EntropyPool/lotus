@@ -106,9 +106,10 @@ var minerChainEndpointsCmd = &cli.Command{
 		if !replace {
 			old, err := nodeApi.GetEnvironment(ctx, minerChainEndpointsEnvKey)
 			if err != nil {
-				return xerrors.Errorf("cannot get environment %v: %v", minerChainEndpointsEnvKey, err)
+				log.Warnf("cannot get environment %v: %v", minerChainEndpointsEnvKey, err)
+			} else {
+				endpoints = strings.Join([]string{endpoints}, old)
 			}
-			endpoints = strings.Join([]string{endpoints}, old)
 		}
 
 		return nodeApi.SetEnvironment(ctx, minerChainEndpointsEnvKey, endpoints)

@@ -12,6 +12,7 @@ import (
 
 	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 
+	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/lotus/chain/gen/slashfilter"
 	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
 
@@ -80,15 +81,8 @@ func NewMiner(api api.FullNode, epp gen.WinningPoStProver, addr address.Address,
 			evtTypeBlockMined: j.RegisterEventType("miner", "block_mined"),
 		},
 		journal:        j,
-		chainEndpoints: map[string]http.Header{},
-		tipsetWatcher:  make(chan *tipsetInput),
-		watcherQuit:    make(chan string),
+		chainEndpoints: map[string]chainEndpoint{},
 	}
-}
-
-type tipsetInput struct {
-	tipset *types.TipSet
-	api    api.FullNode
 }
 
 type Miner struct {
@@ -96,9 +90,7 @@ type Miner struct {
 
 	epp gen.WinningPoStProver
 
-	tipsetWatcher  chan *tipsetInput
-	watcherQuit    chan string
-	chainEndpoints map[string]http.Header
+	chainEndpoints map[string]chainEndpoint
 	storageMiner   *storage.Miner
 
 	lk       sync.Mutex
@@ -172,37 +164,26 @@ func (m *Miner) niceSleep(d time.Duration) bool {
 	}
 }
 
-func (m *Miner) watchChainApi(ctx context.Context, api api.FullNode) {
-	for {
-		bts, err := api.ChainHead(ctx)
-		if err != nil {
-			log.Errorf("fail to watch chain head: %v", err)
-			return
-		}
-		go func() {
-			m.tipsetWatcher <- &tipsetInput{
-				tipset: bts,
-				api:    api,
-			}
-		}()
-		if !m.niceSleep(time.Second * 3) {
-			continue
-		}
-	}
+type chainEndpoint struct {
+	addr    string
+	headers http.Header
+	api     api.FullNode
+	closer  jsonrpc.ClientCloser
 }
 
 func (m *Miner) watchChainEndpoint(ctx context.Context, addr string, headers http.Header) {
-	log.Infof("starting watch chain endpoint: %v | %v", addr, headers)
-	defer func() { m.watcherQuit <- addr }()
-
 	api, closer, err := client.NewFullNodeRPC(ctx, addr, headers)
 	if err != nil {
 		log.Errorf("fail to watch chain endpoint %v: %v", addr, err)
 		return
 	}
-	defer closer()
 
-	m.watchChainApi(ctx, api)
+	m.chainEndpoints[addr] = chainEndpoint{
+		addr:    addr,
+		headers: headers,
+		api:     api,
+		closer:  closer,
+	}
 }
 
 func (m *Miner) updateChainEndpoints(ctx context.Context) {
@@ -212,12 +193,16 @@ func (m *Miner) updateChainEndpoints(ctx context.Context) {
 		return
 	}
 
+	m.chainEndpoints["mainnode"] = chainEndpoint{
+		addr: "mainnode",
+		api:  m.api,
+	}
+
 	for addr, headers := range endpoints {
 		if _, ok := m.chainEndpoints[addr]; ok {
 			continue
 		}
-		m.chainEndpoints[addr] = headers
-		go m.watchChainEndpoint(ctx, addr, headers)
+		m.watchChainEndpoint(ctx, addr, headers)
 	}
 }
 
@@ -226,7 +211,6 @@ func (m *Miner) mine(ctx context.Context) {
 	defer span.End()
 
 	go m.doWinPoStWarmup(ctx)
-	go m.watchChainApi(ctx, m.api)
 
 	var lastBase MiningBase
 minerLoop:
@@ -238,8 +222,6 @@ minerLoop:
 			m.stopping = nil
 			close(stopping)
 			return
-		case addr := <-m.watcherQuit:
-			delete(m.chainEndpoints, addr)
 
 		default:
 		}
@@ -257,9 +239,11 @@ minerLoop:
 		var injectNulls abi.ChainEpoch
 
 		for {
-			prebase, err := m.GetBestMiningCandidateFromWatcher(ctx)
+			prebase, err := m.GetBestMiningCandidateFromMultiFullnode(ctx)
 			if err != nil {
-				log.Errorf("failed to get best mining candidate: %s", err)
+				if !m.niceSleep(time.Second * 1) {
+					return
+				}
 				continue
 			}
 
@@ -427,25 +411,51 @@ func (m *Miner) GetBestMiningCandidate(ctx context.Context) (*MiningBase, error)
 	return m.lastWork, nil
 }
 
-func (m *Miner) GetBestMiningCandidateFromWatcher(ctx context.Context) (*MiningBase, error) {
+func (m *Miner) GetBestMiningCandidateFromMultiFullnode(ctx context.Context) (*MiningBase, error) {
+	var mb *MiningBase
+	var mbe *MiningBase
+	var err error
+
+	for addr, endpoint := range m.chainEndpoints {
+		mbe, err = m.GetBestMiningCandidateFromFullnode(ctx, endpoint.api)
+		if err != nil {
+			log.Errorf("fail to get mining candidate from %v: %v", addr, err)
+			delete(m.chainEndpoints, addr)
+			if endpoint.closer != nil {
+				endpoint.closer()
+			}
+			continue
+		}
+		log.Infof("success to get mining candidate from %v", addr)
+		mb = mbe
+	}
+
+	if mb == nil {
+		return nil, err
+	}
+
+	return mb, nil
+}
+
+func (m *Miner) GetBestMiningCandidateFromFullnode(ctx context.Context, api api.FullNode) (*MiningBase, error) {
 	m.lk.Lock()
 	defer m.lk.Unlock()
 
-	input := <-m.tipsetWatcher
-
-	bts := input.tipset
-	m.api = input.api
+	bts, err := api.ChainHead(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	if m.lastWork != nil {
 		if m.lastWork.TipSet.Equals(bts) {
 			return m.lastWork, nil
 		}
 
-		btsw, err := m.api.ChainTipSetWeight(ctx, bts.Key())
+		btsw, err := api.ChainTipSetWeight(ctx, bts.Key())
 		if err != nil {
 			return nil, err
 		}
-		ltsw, err := m.api.ChainTipSetWeight(ctx, m.lastWork.TipSet.Key())
+		ltsw, err := api.ChainTipSetWeight(ctx, m.lastWork.TipSet.Key())
 		if err != nil {
 			m.lastWork = nil
 			return nil, err
@@ -457,6 +467,8 @@ func (m *Miner) GetBestMiningCandidateFromWatcher(ctx context.Context) (*MiningB
 	}
 
 	m.lastWork = &MiningBase{TipSet: bts}
+	m.api = api
+
 	return m.lastWork, nil
 }
 
@@ -481,10 +493,12 @@ func (m *Miner) mineOne(ctx context.Context, base *MiningBase) (*types.BlockMsg,
 		return nil, xerrors.Errorf("failed to get mining base info: %w", err)
 	}
 	if mbi == nil {
+		log.Warnf("cannot get mining base: %v | %v | %v", m.address, round, base.TipSet.Key())
 		return nil, nil
 	}
 	if !mbi.EligibleForMining {
 		// slashed or just have no power yet
+		log.Infof("%v is not eligible for mining", m.address)
 		return nil, nil
 	}
 
@@ -497,7 +511,9 @@ func (m *Miner) mineOne(ctx context.Context, base *MiningBase) (*types.BlockMsg,
 
 	tPowercheck := build.Clock.Now()
 
-	log.Infof("Time delta between now and our mining base: %ds (nulls: %d)", uint64(build.Clock.Now().Unix())-base.TipSet.MinTimestamp(), base.NullRounds)
+	log.Infof("Time delta between now and our mining base: %ds | %v (nulls: %d)",
+		uint64(build.Clock.Now().Unix())-base.TipSet.MinTimestamp(),
+		base.TipSet.Height(), base.NullRounds)
 
 	rbase := beaconPrev
 	if len(bvals) > 0 {

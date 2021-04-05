@@ -36,6 +36,7 @@ func main() {
 		stopCmd,
 		configCmd,
 		backupCmd,
+		minerChainEndpointsCmd,
 		lcli.WithCategory("multi", multiMinerConfigCmd),
 		lcli.WithCategory("chain", actorCmd),
 		lcli.WithCategory("chain", infoCmd),
