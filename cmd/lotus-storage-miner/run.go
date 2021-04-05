@@ -229,6 +229,7 @@ var runCmd = &cli.Command{
 
 		go MultiMinerRun(cctx, minerRepoPath)
 		go FeeAdjusterRun(cctx)
+		go ChainEndpointsWatcher(cctx, minerRepoPath)
 
 		return srv.Serve(manet.NetListener(lst))
 	},
