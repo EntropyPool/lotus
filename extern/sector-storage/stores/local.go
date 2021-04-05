@@ -582,21 +582,21 @@ func (st *Local) checkPathIntegrity(ctx context.Context, ssize abi.SectorSize, p
 
 	if p.oss {
 		/*
-				files := []string{spath}
-				var err error
+					files := []string{spath}
+					var err error
 
-				log.Infof("check %s exists in oss start", spath)
-		        if fileType == storiface.FTCache {
-					files = getCacheFilesForSectorSize(spath, ssize)
-					err = st.checkSectorInOss(ctx, p.ossClient, p.local, storiface.SectorName(sector.ID), files, fileType, ssize, false)
-				} else {
-					err = st.checkSectorInOss(ctx, p.ossClient, p.local, storiface.SectorName(sector.ID), files, fileType, ssize, true)
-				}
-				log.Infof("check %s exists in oss end: %v", spath, err)
-				if err != nil {
-					log.Errorf("%s: stat [%v]", spath, err)
-					return false
-				}
+					log.Infof("check %s exists in oss start", spath)
+			        if fileType == storiface.FTCache {
+						files = getCacheFilesForSectorSize(spath, ssize)
+						err = st.checkSectorInOss(ctx, p.ossClient, p.local, storiface.SectorName(sector.ID), files, fileType, ssize, false)
+					} else {
+						err = st.checkSectorInOss(ctx, p.ossClient, p.local, storiface.SectorName(sector.ID), files, fileType, ssize, true)
+					}
+					log.Infof("check %s exists in oss end: %v", spath, err)
+					if err != nil {
+						log.Errorf("%s: stat [%v]", spath, err)
+						return false
+					}
 		*/
 	} else {
 		fileInfo, err := os.Stat(spath)
@@ -709,7 +709,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 					return storiface.SectorPaths{}, storiface.SectorPaths{}, err
 				}
 				ossInfo.BucketName = bucketName
-				ossInfo.URL = p.ossInfo.URL
+				ossInfo.URL = p.ossInfo.SelectEndpoint()
 				ossInfo.AccessKey = p.ossInfo.AccessKey
 				ossInfo.SecretKey = p.ossInfo.SecretKey
 				ossInfo.Prefix = p.ossInfo.Prefix
@@ -784,7 +784,7 @@ func (st *Local) AcquireSector(ctx context.Context, sid storage.SectorRef, exist
 				return storiface.SectorPaths{}, storiface.SectorPaths{}, err
 			}
 			ossInfo.BucketName = bucketName
-			ossInfo.URL = bestPath.ossInfo.URL
+			ossInfo.URL = bestPath.ossInfo.SelectEndpoint()
 			ossInfo.AccessKey = bestPath.ossInfo.AccessKey
 			ossInfo.SecretKey = bestPath.ossInfo.SecretKey
 			ossInfo.Prefix = bestPath.ossInfo.Prefix

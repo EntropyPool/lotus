@@ -85,7 +85,7 @@ func (info *OSSInfo) Equal(another *OSSInfo) bool {
 		info.Prefix == another.Prefix
 }
 
-func (info *OSSInfo) endpoint() string {
+func (info *OSSInfo) SelectEndpoint() string {
 	if 0 < len(info.Endpoints) {
 		return fmt.Sprintf("http://%v", info.Endpoints[rand.Intn(len(info.Endpoints))])
 	} else {
@@ -96,7 +96,7 @@ func (info *OSSInfo) endpoint() string {
 func baseOSSClient(info StorageOSSInfo) (*OSSClient, error) {
 	sess, err := session.NewSession(&aws.Config{
 		Credentials:      credentials.NewStaticCredentials(info.AccessKey, info.SecretKey, ""),
-		Endpoint:         aws.String(info.endpoint()),
+		Endpoint:         aws.String(info.SelectEndpoint()),
 		Region:           aws.String(info.Region),
 		DisableSSL:       aws.Bool(true),
 		S3ForcePathStyle: aws.Bool(true),
