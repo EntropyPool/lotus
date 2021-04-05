@@ -401,6 +401,34 @@ func AnnounceMaster(ctx *cli.Context, apiInfo string) error {
 	return minerApi.AnnounceMaster(ctx.Context, addrMaster, headersMaster, addrSlave, headersSlave)
 }
 
+func UpdateChainEndpoints(ctx *cli.Context, apiInfos []string) error {
+	minerApi, closer, err := GetStorageMinerAPI(ctx)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	endpoints := map[string]http.Header{}
+	for _, ai := range apiInfos {
+		ainfo, err := GetAPIInfoWithEnvValue(ctx, ai)
+		if err != nil {
+			return err
+		}
+
+		addr, headers, err := GetRawAPIWithAPIInfo(ctx, ainfo)
+		if err != nil {
+			return err
+		}
+		endpoints[addr] = headers
+	}
+
+	if len(endpoints) == 0 {
+		return xerrors.Errorf("empty chain endpoints info")
+	}
+
+	return minerApi.UpdateChainEndpoints(ctx.Context, endpoints)
+}
+
 func AnnounceMyselfAsMaster(ctx *cli.Context) error {
 	minerApi, closer, err := GetStorageMinerAPI(ctx)
 	if err != nil {
