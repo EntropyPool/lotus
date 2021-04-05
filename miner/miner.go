@@ -606,11 +606,13 @@ func (m *Miner) computeTicket(ctx context.Context, brand *types.BeaconEntry, bas
 
 	input, err := store.DrawRandomness(brand.Data, crypto.DomainSeparationTag_TicketProduction, round-build.TicketRandomnessLookback, buf.Bytes())
 	if err != nil {
+		log.Errorf("fail to draw randomness for %v: %v", m.address, err)
 		return nil, err
 	}
 
 	vrfOut, err := gen.ComputeVRF(ctx, m.api.WalletSign, mbi.WorkerKey, input)
 	if err != nil {
+		log.Errorf("fail to draw randomness for %v worker %v: %v", m.address, mbi.WorkerKey, err)
 		return nil, err
 	}
 
