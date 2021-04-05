@@ -42,6 +42,7 @@ var log = logging.Logger("storageminer")
 
 type Miner struct {
 	api     storageMinerApi
+	haApis  []api.FullNode
 	feeCfg  config.MinerFeeConfig
 	h       host.Host
 	sealer  sectorstorage.SectorManager
@@ -117,8 +118,8 @@ type storageMinerApi interface {
 	WalletBalance(context.Context, address.Address) (types.BigInt, error)
 	WalletHas(context.Context, address.Address) (bool, error)
 
-    SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
-    SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
+	SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
+	SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
 }
 
 func NewMiner(api storageMinerApi, maddr address.Address, h host.Host, ds datastore.Batching, sealer sectorstorage.SectorManager, sc sealing.SectorIDCounter, verif ffiwrapper.Verifier, gsd dtypes.GetSealingConfigFunc, feeCfg config.MinerFeeConfig, journal journal.Journal, as *AddressSelector) (*Miner, error) {
@@ -141,6 +142,10 @@ func NewMiner(api storageMinerApi, maddr address.Address, h host.Host, ds datast
 	return m, nil
 }
 
+func (m *Miner) SetHAAPIs(haApis []api.FullNode) {
+	m.haApis = haApis
+}
+
 func (m *Miner) Run(ctx context.Context) error {
 	if err := m.runPreflightChecks(ctx); err != nil {
 		return xerrors.Errorf("miner preflight checks failed: %w", err)
@@ -152,9 +157,9 @@ func (m *Miner) Run(ctx context.Context) error {
 	}
 
 	fc := sealing.FeeConfig{
-		MaxPreCommitGasFee:  abi.TokenAmount(m.feeCfg.MaxPreCommitGasFee),
-		MaxCommitGasFee:     abi.TokenAmount(m.feeCfg.MaxCommitGasFee),
-		MaxTerminateGasFee:  abi.TokenAmount(m.feeCfg.MaxTerminateGasFee),
+		MaxPreCommitGasFee: abi.TokenAmount(m.feeCfg.MaxPreCommitGasFee),
+		MaxCommitGasFee:    abi.TokenAmount(m.feeCfg.MaxCommitGasFee),
+		MaxTerminateGasFee: abi.TokenAmount(m.feeCfg.MaxTerminateGasFee),
 	}
 
 	evts := events.NewEvents(ctx, m.api)
