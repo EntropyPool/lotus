@@ -158,7 +158,6 @@ var runCmd = &cli.Command{
 					return multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/" + cctx.String("miner-api"))
 				})),
 			node.Override(new(api.FullNode), nodeApi),
-			node.Override(new([]api.FullNode), []api.FullNode{nodeApi}),
 		)
 		if err != nil {
 			return xerrors.Errorf("creating node: %w", err)

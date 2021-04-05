@@ -185,7 +185,6 @@ type StorageMinerParams struct {
 	Lifecycle          fx.Lifecycle
 	MetricsCtx         helpers.MetricsCtx
 	API                lapi.FullNode
-	HAAPIs             []lapi.FullNode `group:"haapis"`
 	Host               host.Host
 	MetadataDS         dtypes.MetadataDS
 	Sealer             sectorstorage.SectorManager
@@ -203,7 +202,6 @@ func StorageMiner(fc config.MinerFeeConfig) func(params StorageMinerParams) (*st
 			mctx   = params.MetricsCtx
 			lc     = params.Lifecycle
 			api    = params.API
-			haApis = params.HAAPIs
 			sealer = params.Sealer
 			h      = params.Host
 			sc     = params.SectorIDCounter
@@ -226,7 +224,6 @@ func StorageMiner(fc config.MinerFeeConfig) func(params StorageMinerParams) (*st
 		}
 
 		fps.SetSealer(sealer)
-		fps.SetHAAPIs(haApis)
 
 		sm, err := storage.NewMiner(api, maddr, h, ds, sealer, sc, verif, gsd, fc, j, as)
 		if err != nil {

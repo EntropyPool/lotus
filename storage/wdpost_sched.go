@@ -25,7 +25,6 @@ import (
 
 type WindowPoStScheduler struct {
 	api              storageMinerApi
-	haApis           []api.FullNode
 	feeCfg           config.MinerFeeConfig
 	addrSel          *AddressSelector
 	prover           storage.Prover
@@ -74,10 +73,6 @@ func NewWindowedPoStScheduler(api storageMinerApi, fc config.MinerFeeConfig, as 
 
 func (s *WindowPoStScheduler) SetSealer(sealer sectorstorage.SectorManager) {
 	s.sealer = sealer
-}
-
-func (s *WindowPoStScheduler) SetHAAPIs(haApis []api.FullNode) {
-	s.haApis = haApis
 }
 
 type changeHandlerAPIImpl struct {
