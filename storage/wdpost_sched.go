@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"golang.org/x/xerrors"
@@ -12,6 +13,7 @@ import (
 	"github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/api/client"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
@@ -39,6 +41,8 @@ type WindowPoStScheduler struct {
 
 	evtTypes [4]journal.EventType
 	journal  journal.Journal
+
+	chainEndpointersFetcher func(context.Context) (map[string]http.Header, error)
 
 	// failed abi.ChainEpoch // eps
 	// failLk sync.Mutex
@@ -75,9 +79,44 @@ func (s *WindowPoStScheduler) SetSealer(sealer sectorstorage.SectorManager) {
 	s.sealer = sealer
 }
 
+func (s *WindowPoStScheduler) SetChainEndpointsFetcher(fetcher func(ctx context.Context) (map[string]http.Header, error)) {
+	s.chainEndpointersFetcher = fetcher
+}
+
 type changeHandlerAPIImpl struct {
 	storageMinerApi
 	*WindowPoStScheduler
+}
+
+func (s *WindowPoStScheduler) chainNotify(ctx context.Context) (<-chan []*api.HeadChange, error) {
+	ch, err := s.api.ChainNotify(ctx)
+	if err == nil {
+		return ch, nil
+	}
+
+	log.Errorf("ChainNotify error: %v", err)
+
+	endpoints, err := s.chainEndpointersFetcher(ctx)
+	if err != nil {
+		log.Errorf("fail to get chain endpoints: %v", err)
+		return nil, err
+	}
+
+	for addr, headers := range endpoints {
+		api, closer, err := client.NewFullNodeRPC(ctx, addr, headers)
+		if err != nil {
+			log.Errorf("fail to watch chain endpoint %v: %v", addr, err)
+			continue
+		}
+		defer closer()
+		ch, err = api.ChainNotify(ctx)
+		if err == nil {
+			s.api = api
+			return ch, nil
+		}
+	}
+
+	return nil, xerrors.Errorf("cannot find suitable fullnode")
 }
 
 func (s *WindowPoStScheduler) Run(ctx context.Context) {

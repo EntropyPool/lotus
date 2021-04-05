@@ -230,6 +230,10 @@ func StorageMiner(fc config.MinerFeeConfig) func(params StorageMinerParams) (*st
 			return nil, err
 		}
 
+		fps.SetChainEndpointsFetcher(func(ctx context.Context) (map[string]http.Header, error) {
+			return sm.GetChainEndpoints(ctx)
+		})
+
 		lc.Append(fx.Hook{
 			OnStart: func(context.Context) error {
 				go fps.Run(ctx)

@@ -40,6 +40,12 @@ func newChangeHandler(api changeHandlerAPI, actor address.Address) *changeHandle
 	return &changeHandler{api: api, actor: actor, proveHdlr: p, submitHdlr: s}
 }
 
+func (ch *changeHandler) updateApi(api changeHandlerAPI) {
+	ch.api = api
+	ch.submitHdlr.api = api
+	ch.proveHdlr.api = api
+}
+
 func (ch *changeHandler) start() {
 	go ch.proveHdlr.run()
 	go ch.submitHdlr.run()
