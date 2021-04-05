@@ -233,8 +233,6 @@ func StorageMiner(fc config.MinerFeeConfig) func(params StorageMinerParams) (*st
 			return nil, err
 		}
 
-		sm.SetHAAPIs(haApis)
-
 		lc.Append(fx.Hook{
 			OnStart: func(context.Context) error {
 				go fps.Run(ctx)

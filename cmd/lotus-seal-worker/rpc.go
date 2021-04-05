@@ -52,6 +52,14 @@ func (w *worker) SetEnvironment(ctx context.Context, envName string, envVal stri
 	return nil
 }
 
+func (w *worker) GetEnvironment(ctx context.Context, envName string) (string, error) {
+	val, ok := os.LookupEnv(envName)
+	if !ok {
+		return "", xerrors.Errorf("cannot find environment %v", envName)
+	}
+	return val, nil
+}
+
 func (w *worker) UnsetEnvironment(ctx context.Context, envName string) error {
 	os.Unsetenv(envName)
 	return nil

@@ -414,6 +414,7 @@ type StorageMinerStruct struct {
 		CheckProvable func(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, expensive bool) (map[abi.SectorNumber]string, error) `perm:"admin"`
 
 		SetEnvironment func(ctx context.Context, envName string, envVal string) error `perm:"admin"`
+		GetEnvironment func(ctx context.Context, envName string) (string, error)      `perm:"admin"`
 	}
 }
 
@@ -445,6 +446,7 @@ type WorkerStruct struct {
 		Remove           func(ctx context.Context, sector abi.SectorID) error           `perm:"admin"`
 		StorageAddLocal  func(ctx context.Context, path string) error                   `perm:"admin"`
 		SetEnvironment   func(ctx context.Context, envName string, envVal string) error `perm:"admin"`
+		GetEnvironment   func(ctx context.Context, envName string) (string, error)      `perm:"admin"`
 		UnsetEnvironment func(ctx context.Context, envName string) error                `perm:"admin"`
 
 		SetEnabled func(ctx context.Context, enabled bool) error `perm:"admin"`
@@ -1743,6 +1745,10 @@ func (c *StorageMinerStruct) SetEnvironment(ctx context.Context, envName string,
 	return c.Internal.SetEnvironment(ctx, envName, envVal)
 }
 
+func (c *StorageMinerStruct) GetEnvironment(ctx context.Context, envName string) (string, error) {
+	return c.Internal.GetEnvironment(ctx, envName)
+}
+
 // WorkerStruct
 
 func (w *WorkerStruct) Version(ctx context.Context) (build.Version, error) {
@@ -1827,6 +1833,10 @@ func (w *WorkerStruct) StorageAddLocal(ctx context.Context, path string) error {
 
 func (w *WorkerStruct) SetEnvironment(ctx context.Context, envName string, envVal string) error {
 	return w.Internal.SetEnvironment(ctx, envName, envVal)
+}
+
+func (w *WorkerStruct) GetEnvironment(ctx context.Context, envName string) (string, error) {
+	return w.Internal.GetEnvironment(ctx, envName)
 }
 
 func (w *WorkerStruct) UnsetEnvironment(ctx context.Context, envName string) error {

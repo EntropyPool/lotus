@@ -807,6 +807,14 @@ func (sm *StorageMinerAPI) SetEnvironment(ctx context.Context, envName string, e
 	return nil
 }
 
+func (sm *StorageMinerAPI) GetEnvironment(ctx context.Context, envName string) (string, error) {
+	val, ok := os.LookupEnv(envName)
+	if !ok {
+		return "", xerrors.Errorf("cannot find environment %v", envName)
+	}
+	return val, nil
+}
+
 func (sm *StorageMinerAPI) ActorAddressConfig(ctx context.Context) (api.AddressConfig, error) {
 	return sm.AddrSel.AddressConfig, nil
 }

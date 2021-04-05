@@ -31,6 +31,7 @@ type WorkerAPI interface {
 
 	StorageAddLocal(ctx context.Context, path string) error
 	SetEnvironment(ctx context.Context, envName string, envVal string) error
+	GetEnvironment(ctx context.Context, envName string) (string, error)
 	UnsetEnvironment(ctx context.Context, envName string) error
 
 	// SetEnabled marks the worker as enabled/disabled. Not that this setting

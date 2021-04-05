@@ -42,7 +42,6 @@ var log = logging.Logger("storageminer")
 
 type Miner struct {
 	api     storageMinerApi
-	haApis  []api.FullNode
 	feeCfg  config.MinerFeeConfig
 	h       host.Host
 	sealer  sectorstorage.SectorManager
@@ -140,10 +139,6 @@ func NewMiner(api storageMinerApi, maddr address.Address, h host.Host, ds datast
 	}
 
 	return m, nil
-}
-
-func (m *Miner) SetHAAPIs(haApis []api.FullNode) {
-	m.haApis = haApis
 }
 
 func (m *Miner) Run(ctx context.Context) error {

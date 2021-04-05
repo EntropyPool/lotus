@@ -172,6 +172,7 @@ type StorageMiner interface {
 	CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, expensive bool) (map[abi.SectorNumber]string, error)
 
 	SetEnvironment(ctx context.Context, envName string, envVal string) error
+	GetEnvironment(ctx context.Context, envName string) (string, error)
 }
 
 type SealRes struct {
