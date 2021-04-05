@@ -61,7 +61,7 @@ func ChainEndpointsWatcher(cctx *cli.Context, rootPath string) {
 	}
 
 	b, err := ioutil.ReadFile(filepath.Join(rootPath, minerChainEndpointsMeta))
-	if err != nil {
+	if err == nil {
 		json.Unmarshal(b, &chp.apiInfos)
 	}
 
