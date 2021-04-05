@@ -1,21 +1,70 @@
 package main
 
 import (
+	"encoding/json"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 type ChainEndpoints struct {
-	apiInfos []string
+	apiInfos map[string]struct{}
 }
 
 const minerChainEndpointsEnvKey = "MINER_CHAIN_ENDPOINTS"
 const minerChainEndpointsMeta = "minerchainendpoints.conf"
 
-func ChainEndpointsWatcher(cctx *cli.Context, rootPath string) {
+func updateAndNotifyChainEndpoints(cctx *cli.Context, rootPath string, chp *ChainEndpoints) {
+	new := false
 
+	eps := strings.Split(os.Getenv(minerChainEndpointsEnvKey), ";")
+	for _, ep := range eps {
+		if _, ok := chp.apiInfos[ep]; ok {
+			continue
+		}
+		chp.apiInfos[ep] = struct{}{}
+		new = true
+	}
+
+	if !new {
+		return
+	}
+
+	ainfos := []string{}
+	for ai, _ := range chp.apiInfos {
+		ainfos = append(ainfos, ai)
+	}
+
+	err := lcli.UpdateChainEndpoints(cctx, ainfos)
+	if err != nil {
+		log.Errorf("fail to update chain endpoints: %v", err)
+		return
+	}
+
+	b, _ := json.Marshal(chp.apiInfos)
+	ioutil.WriteFile(filepath.Join(rootPath, minerChainEndpointsMeta), b, 0666)
+}
+
+func ChainEndpointsWatcher(cctx *cli.Context, rootPath string) {
+	chp := &ChainEndpoints{
+		apiInfos: map[string]struct{}{},
+	}
+
+	b, err := ioutil.ReadFile(filepath.Join(rootPath, minerChainEndpointsMeta))
+	if err != nil {
+		json.Unmarshal(b, &chp.apiInfos)
+	}
+
+	ticker := time.NewTicker(5 * time.Minute)
+	for {
+		updateAndNotifyChainEndpoints(cctx, rootPath, chp)
+		<-ticker.C
+	}
 }
 
 var minerChainEndpointsCmd = &cli.Command{
