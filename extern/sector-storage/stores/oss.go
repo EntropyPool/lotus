@@ -123,9 +123,6 @@ func NewOSSClientWithSingleBucket(info StorageOSSInfo) (*OSSClient, error) {
 		return nil, err
 	}
 
-	log.Debugf("buckets from %v", info.URL)
-	log.Debugf("%v", buckets)
-
 	for _, bucket := range buckets.Buckets {
 		if *bucket.Name == info.BucketName {
 			ossCli.s3Uploader = s3manager.NewUploader(ossCli.s3Session, func(u *s3manager.Uploader) {
