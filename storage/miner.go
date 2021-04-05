@@ -52,7 +52,8 @@ type Miner struct {
 	verif   ffiwrapper.Verifier
 	addrSel *AddressSelector
 
-	maddr address.Address
+	chainEndpoints map[string]http.Header
+	maddr          address.Address
 
 	getSealConfig dtypes.GetSealingConfigFunc
 	sealing       *sealing.Sealing
@@ -138,6 +139,8 @@ func NewMiner(api storageMinerApi, maddr address.Address, h host.Host, ds datast
 		getSealConfig:  gsd,
 		journal:        journal,
 		sealingEvtType: journal.RegisterEventType("storage", "sealing_states"),
+
+		chainEndpoints: map[string]http.Header{},
 	}
 
 	return m, nil
@@ -191,12 +194,15 @@ func (m *Miner) Stop(ctx context.Context) error {
 	return m.sealing.Stop(ctx)
 }
 
-func (m *Miner) UpdateChainEndpoints(ctx context.Context, addrs []string, headers []http.Header) error {
+func (m *Miner) UpdateChainEndpoints(ctx context.Context, endpoints map[string]http.Header) error {
+	for addr, header := range endpoints {
+		m.chainEndpoints[addr] = header
+	}
 	return nil
 }
 
-func (m *Miner) GetChainEndpoints(ctx context.Context) ([]string, []http.Header, error) {
-	return nil, nil, nil
+func (m *Miner) GetChainEndpoints(ctx context.Context) (map[string]http.Header, error) {
+	return m.chainEndpoints, nil
 }
 
 func (m *Miner) runPreflightChecks(ctx context.Context) error {

@@ -456,12 +456,12 @@ func (sm *StorageMinerAPI) NotifySectorProving(ctx context.Context, sector stora
 	return sm.StorageMgr.NotifySectorProving(ctx, sector, infos)
 }
 
-func (sm *StorageMinerAPI) UpdateChainEndpoints(ctx context.Context, addrs []string, headers []http.Header) error {
-	return nil
+func (sm *StorageMinerAPI) UpdateChainEndpoints(ctx context.Context, endpoints map[string]http.Header) error {
+	return sm.Miner.UpdateChainEndpoints(ctx, endpoints)
 }
 
-func (sm *StorageMinerAPI) GetChainEndpoints(ctx context.Context) ([]string, []http.Header, error) {
-	return nil, nil, nil
+func (sm *StorageMinerAPI) GetChainEndpoints(ctx context.Context) (map[string]http.Header, error) {
+	return sm.Miner.GetChainEndpoints(ctx)
 }
 
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {
