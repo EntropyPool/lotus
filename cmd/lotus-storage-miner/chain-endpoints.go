@@ -20,24 +20,16 @@ const minerChainEndpointsEnvKey = "MINER_CHAIN_ENDPOINTS"
 const minerChainEndpointsMeta = "minerchainendpoints.conf"
 
 func updateAndNotifyChainEndpoints(cctx *cli.Context, rootPath string, chp *ChainEndpoints) {
-	new := false
-
 	env := os.Getenv(minerChainEndpointsEnvKey)
-	if len(env) == 0 {
-		return
-	}
-
 	eps := strings.Split(env, ";")
 	for _, ep := range eps {
+		if len(ep) == 0 {
+			continue
+		}
 		if _, ok := chp.apiInfos[ep]; ok {
 			continue
 		}
 		chp.apiInfos[ep] = struct{}{}
-		new = true
-	}
-
-	if !new {
-		return
 	}
 
 	ainfos := []string{}
@@ -62,7 +54,12 @@ func ChainEndpointsWatcher(cctx *cli.Context, rootPath string) {
 
 	b, err := ioutil.ReadFile(filepath.Join(rootPath, minerChainEndpointsMeta))
 	if err == nil {
-		json.Unmarshal(b, &chp.apiInfos)
+		err = json.Unmarshal(b, &chp.apiInfos)
+		if err != nil {
+			log.Errorf("cannot parse %v to json: %v", minerChainEndpointsMeta, err)
+		}
+	} else {
+		log.Errorf("cannot read %v json: %v", minerChainEndpointsMeta, err)
 	}
 
 	ticker := time.NewTicker(5 * time.Minute)
