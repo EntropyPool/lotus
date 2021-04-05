@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"golang.org/x/xerrors"
+	"math/rand"
 	"os"
 	"strings"
 )
@@ -22,6 +23,7 @@ import (
 
 type OSSInfo struct {
 	URL            string
+	Endpoints      []string
 	AccessKey      string
 	SecretKey      string
 	BucketName     string
@@ -77,17 +79,24 @@ func (info *OSSInfo) DataBucket() string {
 }
 
 func (info *OSSInfo) Equal(another *OSSInfo) bool {
-	return info.URL == another.URL &&
-		info.AccessKey == another.AccessKey &&
+	return info.AccessKey == another.AccessKey &&
 		info.SecretKey == another.SecretKey &&
 		info.BucketName == another.BucketName &&
 		info.Prefix == another.Prefix
 }
 
+func (info *OSSInfo) endpoint() string {
+	if 0 < len(info.Endpoints) {
+		return fmt.Sprintf("http://%v", info.Endpoints[rand.Intn(len(info.Endpoints))])
+	} else {
+		return info.URL
+	}
+}
+
 func baseOSSClient(info StorageOSSInfo) (*OSSClient, error) {
 	sess, err := session.NewSession(&aws.Config{
 		Credentials:      credentials.NewStaticCredentials(info.AccessKey, info.SecretKey, ""),
-		Endpoint:         aws.String(info.URL),
+		Endpoint:         aws.String(info.endpoint()),
 		Region:           aws.String(info.Region),
 		DisableSSL:       aws.Bool(true),
 		S3ForcePathStyle: aws.Bool(true),
@@ -150,9 +159,6 @@ func NewOSSClient(info StorageOSSInfo) (*OSSClient, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	log.Debugf("buckets from %v", info.URL)
-	log.Debugf("%v", buckets)
 
 	bucketExists := false
 	bucketName := info.ProofBucket()
@@ -242,7 +248,7 @@ func (oss *OSSClient) ListSectors(prefix string) ([]OSSSector, error) {
 			return nil, err
 		}
 
-		log.Infof("OSS: find %v sectors in %v/%v/%v", len(objs.Contents), oss.s3Info.URL, bucketName, prefix)
+		log.Infof("OSS: find %v sectors in %v/%v/%v", len(objs.Contents), oss.s3Info.Endpoints, bucketName, prefix)
 
 		for _, obj := range objs.Contents {
 			keys := strings.Split(*obj.Key, ossKeySeparator)

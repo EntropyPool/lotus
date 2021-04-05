@@ -99,6 +99,10 @@ over time
 			Usage: "(for init) url used to access object storage service",
 		},
 		&cli.StringFlag{
+			Name:  "oss-endpoints",
+			Usage: "(for init) endpoints used to access object storage service, maybe a url or ip:port split by ','",
+		},
+		&cli.StringFlag{
 			Name:  "oss-access-key",
 			Usage: "(for init) access key used to access object storage service",
 		},
@@ -192,9 +196,16 @@ over time
 					return xerrors.Errorf("vendor is must")
 				}
 
+				endpoints := strings.Split(cctx.String("oss-endpoints"), ",")
+
+				if len(endpoints) < 0 && len(cctx.String("oss-url")) == 0 {
+					return xerrors.Errorf("invalid oss endpoints")
+				}
+
 				cfg.OssInfo = stores.StorageOSSInfo{
 					CanWrite:       cctx.Bool("store"),
 					URL:            cctx.String("oss-url"),
+					Endpoints:      endpoints,
 					AccessKey:      cctx.String("oss-access-key"),
 					SecretKey:      cctx.String("oss-secret-key"),
 					BucketName:     cctx.String("oss-bucket-name"),
