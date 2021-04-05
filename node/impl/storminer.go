@@ -456,6 +456,14 @@ func (sm *StorageMinerAPI) NotifySectorProving(ctx context.Context, sector stora
 	return sm.StorageMgr.NotifySectorProving(ctx, sector, infos)
 }
 
+func (sm *StorageMinerAPI) UpdateChainEndpoints(ctx context.Context, addrs []string, headers []http.Header) error {
+	return nil
+}
+
+func (sm *StorageMinerAPI) GetChainEndpoints(ctx context.Context) ([]string, []http.Header, error) {
+	return nil, nil, nil
+}
+
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {
 	w, err := connectRemoteWorker(ctx, sm, url)
 	if err != nil {

@@ -343,6 +343,9 @@ type StorageMinerStruct struct {
 		GenerateWindowPoSt  func(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) `perm:"admin"`
 		NotifySectorProving func(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error                                                   `perm:"admin"`
 
+		UpdateChainEndpoints func(ctx context.Context, addrs []string, headers []http.Header) error `perm:"admin"`
+		GetChainEndpoints    func(ctx context.Context) ([]string, []http.Header, error)             `perm:"admin"`
+
 		WorkerConnect func(context.Context, string) error                                `perm:"admin" retry:"true"` // TODO: worker perm
 		WorkerStats   func(context.Context) (map[uuid.UUID]storiface.WorkerStats, error) `perm:"admin"`
 		WorkerJobs    func(context.Context) (map[uuid.UUID][]storiface.WorkerJob, error) `perm:"admin"`
@@ -1419,6 +1422,14 @@ func (c *StorageMinerStruct) GetPlayAsMaster(ctx context.Context) bool {
 
 func (c *StorageMinerStruct) NotifySectorProving(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error {
 	return c.Internal.NotifySectorProving(ctx, sector, infos)
+}
+
+func (c *StorageMinerStruct) UpdateChainEndpoints(ctx context.Context, addrs []string, headers []http.Header) error {
+	return c.Internal.UpdateChainEndpoints(ctx, addrs, headers)
+}
+
+func (c *StorageMinerStruct) GetChainEndpoints(ctx context.Context) ([]string, []http.Header, error) {
+	return c.Internal.GetChainEndpoints(ctx)
 }
 
 func (c *StorageMinerStruct) GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) {

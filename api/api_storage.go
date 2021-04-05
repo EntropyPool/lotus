@@ -95,6 +95,9 @@ type StorageMiner interface {
 	GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (GeneratePoStOutput, error)
 	NotifySectorProving(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error
 
+	UpdateChainEndpoints(ctx context.Context, addrs []string, headers []http.Header) error
+	GetChainEndpoints(ctx context.Context) ([]string, []http.Header, error)
+
 	// WorkerConnect tells the node to connect to workers RPC
 	WorkerConnect(context.Context, string) error
 	WorkerStats(context.Context) (map[uuid.UUID]storiface.WorkerStats, error)

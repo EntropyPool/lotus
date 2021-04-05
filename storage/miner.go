@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/filecoin-project/go-state-types/network"
@@ -42,6 +43,7 @@ var log = logging.Logger("storageminer")
 
 type Miner struct {
 	api     storageMinerApi
+	haApis  []storageMinerApi
 	feeCfg  config.MinerFeeConfig
 	h       host.Host
 	sealer  sectorstorage.SectorManager
@@ -187,6 +189,14 @@ func (m *Miner) handleSealingNotifications(before, after sealing.SectorInfo) {
 
 func (m *Miner) Stop(ctx context.Context) error {
 	return m.sealing.Stop(ctx)
+}
+
+func (m *Miner) UpdateChainEndpoints(ctx context.Context, addrs []string, headers []http.Header) error {
+	return nil
+}
+
+func (m *Miner) GetChainEndpoints(ctx context.Context) ([]string, []http.Header, error) {
+	return nil, nil, nil
 }
 
 func (m *Miner) runPreflightChecks(ctx context.Context) error {
