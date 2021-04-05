@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -20,11 +21,13 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/api/client"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/gen"
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/journal"
+	"github.com/filecoin-project/lotus/storage"
 
 	logging "github.com/ipfs/go-log/v2"
 	"go.opencensus.io/trace"
@@ -76,14 +79,27 @@ func NewMiner(api api.FullNode, epp gen.WinningPoStProver, addr address.Address,
 		evtTypes: [...]journal.EventType{
 			evtTypeBlockMined: j.RegisterEventType("miner", "block_mined"),
 		},
-		journal: j,
+		journal:        j,
+		chainEndpoints: map[string]http.Header{},
+		tipsetWatcher:  make(chan *tipsetInput),
+		watcherQuit:    make(chan string),
 	}
+}
+
+type tipsetInput struct {
+	tipset *types.TipSet
+	api    api.FullNode
 }
 
 type Miner struct {
 	api api.FullNode
 
 	epp gen.WinningPoStProver
+
+	tipsetWatcher  chan *tipsetInput
+	watcherQuit    chan string
+	chainEndpoints map[string]http.Header
+	storageMiner   *storage.Miner
 
 	lk       sync.Mutex
 	address  address.Address
@@ -105,6 +121,10 @@ type Miner struct {
 
 func (m *Miner) SetSealer(sealer sectorstorage.SectorManager) {
 	m.sealer = sealer
+}
+
+func (m *Miner) SetStorageMiner(sm *storage.Miner) {
+	m.storageMiner = sm
 }
 
 func (m *Miner) Address() address.Address {
@@ -152,11 +172,61 @@ func (m *Miner) niceSleep(d time.Duration) bool {
 	}
 }
 
+func (m *Miner) watchChainApi(ctx context.Context, api api.FullNode) {
+	for {
+		bts, err := api.ChainHead(ctx)
+		if err != nil {
+			log.Errorf("fail to watch chain head: %v", err)
+			return
+		}
+		go func() {
+			m.tipsetWatcher <- &tipsetInput{
+				tipset: bts,
+				api:    api,
+			}
+		}()
+		if !m.niceSleep(time.Second * 3) {
+			continue
+		}
+	}
+}
+
+func (m *Miner) watchChainEndpoint(ctx context.Context, addr string, headers http.Header) {
+	log.Infof("starting watch chain endpoint: %v | %v", addr, headers)
+	defer func() { m.watcherQuit <- addr }()
+
+	api, closer, err := client.NewFullNodeRPC(ctx, addr, headers)
+	if err != nil {
+		log.Errorf("fail to watch chain endpoint %v: %v", addr, err)
+		return
+	}
+	defer closer()
+
+	m.watchChainApi(ctx, api)
+}
+
+func (m *Miner) updateChainEndpoints(ctx context.Context) {
+	endpoints, err := m.storageMiner.GetChainEndpoints(ctx)
+	if err != nil {
+		log.Errorf("fail to get chain endpoints: %v", err)
+		return
+	}
+
+	for addr, headers := range endpoints {
+		if _, ok := m.chainEndpoints[addr]; ok {
+			continue
+		}
+		m.chainEndpoints[addr] = headers
+		go m.watchChainEndpoint(ctx, addr, headers)
+	}
+}
+
 func (m *Miner) mine(ctx context.Context) {
 	ctx, span := trace.StartSpan(ctx, "/mine")
 	defer span.End()
 
 	go m.doWinPoStWarmup(ctx)
+	go m.watchChainApi(ctx, m.api)
 
 	var lastBase MiningBase
 minerLoop:
@@ -168,6 +238,8 @@ minerLoop:
 			m.stopping = nil
 			close(stopping)
 			return
+		case addr := <-m.watcherQuit:
+			delete(m.chainEndpoints, addr)
 
 		default:
 		}
@@ -178,17 +250,16 @@ minerLoop:
 			continue
 		}
 
+		m.updateChainEndpoints(ctx)
+
 		var base *MiningBase
 		var onDone func(bool, abi.ChainEpoch, error)
 		var injectNulls abi.ChainEpoch
 
 		for {
-			prebase, err := m.GetBestMiningCandidate(ctx)
+			prebase, err := m.GetBestMiningCandidateFromWatcher(ctx)
 			if err != nil {
 				log.Errorf("failed to get best mining candidate: %s", err)
-				if !m.niceSleep(time.Second * 5) {
-					continue minerLoop
-				}
 				continue
 			}
 
@@ -331,6 +402,39 @@ func (m *Miner) GetBestMiningCandidate(ctx context.Context) (*MiningBase, error)
 	if err != nil {
 		return nil, err
 	}
+
+	if m.lastWork != nil {
+		if m.lastWork.TipSet.Equals(bts) {
+			return m.lastWork, nil
+		}
+
+		btsw, err := m.api.ChainTipSetWeight(ctx, bts.Key())
+		if err != nil {
+			return nil, err
+		}
+		ltsw, err := m.api.ChainTipSetWeight(ctx, m.lastWork.TipSet.Key())
+		if err != nil {
+			m.lastWork = nil
+			return nil, err
+		}
+
+		if types.BigCmp(btsw, ltsw) <= 0 {
+			return m.lastWork, nil
+		}
+	}
+
+	m.lastWork = &MiningBase{TipSet: bts}
+	return m.lastWork, nil
+}
+
+func (m *Miner) GetBestMiningCandidateFromWatcher(ctx context.Context) (*MiningBase, error) {
+	m.lk.Lock()
+	defer m.lk.Unlock()
+
+	input := <-m.tipsetWatcher
+
+	bts := input.tipset
+	m.api = input.api
 
 	if m.lastWork != nil {
 		if m.lastWork.TipSet.Equals(bts) {

@@ -22,7 +22,12 @@ const minerChainEndpointsMeta = "minerchainendpoints.conf"
 func updateAndNotifyChainEndpoints(cctx *cli.Context, rootPath string, chp *ChainEndpoints) {
 	new := false
 
-	eps := strings.Split(os.Getenv(minerChainEndpointsEnvKey), ";")
+	env := os.Getenv(minerChainEndpointsEnvKey)
+	if len(env) == 0 {
+		return
+	}
+
+	eps := strings.Split(env, ";")
 	for _, ep := range eps {
 		if _, ok := chp.apiInfos[ep]; ok {
 			continue

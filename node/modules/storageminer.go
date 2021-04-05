@@ -428,7 +428,7 @@ func StagingGraphsync(mctx helpers.MetricsCtx, lc fx.Lifecycle, ibs dtypes.Stagi
 	return gs
 }
 
-func SetupBlockProducer(lc fx.Lifecycle, ds dtypes.MetadataDS, api lapi.FullNode, epp gen.WinningPoStProver, sf *slashfilter.SlashFilter, j journal.Journal, sealer sectorstorage.SectorManager) (*lotusminer.Miner, error) {
+func SetupBlockProducer(lc fx.Lifecycle, ds dtypes.MetadataDS, api lapi.FullNode, epp gen.WinningPoStProver, sf *slashfilter.SlashFilter, j journal.Journal, sealer sectorstorage.SectorManager, sm *storage.Miner) (*lotusminer.Miner, error) {
 	minerAddr, err := minerAddrFromDS(ds)
 	if err != nil {
 		return nil, err
@@ -436,6 +436,7 @@ func SetupBlockProducer(lc fx.Lifecycle, ds dtypes.MetadataDS, api lapi.FullNode
 
 	m := lotusminer.NewMiner(api, epp, minerAddr, sf, j)
 	m.SetSealer(sealer)
+	m.SetStorageMiner(sm)
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
