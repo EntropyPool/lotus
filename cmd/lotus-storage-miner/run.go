@@ -75,30 +75,12 @@ var runCmd = &cli.Command{
 		}
 		go lic.LicenseChecker(cctx.String("username"), cctx.String("password"), false, "filecoin")
 
-		nodeok := true
-		var (
-			ctx     context.Context
-			nodeApi api.FullNode
-			ncloser jsonrpc.ClientCloser
-			err     error
-		)
-		nodeApi, ncloser, err = lcli.GetFullNodeAPI(cctx)
+		nodeApi, ncloser, err := lcli.GetFullNodeAPI(cctx)
 		if err != nil {
-			log.Warnf("getting full node api: %s", err)
-			nodeok = false
-			goto lbBackNode
+			return xerrors.Errorf("getting full node api: %s", err)
 		}
-		ctx = lcli.DaemonContext(cctx)
-
-	lbBackNode:
-		if !nodeok {
-			nodeApi, ncloser, ctx, err = lcli.GetBackNodeAPI(cctx)
-			if err != nil {
-				return err
-			}
-		}
-
 		defer ncloser()
+		ctx := lcli.DaemonContext(cctx)
 
 		// Register all metric views
 		if err := view.Register(
