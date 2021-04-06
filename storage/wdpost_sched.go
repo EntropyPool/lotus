@@ -117,6 +117,7 @@ func (s *WindowPoStScheduler) chainNotify(ctx context.Context) (<-chan []*api.He
 			s.api = api
 			return ch, nil
 		}
+		log.Errorf("ChainNotify error from %v: %v", addr, err)
 	}
 
 	return nil, xerrors.Errorf("cannot find suitable fullnode")
