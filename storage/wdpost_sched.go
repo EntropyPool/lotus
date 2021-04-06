@@ -143,7 +143,7 @@ func (s *WindowPoStScheduler) Run(ctx context.Context) {
 		}
 
 		if notifs == nil {
-			notifs, err = s.api.ChainNotify(ctx)
+			notifs, err = s.chainNotify(ctx)
 			if err != nil {
 				log.Errorf("ChainNotify error: %+v", err)
 
