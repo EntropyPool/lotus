@@ -144,6 +144,16 @@ func (adjuster *FeeAdjuster) adjustFee(cctx *cli.Context) {
 
 	ctx := lcli.ReqContext(cctx)
 
+	preferSectorOnChain, err := nodeApi.SealingGetPreferSectorOnChain(ctx)
+	if err != nil {
+		log.Errorf("fail to get prefer on chain")
+		return
+	}
+
+	if !preferSectorOnChain {
+		return
+	}
+
 	maddr, err := nodeApi.ActorAddress(ctx)
 	if err != nil {
 		log.Errorf("cannot get miner address: %v", err)
