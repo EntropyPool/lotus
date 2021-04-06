@@ -27,6 +27,7 @@ import (
 
 type WindowPoStScheduler struct {
 	api              storageMinerApi
+	mainApi          storageMinerApi
 	feeCfg           config.MinerFeeConfig
 	addrSel          *AddressSelector
 	prover           storage.Prover
@@ -56,6 +57,7 @@ func NewWindowedPoStScheduler(api storageMinerApi, fc config.MinerFeeConfig, as 
 
 	return &WindowPoStScheduler{
 		api:              api,
+		mainApi:          api,
 		feeCfg:           fc,
 		addrSel:          as,
 		prover:           sb,
@@ -89,8 +91,9 @@ type changeHandlerAPIImpl struct {
 }
 
 func (s *WindowPoStScheduler) chainNotify(ctx context.Context) (<-chan []*api.HeadChange, error) {
-	ch, err := s.api.ChainNotify(ctx)
+	ch, err := s.mainApi.ChainNotify(ctx)
 	if err == nil {
+		s.api = s.mainApi
 		return ch, nil
 	}
 
