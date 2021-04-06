@@ -426,7 +426,7 @@ func (m *Miner) GetBestMiningCandidateFromMultiFullnode(ctx context.Context) (*M
 			}
 			continue
 		}
-		log.Infof("success to get mining candidate from %v", addr)
+		log.Infof("success to get mining candidate from %v | %v", addr, mbe.TipSet.Height())
 		mb = mbe
 	}
 
