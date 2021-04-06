@@ -275,8 +275,10 @@ type FullNodeStruct struct {
 
 		CreateBackup func(ctx context.Context, fpath string) error `perm:"admin"`
 
-		SetMaxPreCommitGasFee func(context.Context, abi.TokenAmount) error `perm:"admin"`
-		SetMaxCommitGasFee    func(context.Context, abi.TokenAmount) error `perm:"admin"`
+		SetMaxPreCommitGasFee func(context.Context, abi.TokenAmount) error   `perm:"admin"`
+		SetMaxCommitGasFee    func(context.Context, abi.TokenAmount) error   `perm:"admin"`
+		GetMaxPreCommitGasFee func(context.Context) (abi.TokenAmount, error) `perm:"admin"`
+		GetMaxCommitGasFee    func(context.Context) (abi.TokenAmount, error) `perm:"admin"`
 	}
 }
 
@@ -324,8 +326,10 @@ type StorageMinerStruct struct {
 		SectorGetExpectedSealDuration func(context.Context) (time.Duration, error)                                                  `perm:"read"`
 		SectorsUpdate                 func(context.Context, abi.SectorNumber, api.SectorState) error                                `perm:"admin"`
 
-		SetMaxPreCommitGasFee func(context.Context, abi.TokenAmount) error `perm:"admin"`
-		SetMaxCommitGasFee    func(context.Context, abi.TokenAmount) error `perm:"admin"`
+		SetMaxPreCommitGasFee func(context.Context, abi.TokenAmount) error   `perm:"admin"`
+		SetMaxCommitGasFee    func(context.Context, abi.TokenAmount) error   `perm:"admin"`
+		GetMaxPreCommitGasFee func(context.Context) (abi.TokenAmount, error) `perm:"admin"`
+		GetMaxCommitGasFee    func(context.Context) (abi.TokenAmount, error) `perm:"admin"`
 
 		SectorRemove           func(context.Context, abi.SectorNumber) error        `perm:"admin"`
 		SectorTerminate        func(context.Context, abi.SectorNumber) error        `perm:"admin"`
@@ -1311,6 +1315,14 @@ func (c *FullNodeStruct) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAm
 	return c.Internal.SetMaxCommitGasFee(ctx, fee)
 }
 
+func (c *FullNodeStruct) GetMaxPreCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return c.Internal.GetMaxPreCommitGasFee(ctx)
+}
+
+func (c *FullNodeStruct) GetMaxCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return c.Internal.GetMaxCommitGasFee(ctx)
+}
+
 // StorageMinerStruct
 
 func (c *StorageMinerStruct) ActorAddress(ctx context.Context) (address.Address, error) {
@@ -1381,6 +1393,14 @@ func (c *StorageMinerStruct) SetMaxPreCommitGasFee(ctx context.Context, fee abi.
 
 func (c *StorageMinerStruct) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
 	return c.Internal.SetMaxCommitGasFee(ctx, fee)
+}
+
+func (c *StorageMinerStruct) GetMaxPreCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return c.Internal.GetMaxPreCommitGasFee(ctx)
+}
+
+func (c *StorageMinerStruct) GetMaxCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return c.Internal.GetMaxCommitGasFee(ctx)
 }
 
 func (c *StorageMinerStruct) SectorsUpdate(ctx context.Context, id abi.SectorNumber, state api.SectorState) error {

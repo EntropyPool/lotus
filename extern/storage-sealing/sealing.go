@@ -178,6 +178,14 @@ func (m *Sealing) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) e
 	return nil
 }
 
+func (m *Sealing) GetMaxPreCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return m.feeCfg.MaxPreCommitGasFee, nil
+}
+
+func (m *Sealing) GetMaxCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return m.feeCfg.MaxCommitGasFee, nil
+}
+
 func (m *Sealing) Run(ctx context.Context) error {
 	if err := m.restartSectors(ctx); err != nil {
 		log.Errorf("%+v", err)

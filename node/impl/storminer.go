@@ -394,6 +394,14 @@ func (sm *StorageMinerAPI) SetMaxCommitGasFee(ctx context.Context, fee abi.Token
 	return sm.Miner.SetMaxCommitGasFee(ctx, fee)
 }
 
+func (sm *StorageMinerAPI) GetMaxPreCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return sm.Miner.GetMaxPreCommitGasFee(ctx)
+}
+
+func (sm *StorageMinerAPI) GetMaxCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return sm.Miner.GetMaxCommitGasFee(ctx)
+}
+
 func (sm *StorageMinerAPI) SectorRemove(ctx context.Context, id abi.SectorNumber) error {
 	return sm.Miner.RemoveSector(ctx, id)
 }

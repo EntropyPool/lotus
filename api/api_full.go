@@ -569,6 +569,8 @@ type FullNode interface {
 
 	SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
 	SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
+	GetMaxPreCommitGasFee(context.Context) (abi.TokenAmount, error)
+	GetMaxCommitGasFee(context.Context) (abi.TokenAmount, error)
 }
 
 type FileRef struct {

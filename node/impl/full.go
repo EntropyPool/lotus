@@ -46,4 +46,12 @@ func (n *FullNodeAPI) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmoun
 	return nil
 }
 
+func (n *FullNodeAPI) GetMaxPreCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return abi.NewTokenAmount(0), nil
+}
+
+func (n *FullNodeAPI) GetMaxCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return abi.NewTokenAmount(0), nil
+}
+
 var _ api.FullNode = &FullNodeAPI{}

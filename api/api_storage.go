@@ -174,6 +174,8 @@ type StorageMiner interface {
 
 	SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
 	SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
+	GetMaxPreCommitGasFee(context.Context) (abi.TokenAmount, error)
+	GetMaxCommitGasFee(context.Context) (abi.TokenAmount, error)
 
 	CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, expensive bool) (map[abi.SectorNumber]string, error)
 
