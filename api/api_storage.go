@@ -117,6 +117,9 @@ type StorageMiner interface {
 	SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error
 	SealingSetEnableAutoPledge(ctx context.Context, enable bool) error
 	SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error
+	SealingGetPreferSectorOnChain(ctx context.Context) (bool, error)
+	SealingGetEnableAutoPledge(ctx context.Context) (bool, error)
+	SealingGetAutoPledgeBalanceThreshold(ctx context.Context) (abi.TokenAmount, error)
 
 	stores.SectorIndex
 

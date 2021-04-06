@@ -328,6 +328,14 @@ func (sm *StorageMinerAPI) SealingSetPreferSectorOnChain(ctx context.Context, pr
 	return sm.SetSealingConfigFunc(cfg)
 }
 
+func (sm *StorageMinerAPI) SealingGetPreferSectorOnChain(ctx context.Context) (bool, error) {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return false, xerrors.Errorf("get config: %w", err)
+	}
+	return cfg.PreferSectorOnChain, nil
+}
+
 func (sm *StorageMinerAPI) SealingSetEnableAutoPledge(ctx context.Context, enable bool) error {
 	cfg, err := sm.GetSealingConfigFunc()
 	if err != nil {
@@ -339,6 +347,14 @@ func (sm *StorageMinerAPI) SealingSetEnableAutoPledge(ctx context.Context, enabl
 	return sm.SetSealingConfigFunc(cfg)
 }
 
+func (sm *StorageMinerAPI) SealingGetEnableAutoPledge(ctx context.Context) (bool, error) {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return false, xerrors.Errorf("get config: %w", err)
+	}
+	return cfg.EnableAutoPledge, nil
+}
+
 func (sm *StorageMinerAPI) SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error {
 	cfg, err := sm.GetSealingConfigFunc()
 	if err != nil {
@@ -348,6 +364,14 @@ func (sm *StorageMinerAPI) SealingSetAutoPledgeBalanceThreshold(ctx context.Cont
 	cfg.AutoPledgeBalanceThreshold = threshold
 
 	return sm.SetSealingConfigFunc(cfg)
+}
+
+func (sm *StorageMinerAPI) SealingGetAutoPledgeBalanceThreshold(ctx context.Context) (abi.TokenAmount, error) {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return abi.NewTokenAmount(0), xerrors.Errorf("get config: %w", err)
+	}
+	return cfg.AutoPledgeBalanceThreshold, nil
 }
 
 func (sm *StorageMinerAPI) SectorSetExpectedSealDuration(ctx context.Context, delay time.Duration) error {

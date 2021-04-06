@@ -373,6 +373,9 @@ type StorageMinerStruct struct {
 		SealingSetPreferSectorOnChain        func(ctx context.Context, prefer bool) error                                        `perm:"admin"`
 		SealingSetEnableAutoPledge           func(ctx context.Context, enable bool) error                                        `perm:"admin"`
 		SealingSetAutoPledgeBalanceThreshold func(ctx context.Context, threshold abi.TokenAmount) error                          `perm:"admin"`
+		SealingGetPreferSectorOnChain        func(ctx context.Context) (bool, error)                                             `perm:"admin"`
+		SealingGetEnableAutoPledge           func(ctx context.Context) (bool, error)                                             `perm:"admin"`
+		SealingGetAutoPledgeBalanceThreshold func(ctx context.Context) (abi.TokenAmount, error)                                  `perm:"admin"`
 
 		StorageList          func(context.Context) (map[stores.ID][]stores.Decl, error)                                                                                   `perm:"admin"`
 		StorageLocal         func(context.Context) (map[stores.ID]string, error)                                                                                          `perm:"admin"`
@@ -1518,6 +1521,18 @@ func (c *StorageMinerStruct) SealingSetAutoPledgeBalanceThreshold(ctx context.Co
 
 func (c *StorageMinerStruct) SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error {
 	return c.Internal.SealingSetPreferSectorOnChain(ctx, prefer)
+}
+
+func (c *StorageMinerStruct) SealingGetEnableAutoPledge(ctx context.Context) (bool, error) {
+	return c.Internal.SealingGetEnableAutoPledge(ctx)
+}
+
+func (c *StorageMinerStruct) SealingGetAutoPledgeBalanceThreshold(ctx context.Context) (abi.TokenAmount, error) {
+	return c.Internal.SealingGetAutoPledgeBalanceThreshold(ctx)
+}
+
+func (c *StorageMinerStruct) SealingGetPreferSectorOnChain(ctx context.Context) (bool, error) {
+	return c.Internal.SealingGetPreferSectorOnChain(ctx)
 }
 
 func (c *StorageMinerStruct) SetWorkerReservedSpace(ctx context.Context, address string, storePrefix string, reserved int64) error {
