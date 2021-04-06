@@ -35,6 +35,7 @@ var sealingCmd = &cli.Command{
 		scheduleAbortCmd,
 		scheduleEnableDebugCmd,
 		sealingGasAdjustCmd,
+		sealingGasParamCmd,
 		sealingSetWorkerModeCmd,
 		sealingSetWorkerReservedSpaceCmd,
 	},
@@ -511,6 +512,54 @@ var sealingGasAdjustCmd = &cli.Command{
 		fmt.Printf("  Auto Pledge Threshold:     %v FIL\n", autoPledgeBalanceThreshold)
 		fmt.Printf("  Sched CPUs:                I %v / U %v / AP %v\n", schedIdleCpus, schedUsableCpus, schedConcurrentAddPiece)
 		fmt.Printf("  Sched GPU Tasks:           %v\n", schedGpuTasks)
+
+		return nil
+	},
+}
+
+var sealingGasParamCmd = &cli.Command{
+	Name:  "sealing-params",
+	Usage: "Get sealing paraeters",
+	Action: func(cctx *cli.Context) error {
+		ctx := lcli.ReqContext(cctx)
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		preferSectorOnChain, err := nodeApi.SealingGetPreferSectorOnChain(ctx)
+		if err != nil {
+			return err
+		}
+
+		maxPrecommitGasFee, err := nodeApi.GetMaxPreCommitGasFee(ctx)
+		if err != nil {
+			return err
+		}
+
+		maxCommitGasFee, err := nodeApi.GetMaxCommitGasFee(ctx)
+		if err != nil {
+			return err
+		}
+
+		enableAutoPledge, err := nodeApi.SealingGetEnableAutoPledge(ctx)
+		if err != nil {
+			return err
+		}
+
+		autoPledgeBalanceThreshold, err := nodeApi.SealingGetAutoPledgeBalanceThreshold(ctx)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Sealing Parameters ---\n")
+		fmt.Printf("  PreCommit GAS:             %v\n", types.FIL(maxPrecommitGasFee).Short())
+		fmt.Printf("  Commit GAS:                %v\n", types.FIL(maxCommitGasFee).Short())
+		fmt.Printf("  Prefer Sector On Chain:    %v\n", preferSectorOnChain)
+		fmt.Printf("  Enable Auto Pledge:        %v\n", enableAutoPledge)
+		fmt.Printf("  Auto Pledge Threshold:     %v\n", types.FIL(autoPledgeBalanceThreshold).Short())
 
 		return nil
 	},
