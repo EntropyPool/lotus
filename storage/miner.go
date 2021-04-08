@@ -61,6 +61,9 @@ type Miner struct {
 	sealingEvtType journal.EventType
 
 	journal journal.Journal
+
+	wdpostChecker chan uint64
+	wdpostResult  chan interface{}
 }
 
 // SealingStateEvt is a journal event that records a sector state transition.
@@ -205,6 +208,16 @@ func (m *Miner) UpdateChainEndpoints(ctx context.Context, endpoints map[string]h
 
 func (m *Miner) GetChainEndpoints(ctx context.Context) (map[string]http.Header, error) {
 	return m.chainEndpoints, nil
+}
+
+func (m *Miner) CheckWindowPoStListener() (chan uint64, chan interface{}) {
+	return m.wdpostChecker, m.wdpostResult
+}
+
+func (m *Miner) CheckWindowPoSt(deadline uint64) interface{} {
+	m.wdpostChecker <- deadline
+	result := <-m.wdpostResult
+	return result
 }
 
 func (m *Miner) runPreflightChecks(ctx context.Context) error {

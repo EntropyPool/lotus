@@ -123,6 +123,19 @@ func (s *WindowPoStScheduler) chainNotify(ctx context.Context) (<-chan []*api.He
 	return nil, xerrors.Errorf("cannot find suitable fullnode")
 }
 
+func (s *WindowPoStScheduler) checkWindowPoSt(ctx context.Context, deadline uint64, wdpostResult chan interface{}) {
+	go func() {
+		posts, err := s.runPost(ctx, dline.Info{
+			Index: deadline,
+		}, nil)
+		if err != nil {
+			wdpostResult <- err
+			return
+		}
+		wdpostResult <- posts
+	}()
+}
+
 func (s *WindowPoStScheduler) Run(ctx context.Context) {
 	// Initialize change handler
 	chImpl := &changeHandlerAPIImpl{storageMinerApi: s.api, WindowPoStScheduler: s}
@@ -130,12 +143,21 @@ func (s *WindowPoStScheduler) Run(ctx context.Context) {
 	defer s.ch.shutdown()
 	s.ch.start()
 
+	var wdpostChecker chan uint64
+	var wdpostResult chan interface{}
+
 	var notifs <-chan []*api.HeadChange
 	var err error
 	var gotCur bool
 
 	// not fine to panic after this point
 	for {
+		select {
+		case index := <-wdpostChecker:
+			s.checkWindowPoSt(ctx, index, wdpostResult)
+		default:
+		}
+
 		if !s.sealer.GetPlayAsMaster(ctx) {
 			log.Infof("I'm not master, do not process window post")
 			build.Clock.Sleep(10 * time.Second)

@@ -417,6 +417,13 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 	ctx, span := trace.StartSpan(ctx, "storage.runPost")
 	defer span.End()
 
+	tipsetHeight := abi.ChainEpoch(0)
+	tipsetKey := types.EmptyTSK
+	if ts != nil {
+		tipsetKey = ts.Key()
+		tipsetHeight = ts.Height()
+	}
+
 	go func() {
 		// TODO: extract from runPost, run on fault cutoff boundaries
 
@@ -424,7 +431,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 		// late to declare them for this deadline
 		declDeadline := (di.Index + 2) % di.WPoStPeriodDeadlines
 
-		partitions, err := s.api.StateMinerPartitions(context.TODO(), s.actor, declDeadline, ts.Key())
+		partitions, err := s.api.StateMinerPartitions(context.TODO(), s.actor, declDeadline, tipsetKey)
 		if err != nil {
 			log.Errorf("getting partitions: %v", err)
 			return
@@ -446,7 +453,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 			}
 		)
 
-		if recoveries, sigmsg, err = s.checkNextRecoveries(context.TODO(), declDeadline, partitions, ts.Key()); err != nil {
+		if recoveries, sigmsg, err = s.checkNextRecoveries(context.TODO(), declDeadline, partitions, tipsetKey); err != nil {
 			// TODO: This is potentially quite bad, but not even trying to post when this fails is objectively worse
 			log.Errorf("checking sector recoveries: %v", err)
 		}
@@ -461,11 +468,13 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 			return j
 		})
 
-		if ts.Height() > build.UpgradeIgnitionHeight {
-			return // FORK: declaring faults after ignition upgrade makes no sense
+		if ts != nil {
+			if ts.Height() > build.UpgradeIgnitionHeight {
+				return // FORK: declaring faults after ignition upgrade makes no sense
+			}
 		}
 
-		if faults, sigmsg, err = s.checkNextFaults(context.TODO(), declDeadline, partitions, ts.Key()); err != nil {
+		if faults, sigmsg, err = s.checkNextFaults(context.TODO(), declDeadline, partitions, tipsetKey); err != nil {
 			// TODO: This is also potentially really bad, but we try to post anyways
 			log.Errorf("checking sector faults: %v", err)
 		}
@@ -484,13 +493,13 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 		return nil, xerrors.Errorf("failed to marshal address to cbor: %w", err)
 	}
 
-	rand, err := s.api.ChainGetRandomnessFromBeacon(ctx, ts.Key(), crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
+	rand, err := s.api.ChainGetRandomnessFromBeacon(ctx, tipsetKey, crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
 	if err != nil {
-		return nil, xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", ts.Height(), di, err)
+		return nil, xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", tipsetHeight, di, err)
 	}
 
 	// Get the partitions for the given deadline
-	partitions, err := s.api.StateMinerPartitions(ctx, s.actor, di.Index, ts.Key())
+	partitions, err := s.api.StateMinerPartitions(ctx, s.actor, di.Index, tipsetKey)
 	if err != nil {
 		return nil, xerrors.Errorf("getting partitions: %w", err)
 	}
@@ -559,7 +568,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 							return
 						}
 
-						good, err := s.checkSectors(ctx, toProve, ts.Key())
+						good, err := s.checkSectors(ctx, toProve, tipsetKey)
 						if err != nil {
 							chanErr <- xerrors.Errorf("checking sectors to skip: %w", err)
 							return
@@ -637,7 +646,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 				log.Infow("running window post",
 					"chain-random", rand,
 					"deadline", di,
-					"height", ts.Height(),
+					"height", tipsetHeight,
 					"skipped", skipCount,
 					"deadline", di.Index,
 					"batch", batchIdx)
@@ -785,7 +794,12 @@ func (s *WindowPoStScheduler) batchPartitions(partitions []api.Partition) ([][]a
 }
 
 func (s *WindowPoStScheduler) sectorsForProof(ctx context.Context, goodSectors, allSectors bitfield.BitField, ts *types.TipSet) ([]proof2.SectorInfo, error) {
-	sset, err := s.api.StateMinerSectors(ctx, s.actor, &goodSectors, ts.Key())
+	tipsetKey := types.EmptyTSK
+	if ts != nil {
+		tipsetKey = ts.Key()
+	}
+
+	sset, err := s.api.StateMinerSectors(ctx, s.actor, &goodSectors, tipsetKey)
 	if err != nil {
 		return nil, err
 	}
