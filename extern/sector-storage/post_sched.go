@@ -2,6 +2,7 @@ package sectorstorage
 
 import (
 	"context"
+	ffi "github.com/filecoin-project/filecoin-ffi"
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/api"
@@ -9,6 +10,7 @@ import (
 	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 	"github.com/filecoin-project/specs-storage/storage"
 	"golang.org/x/xerrors"
+	"os"
 	"time"
 )
 
@@ -141,6 +143,11 @@ func (s *PoStScheduler) scheduleWaitQueue() {
 		scheduled := false
 
 		for addr, prover := range s.slaveProver {
+			gpus, _ := ffi.GetGPUDevices()
+			if s.GetPlayAsMaster() && len(gpus) < 2 {
+				continue
+			}
+
 			if prover.running {
 				continue
 			}
@@ -245,6 +252,9 @@ func (s *PoStScheduler) SetPlayAsMaster(master bool, addr string) error {
 	playAsMaster = master
 	if master {
 		s.MasterProver = addr
+		os.Unsetenv("FFI_MULTIEXP_USE_ALL_GPU")
+	} else {
+		os.Setenv("FFI_MULTIEXP_USE_ALL_GPU", "1")
 	}
 	return nil
 }
