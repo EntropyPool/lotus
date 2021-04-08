@@ -144,7 +144,7 @@ func (s *PoStScheduler) scheduleWaitQueue() {
 
 		for addr, prover := range s.slaveProver {
 			gpus, _ := ffi.GetGPUDevices()
-			if s.GetPlayAsMaster() && len(gpus) < 2 {
+			if s.GetPlayAsMaster() && len(gpus) < 2 && 1 < len(s.slaveProver) {
 				continue
 			}
 
