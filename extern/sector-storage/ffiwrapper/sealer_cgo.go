@@ -32,6 +32,10 @@ import (
 
 var _ Storage = &Sealer{}
 
+func init() {
+	ffi.InitLog()
+}
+
 func New(sectors SectorProvider) (*Sealer, error) {
 	sb := &Sealer{
 		sectors: sectors,
