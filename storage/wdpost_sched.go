@@ -132,7 +132,8 @@ func (s *WindowPoStScheduler) chainNotify(ctx context.Context) (<-chan []*api.He
 func (s *WindowPoStScheduler) checkWindowPoSt(ctx context.Context, deadline uint64, wdpostResult chan func() ([]miner.SubmitWindowedPoStParams, error)) {
 	go func() {
 		posts, err := s.runPost(ctx, dline.Info{
-			Index: deadline,
+			Index:                deadline,
+			WPoStPeriodDeadlines: miner.WPoStPeriodDeadlines,
 		}, nil)
 		wdpostResult <- (func() ([]miner.SubmitWindowedPoStParams, error) {
 			return posts, err
