@@ -216,7 +216,7 @@ func (m *Miner) CheckWindowPoStListener(ctx context.Context) (chan uint64, chan 
 	return m.wdpostChecker, m.wdpostResult
 }
 
-func (m *Miner) CheckWindowPoSt(deadline uint64) ([]miner.SubmitWindowedPoStParams, error) {
+func (m *Miner) CheckWindowPoSt(ctx context.Context, deadline uint64) ([]miner.SubmitWindowedPoStParams, error) {
 	m.wdpostChecker <- deadline
 	return (<-m.wdpostResult)()
 }

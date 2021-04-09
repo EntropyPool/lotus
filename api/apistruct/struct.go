@@ -347,8 +347,9 @@ type StorageMinerStruct struct {
 		GenerateWindowPoSt  func(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) `perm:"admin"`
 		NotifySectorProving func(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error                                                   `perm:"admin"`
 
-		UpdateChainEndpoints func(ctx context.Context, endpoints map[string]http.Header) error `perm:"admin"`
-		GetChainEndpoints    func(ctx context.Context) (map[string]http.Header, error)         `perm:"admin"`
+		UpdateChainEndpoints func(ctx context.Context, endpoints map[string]http.Header) error                    `perm:"admin"`
+		GetChainEndpoints    func(ctx context.Context) (map[string]http.Header, error)                            `perm:"admin"`
+		CheckWindowPoSt      func(ctx context.Context, deadline uint64) ([]miner.SubmitWindowedPoStParams, error) `perm:"admin"`
 
 		WorkerConnect func(context.Context, string) error                                `perm:"admin" retry:"true"` // TODO: worker perm
 		WorkerStats   func(context.Context) (map[uuid.UUID]storiface.WorkerStats, error) `perm:"admin"`
@@ -1449,6 +1450,10 @@ func (c *StorageMinerStruct) NotifySectorProving(ctx context.Context, sector sto
 
 func (c *StorageMinerStruct) UpdateChainEndpoints(ctx context.Context, endpoints map[string]http.Header) error {
 	return c.Internal.UpdateChainEndpoints(ctx, endpoints)
+}
+
+func (c *StorageMinerStruct) CheckWindowPoSt(ctx context.Context, deadline uint64) ([]miner.SubmitWindowedPoStParams, error) {
+	return c.Internal.CheckWindowPoSt(ctx, deadline)
 }
 
 func (c *StorageMinerStruct) GetChainEndpoints(ctx context.Context) (map[string]http.Header, error) {

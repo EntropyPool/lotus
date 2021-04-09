@@ -16,6 +16,7 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/storagemarket"
 	"github.com/filecoin-project/go-state-types/abi"
+	miner2 "github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/specs-actors/v2/actors/builtin/market"
 	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 	"github.com/filecoin-project/specs-storage/storage"
@@ -97,6 +98,7 @@ type StorageMiner interface {
 
 	UpdateChainEndpoints(ctx context.Context, endpoints map[string]http.Header) error
 	GetChainEndpoints(ctx context.Context) (map[string]http.Header, error)
+	CheckWindowPoSt(ctx context.Context, deadline uint64) ([]miner2.SubmitWindowedPoStParams, error)
 
 	// WorkerConnect tells the node to connect to workers RPC
 	WorkerConnect(context.Context, string) error

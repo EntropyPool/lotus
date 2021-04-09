@@ -16,6 +16,7 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-jsonrpc"
+	miner2 "github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/api/client"
@@ -392,6 +393,16 @@ func UpdateChainEndpoints(ctx *cli.Context, apiInfos []string) error {
 	}
 
 	return minerApi.UpdateChainEndpoints(ctx.Context, endpoints)
+}
+
+func CheckWindowPoSt(ctx *cli.Context, deadline uint64) ([]miner2.SubmitWindowedPoStParams, error) {
+	minerApi, closer, err := GetStorageMinerAPI(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer closer()
+
+	return minerApi.CheckWindowPoSt(ctx.Context, deadline)
 }
 
 func AnnounceMyselfAsMaster(ctx *cli.Context) error {

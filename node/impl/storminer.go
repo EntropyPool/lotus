@@ -497,8 +497,8 @@ func (sm *StorageMinerAPI) GetChainEndpoints(ctx context.Context) (map[string]ht
 	return sm.Miner.GetChainEndpoints(ctx)
 }
 
-func (sm *StorageMinerAPI) CheckWindowPoSt(deadline uint64) ([]miner2.SubmitWindowedPoStParams, error) {
-	return sm.Miner.CheckWindowPoSt(deadline)
+func (sm *StorageMinerAPI) CheckWindowPoSt(ctx context.Context, deadline uint64) ([]miner2.SubmitWindowedPoStParams, error) {
+	return sm.Miner.CheckWindowPoSt(ctx, deadline)
 }
 
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {
