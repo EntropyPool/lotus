@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"os"
 	"strconv"
 	"sync"
@@ -493,10 +494,21 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 		return nil, xerrors.Errorf("failed to marshal address to cbor: %w", err)
 	}
 
-	rand, err := s.api.ChainGetRandomnessFromBeacon(ctx, tipsetKey, crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
-	if err != nil {
-		return nil, xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", tipsetHeight, di, err)
+	var randomness abi.Randomness
+	var err error
+
+	if ts != nil {
+		randomness, err = s.api.ChainGetRandomnessFromBeacon(ctx, tipsetKey, crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
+		if err != nil {
+			return nil, xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", tipsetHeight, di, err)
+		}
+	} else {
+		randomness = make([]byte, abi.RandomnessLength)
+		_, _ = rand.Read(randomness)
+		randomness[31] &= 0x3f
 	}
+
+	rand := randomness
 
 	// Get the partitions for the given deadline
 	partitions, err := s.api.StateMinerPartitions(ctx, s.actor, di.Index, tipsetKey)
