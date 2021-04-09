@@ -217,8 +217,12 @@ func (m *Miner) CheckWindowPoStListener(ctx context.Context) (chan uint64, chan 
 }
 
 func (m *Miner) CheckWindowPoSt(ctx context.Context, deadline uint64) ([]miner.SubmitWindowedPoStParams, error) {
+	log.Warnf("START CHECK WINDOW POST --- %v", deadline)
 	m.wdpostChecker <- deadline
-	return (<-m.wdpostResult)()
+	log.Warnf("WAIT CHECK WINDOW POST --- %v", deadline)
+	posts, err := (<-m.wdpostResult)()
+	log.Warnf("FINISH CHECK WINDOW POST --- %v", deadline)
+	return posts, err
 }
 
 func (m *Miner) runPreflightChecks(ctx context.Context) error {
