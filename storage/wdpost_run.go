@@ -569,11 +569,17 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 					go func(ctx context.Context, partIdx int, partition api.Partition, ts *types.TipSet, batchPartitionStartIdx int, pistSkipped bitfield.BitField) {
 						defer waitGroup.Done()
 
-						toProve, err := bitfield.SubtractBitField(partition.LiveSectors, partition.FaultySectors)
-						if err != nil {
-							chanErr <- xerrors.Errorf("removing faults from set of sectors to prove: %w", err)
-							return
+						var err error
+						toProve := partition.LiveSectors
+
+						if ts != nil {
+							toProve, err = bitfield.SubtractBitField(partition.LiveSectors, partition.FaultySectors)
+							if err != nil {
+								chanErr <- xerrors.Errorf("removing faults from set of sectors to prove: %w", err)
+								return
+							}
 						}
+
 						toProve, err = bitfield.MergeBitFields(toProve, partition.RecoveringSectors)
 						if err != nil {
 							chanErr <- xerrors.Errorf("adding recoveries to set of sectors to prove: %w", err)

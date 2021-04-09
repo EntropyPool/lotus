@@ -449,7 +449,7 @@ var provingCheckProvableCmd = &cli.Command{
 				if err != nil {
 					return err
 				}
-				fmt.Printf("Deadline: %v", proofs)
+				fmt.Printf("Deadline: %v\n", proofs)
 			} else {
 				sectors := make(map[abi.SectorNumber]struct{})
 
