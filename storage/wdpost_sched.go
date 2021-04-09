@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/api/client"
 	"github.com/filecoin-project/lotus/build"
+	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
@@ -44,6 +45,7 @@ type WindowPoStScheduler struct {
 	journal  journal.Journal
 
 	chainEndpointersFetcher func(context.Context) (map[string]http.Header, error)
+	wdpostCheckerListener   func(context.Context) (chan uint64, chan func() ([]miner.SubmitWindowedPoStParams, error))
 
 	// failed abi.ChainEpoch // eps
 	// failLk sync.Mutex
@@ -85,6 +87,10 @@ func (s *WindowPoStScheduler) SetChainEndpointsFetcher(fetcher func(ctx context.
 	s.chainEndpointersFetcher = fetcher
 }
 
+func (s *WindowPoStScheduler) SetWindowPoStCheckerListener(listener func(ctx context.Context) (chan uint64, chan func() ([]miner.SubmitWindowedPoStParams, error))) {
+	s.wdpostCheckerListener = listener
+}
+
 type changeHandlerAPIImpl struct {
 	storageMinerApi
 	*WindowPoStScheduler
@@ -123,16 +129,14 @@ func (s *WindowPoStScheduler) chainNotify(ctx context.Context) (<-chan []*api.He
 	return nil, xerrors.Errorf("cannot find suitable fullnode")
 }
 
-func (s *WindowPoStScheduler) checkWindowPoSt(ctx context.Context, deadline uint64, wdpostResult chan interface{}) {
+func (s *WindowPoStScheduler) checkWindowPoSt(ctx context.Context, deadline uint64, wdpostResult chan func() ([]miner.SubmitWindowedPoStParams, error)) {
 	go func() {
 		posts, err := s.runPost(ctx, dline.Info{
 			Index: deadline,
 		}, nil)
-		if err != nil {
-			wdpostResult <- err
-			return
-		}
-		wdpostResult <- posts
+		wdpostResult <- (func() ([]miner.SubmitWindowedPoStParams, error) {
+			return posts, err
+		})
 	}()
 }
 
@@ -143,12 +147,11 @@ func (s *WindowPoStScheduler) Run(ctx context.Context) {
 	defer s.ch.shutdown()
 	s.ch.start()
 
-	var wdpostChecker chan uint64
-	var wdpostResult chan interface{}
-
 	var notifs <-chan []*api.HeadChange
 	var err error
 	var gotCur bool
+
+	wdpostChecker, wdpostResult := s.wdpostCheckerListener(ctx)
 
 	// not fine to panic after this point
 	for {

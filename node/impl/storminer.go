@@ -34,6 +34,7 @@ import (
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/api/apistruct"
+	miner2 "github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/markets/storageadapter"
 	"github.com/filecoin-project/lotus/miner"
@@ -494,6 +495,10 @@ func (sm *StorageMinerAPI) UpdateChainEndpoints(ctx context.Context, endpoints m
 
 func (sm *StorageMinerAPI) GetChainEndpoints(ctx context.Context) (map[string]http.Header, error) {
 	return sm.Miner.GetChainEndpoints(ctx)
+}
+
+func (sm *StorageMinerAPI) CheckWindowPoSt(deadline uint64) ([]miner2.SubmitWindowedPoStParams, error) {
+	return sm.Miner.CheckWindowPoSt(deadline)
 }
 
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {
