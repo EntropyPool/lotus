@@ -680,7 +680,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 				var postOut []proof2.PoStProof
 				var ps []abi.SectorID
 
-				if ts != nil {
+				if ts == nil {
 					postOut, ps, err = s.prover.GenerateWindowPoSt(ctx, abi.ActorID(mid), sinfos, abi.PoStRandomness(rand))
 					if err != nil {
 						postChanErr <- xerrors.Errorf("fail to gen window post for deadline %v: %v | %v | %v", di.Index, postOut, ps, err)
