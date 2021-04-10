@@ -677,8 +677,18 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 					return
 				}
 
-				// postOut, ps, err := s.prover.GenerateWindowPoSt(ctx, abi.ActorID(mid), sinfos, abi.PoStRandomness(rand))
-				postOut, ps, err := s.sealer.GenerateWindowPoStRemote(ctx, abi.ActorID(mid), sinfos, abi.PoStRandomness(rand))
+				var postOut []proof2.PoStProof
+				var ps []abi.SectorID
+
+				if ts != nil {
+					postOut, ps, err = s.prover.GenerateWindowPoSt(ctx, abi.ActorID(mid), sinfos, abi.PoStRandomness(rand))
+					if err != nil {
+						postChanErr <- xerrors.Errorf("fail to gen window post for deadline %v: %v | %v | %v", di.Index, postOut, ps, err)
+						return
+					}
+				} else {
+					postOut, ps, err = s.sealer.GenerateWindowPoStRemote(ctx, abi.ActorID(mid), sinfos, abi.PoStRandomness(rand))
+				}
 				elapsed := time.Since(tsStart)
 
 				log.Infow("computing window post", "batch", batchIdx, "elapsed", elapsed, "err", err)

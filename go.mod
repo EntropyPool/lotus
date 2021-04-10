@@ -7,7 +7,7 @@ require (
 	contrib.go.opencensus.io/exporter/prometheus v0.1.0
 	github.com/BurntSushi/toml v0.3.1
 	github.com/EntropyPool/entropy-logger v0.0.0-20210320022718-3091537e035f
-	github.com/EntropyPool/machine-spec v0.0.0-20210325103529-e4ba6232c0fc
+	github.com/EntropyPool/machine-spec v0.0.0-20210408033101-2db09d058812
 	github.com/GeertJohan/go.rice v1.0.0
 	github.com/Gurpartap/async v0.0.0-20180927173644-4f7f499dd9ee
 	github.com/Jeffail/gabs v1.4.0
