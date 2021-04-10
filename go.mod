@@ -56,12 +56,8 @@ require (
 	github.com/gbrlsnchs/jwt/v3 v3.0.0-beta.1
 	github.com/go-kit/kit v0.10.0
 	github.com/go-ole/go-ole v1.2.4 // indirect
-<<<<<<< HEAD
 	github.com/golang/mock v1.4.4
-	github.com/google/uuid v1.1.2
-=======
 	github.com/google/uuid v1.2.0
->>>>>>> npool/master-entropy-v1.5.0
 	github.com/gorilla/mux v1.7.4
 	github.com/gorilla/websocket v1.4.2
 	github.com/hako/durafmt v0.0.0-20200710122514-c0fb7b4da026

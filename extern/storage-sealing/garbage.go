@@ -5,7 +5,6 @@ import (
 
 	"golang.org/x/xerrors"
 
-	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/specs-storage/storage"
@@ -53,7 +52,7 @@ func (m *Sealing) AutoPledgeTask(ctx context.Context) {
 			sealings := m.sealer.PledgedJobs(ctx)
 			log.Infof("autoPledge: pledge %+v sectors [%v / %v FIL in %v]", sealings, cfg.AutoPledgeBalanceThreshold, balance, from)
 			for i := 0; i < sealings; i++ {
-				m.PledgeSector()
+				m.PledgeSector(ctx)
 				time.Sleep(time.Second)
 			}
 		}

@@ -892,7 +892,7 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 	worker.preparingTasks.queue = append(worker.preparingTasks.queue, task)
 	worker.preparingTasks.mutex.Unlock()
 
-	err := task.prepare(task.ctx, worker.wt.worker(WorkerID(worker.wid), worker.w))
+	err := task.prepare(task.ctx, worker.wt.worker(WorkerID(worker.wid), worker.info, worker.w))
 
 	worker.preparingTasks.mutex.Lock()
 	for idx, req := range worker.preparingTasks.queue {
@@ -1014,7 +1014,7 @@ func (bucket *eWorkerBucket) doCleanTask(task *eWorkerRequest, stage string) {
 func (bucket *eWorkerBucket) runTypedTask(worker *eWorkerHandle, task *eWorkerRequest) {
 	debugFunc()("<%s> executing typed task %v/%v at %s", eschedTag, task.sector.ID, task.taskType, worker.info.Address)
 	task.startRunTimeRaw = time.Now()
-	err := task.work(task.ctx, worker.wt.worker(WorkerID(worker.wid), worker.w))
+	err := task.work(task.ctx, worker.wt.worker(WorkerID(worker.wid), worker.info, worker.w))
 	task.endTime = time.Now().UnixNano()
 	log.Infof("<%s> finished typed task %v/%v duration (%dms / %d ms / %d ms) by %s [%v]",
 		eschedTag, task.sector.ID, task.taskType,

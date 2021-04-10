@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"net/http"
+	"net/url"
 	"strings"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -11,7 +13,9 @@ import (
 	miner2 "github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/api/client"
 	cliutil "github.com/filecoin-project/lotus/cli/util"
+	"github.com/filecoin-project/lotus/node/repo"
 )
 
 var log = logging.Logger("cli")
@@ -89,8 +93,8 @@ func StorageMinerIsMySelf(ctx *cli.Context, apiInfo string) (bool, error) {
 	return false, nil
 }
 
-func GetStorageMinerAPIWithAPIInfo(ctx *cli.Context, apiInfo string, opts ...GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {
-	var options GetStorageMinerOptions
+func GetStorageMinerAPIWithAPIInfo(ctx *cli.Context, apiInfo string, opts ...cliutil.GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {
+	var options cliutil.GetStorageMinerOptions
 	for _, opt := range opts {
 		opt(&options)
 	}
