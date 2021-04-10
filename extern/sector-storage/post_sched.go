@@ -187,6 +187,7 @@ func (s *PoStScheduler) checkProverHeartbeat() {
 			prover.heartbeatFails += 1
 		}
 		if 5 < prover.heartbeatFails {
+			log.Warnf("slave prover %v heartbeat check fail, remove", addr)
 			s.slaveProver[addr].closer()
 			delete(s.slaveProver, addr)
 		}
