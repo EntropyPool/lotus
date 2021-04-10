@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +16,9 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/storagemarket"
 	"github.com/filecoin-project/go-state-types/abi"
+	miner2 "github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/specs-actors/v2/actors/builtin/market"
+	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 	"github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/chain/types"
@@ -83,6 +86,20 @@ type StorageMiner interface {
 	StorageLocal(ctx context.Context) (map[stores.ID]string, error)
 	StorageStat(ctx context.Context, id stores.ID) (fsutil.FsStat, error)
 
+	CheckCurrentMaster(ctx context.Context, addr string) error
+	AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, addrSlave string, headersSlave http.Header) error
+	SlaveConnect(ctx context.Context, addr string, headers http.Header) error
+	CheckMaster(ctx context.Context) error
+	SetPlayAsMaster(ctx context.Context, master bool, addr string) error
+	SetPlayAsLord(ctx context.Context, lord bool) error
+	GetPlayAsMaster(context.Context) bool
+	GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (GeneratePoStOutput, error)
+	NotifySectorProving(ctx context.Context, sector storage.SectorRef, infos []stores.SectorStorageInfo) error
+
+	UpdateChainEndpoints(ctx context.Context, endpoints map[string]http.Header) error
+	GetChainEndpoints(ctx context.Context) (map[string]http.Header, error)
+	CheckWindowPoSt(ctx context.Context, deadline uint64) ([]miner2.SubmitWindowedPoStParams, error)
+
 	// WorkerConnect tells the node to connect to workers RPC
 	WorkerConnect(context.Context, string) error
 	WorkerStats(context.Context) (map[uuid.UUID]storiface.WorkerStats, error)
@@ -91,7 +108,20 @@ type StorageMiner interface {
 
 	// SealingSchedDiag dumps internal sealing scheduler state
 	SealingSchedDiag(ctx context.Context, doSched bool) (interface{}, error)
+	ScheduleAbort(ctx context.Context, sector storage.SectorRef) error
+	SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error
+	SetScheduleGpuConcurrentTasks(ctx context.Context, gpuTasks int) error
+	SetWorkerMode(ctx context.Context, address string, mode string) error
+	SetScheduleDebugEnable(ctx context.Context, enable bool) error
+	SetWorkerReservedSpace(ctx context.Context, address string, storePrefix string, reserved int64) error
 	SealingAbort(ctx context.Context, call storiface.CallID) error
+
+	SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error
+	SealingSetEnableAutoPledge(ctx context.Context, enable bool) error
+	SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error
+	SealingGetPreferSectorOnChain(ctx context.Context) (bool, error)
+	SealingGetEnableAutoPledge(ctx context.Context) (bool, error)
+	SealingGetAutoPledgeBalanceThreshold(ctx context.Context) (abi.TokenAmount, error)
 
 	stores.SectorIndex
 
@@ -131,6 +161,7 @@ type StorageMiner interface {
 	DealsSetConsiderUnverifiedStorageDeals(context.Context, bool) error
 
 	StorageAddLocal(ctx context.Context, path string) error
+	StorageUpdateLocal(ctx context.Context, path string) error
 
 	PiecesListPieces(ctx context.Context) ([]cid.Cid, error)
 	PiecesListCidInfos(ctx context.Context) ([]cid.Cid, error)
@@ -143,7 +174,15 @@ type StorageMiner interface {
 	// the path specified when calling CreateBackup is within the base path
 	CreateBackup(ctx context.Context, fpath string) error
 
+	SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
+	SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
+	GetMaxPreCommitGasFee(context.Context) (abi.TokenAmount, error)
+	GetMaxCommitGasFee(context.Context) (abi.TokenAmount, error)
+
 	CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, expensive bool) (map[abi.SectorNumber]string, error)
+
+	SetEnvironment(ctx context.Context, envName string, envVal string) error
+	GetEnvironment(ctx context.Context, envName string) (string, error)
 }
 
 type SealRes struct {

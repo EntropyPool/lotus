@@ -5,6 +5,7 @@ import (
 
 	logging "github.com/ipfs/go-log/v2"
 
+	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/node/impl/client"
 	"github.com/filecoin-project/lotus/node/impl/common"
@@ -35,6 +36,22 @@ type FullNodeAPI struct {
 
 func (n *FullNodeAPI) CreateBackup(ctx context.Context, fpath string) error {
 	return backup(n.DS, fpath)
+}
+
+func (n *FullNodeAPI) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return nil
+}
+
+func (n *FullNodeAPI) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return nil
+}
+
+func (n *FullNodeAPI) GetMaxPreCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return abi.NewTokenAmount(0), nil
+}
+
+func (n *FullNodeAPI) GetMaxCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return abi.NewTokenAmount(0), nil
 }
 
 var _ api.FullNode = &FullNodeAPI{}

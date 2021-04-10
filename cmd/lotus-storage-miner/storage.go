@@ -46,6 +46,7 @@ stored while moving through the sealing pipeline (references as 'seal').`,
 		storageListCmd,
 		storageFindCmd,
 		storageCleanupCmd,
+		storageAdjustCmd,
 	},
 }
 
@@ -93,6 +94,54 @@ over time
 			Name:  "max-storage",
 			Usage: "(for init) limit storage space for sectors (expensive for very large paths!)",
 		},
+		&cli.BoolFlag{
+			Name:  "oss",
+			Usage: "(for init) the path is from object storage service",
+		},
+		&cli.StringFlag{
+			Name:  "oss-url",
+			Usage: "(for init) url used to access object storage service",
+		},
+		&cli.StringFlag{
+			Name:  "oss-endpoints",
+			Usage: "(for init) endpoints used to access object storage service, maybe a url or ip:port split by ','",
+		},
+		&cli.StringFlag{
+			Name:  "oss-access-key",
+			Usage: "(for init) access key used to access object storage service",
+		},
+		&cli.StringFlag{
+			Name:  "oss-secret-key",
+			Usage: "(for init) secret key used to access object storage service",
+		},
+		&cli.StringFlag{
+			Name:  "oss-bucket-name",
+			Usage: "(for init) bucket name of object storage service",
+		},
+		&cli.BoolFlag{
+			Name:  "oss-unique-bucket",
+			Usage: "(fot init) use unique bucket for cache and sealed sdata",
+			Value: false,
+		},
+		&cli.StringFlag{
+			Name:  "oss-upload-part-size",
+			Usage: "(for init) set upload part size for cache",
+			Value: "5MiB",
+		},
+		&cli.StringFlag{
+			Name:  "oss-vendor",
+			Usage: "(for init) set oss storage vendor name [ceph | minio | ucloud | qiniu | inspur]",
+		},
+		&cli.StringFlag{
+			Name:  "oss-region",
+			Usage: "(for init) set oss storage region",
+			Value: "us-west-2",
+		},
+		&cli.BoolFlag{
+			Name:  "oss-multi-ranges",
+			Usage: "(for init) set multi ranges get support",
+			Value: true,
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
@@ -139,7 +188,47 @@ over time
 				Weight:     cctx.Uint64("weight"),
 				CanSeal:    cctx.Bool("seal"),
 				CanStore:   cctx.Bool("store"),
+				Oss:        cctx.Bool("oss"),
 				MaxStorage: uint64(maxStor),
+			}
+
+			if cctx.Bool("oss") {
+				ma, err := nodeApi.ActorAddress(ctx)
+				if err != nil {
+					return err
+				}
+
+				cfg.Weight = 100
+				uploadPartSize, err := units.RAMInBytes(cctx.String("oss-upload-part-size"))
+				if err != nil {
+					return err
+				}
+
+				vendor := cctx.String("oss-vendor")
+				if vendor == "" {
+					return xerrors.Errorf("vendor is must")
+				}
+
+				endpoints := strings.Split(cctx.String("oss-endpoints"), ",")
+
+				if len(endpoints) < 0 && len(cctx.String("oss-url")) == 0 {
+					return xerrors.Errorf("invalid oss endpoints")
+				}
+
+				cfg.OssInfo = stores.StorageOSSInfo{
+					CanWrite:       cctx.Bool("store"),
+					URL:            cctx.String("oss-url"),
+					Endpoints:      endpoints,
+					AccessKey:      cctx.String("oss-access-key"),
+					SecretKey:      cctx.String("oss-secret-key"),
+					BucketName:     cctx.String("oss-bucket-name"),
+					UploadPartSize: uploadPartSize,
+					UniqueBucket:   cctx.Bool("oss-unique-bucket"),
+					Prefix:         fmt.Sprintf("%v", ma),
+					Vendor:         vendor,
+					Region:         cctx.String("oss-region"),
+					MultiRanges:    cctx.Bool("oss-multi-ranges"),
+				}
 			}
 
 			if !(cfg.CanStore || cfg.CanSeal) {
@@ -729,4 +818,65 @@ func cleanupRemovedSectorData(ctx context.Context, api api.StorageMiner, napi ap
 	}
 
 	return nil
+}
+
+var storageAdjustCmd = &cli.Command{
+	Name:  "adjust",
+	Usage: "adjust storage attribute at runtime",
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "store",
+			Usage: "set storage to store data or not",
+			Value: true,
+		},
+	},
+	Action: func(cctx *cli.Context) error {
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+		ctx := lcli.ReqContext(cctx)
+
+		if !cctx.Args().Present() {
+			return xerrors.Errorf("must specify storage path to attach")
+		}
+
+		p, err := homedir.Expand(cctx.Args().First())
+		if err != nil {
+			return xerrors.Errorf("expanding path: %w", err)
+		}
+
+		myMetaFile := filepath.Join(p, metaFile)
+		_, err = os.Stat(myMetaFile)
+		if os.IsNotExist(err) || err != nil {
+			return xerrors.Errorf("path is not initialized")
+		}
+
+		buf, err := ioutil.ReadFile(myMetaFile)
+		if err != nil {
+			return xerrors.Errorf("cannot read meta file")
+		}
+
+		cfg := stores.LocalStorageMeta{}
+		err = json.Unmarshal(buf, &cfg)
+		if err != nil {
+			return xerrors.Errorf("cannot unmarshal meta to struct")
+		}
+
+		canStore := cctx.Bool("store")
+		cfg.CanStore = canStore
+		cfg.OssInfo.CanWrite = canStore
+
+		b, err := json.MarshalIndent(cfg, "", "  ")
+		if err != nil {
+			return xerrors.Errorf("marshaling storage config: %w", err)
+		}
+
+		if err := ioutil.WriteFile(myMetaFile, b, 0644); err != nil {
+			return xerrors.Errorf("persisting storage metadata (%s): %w", filepath.Join(p, metaFile), err)
+		}
+
+		return nodeApi.StorageUpdateLocal(ctx, p)
+	},
 }

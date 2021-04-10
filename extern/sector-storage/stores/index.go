@@ -33,6 +33,9 @@ type StorageInfo struct {
 
 	CanSeal  bool
 	CanStore bool
+
+	Oss     bool
+	OssInfo StorageOSSInfo
 }
 
 type HealthReport struct {
@@ -48,7 +51,11 @@ type SectorStorageInfo struct {
 	CanSeal  bool
 	CanStore bool
 
-	Primary bool
+	Primary  bool
+	PathType storiface.SectorFileType
+
+	Oss     bool
+	OssInfo StorageOSSInfo
 }
 
 type SectorIndex interface { // part of storage-miner api
@@ -85,12 +92,15 @@ type storageEntry struct {
 	heartbeatErr  error
 }
 
+type StorageEntry storageEntry
+
 type Index struct {
 	*indexLocks
 	lk sync.RWMutex
 
-	sectors map[Decl][]*declMeta
-	stores  map[ID]*storageEntry
+	sectors         map[Decl][]*declMeta
+	stores          map[ID]*storageEntry
+	StorageNotifier chan struct{}
 }
 
 func NewIndex() *Index {
@@ -98,9 +108,34 @@ func NewIndex() *Index {
 		indexLocks: &indexLocks{
 			locks: map[abi.SectorID]*sectorLock{},
 		},
-		sectors: map[Decl][]*declMeta{},
-		stores:  map[ID]*storageEntry{},
+		sectors:         map[Decl][]*declMeta{},
+		stores:          map[ID]*storageEntry{},
+		StorageNotifier: make(chan struct{}, 10),
 	}
+}
+
+func (ent *StorageEntry) Info() *StorageInfo {
+	return ent.info
+}
+
+func (ent *StorageEntry) LastHeartbeatTime() time.Time {
+	return ent.lastHeartbeat
+}
+
+func (ent *StorageEntry) HeartbeatError() error {
+	return ent.heartbeatErr
+}
+
+func (ent *StorageEntry) FsStat() *fsutil.FsStat {
+	return &ent.fsi
+}
+
+func (i *Index) Sectors() map[Decl][]*declMeta {
+	return i.sectors
+}
+
+func (i *Index) Stores() map[ID]*storageEntry {
+	return i.stores
 }
 
 func (i *Index) StorageList(ctx context.Context) (map[ID][]Decl, error) {
@@ -132,6 +167,13 @@ func (i *Index) StorageList(ctx context.Context) (map[ID][]Decl, error) {
 	return out, nil
 }
 
+func (i *Index) storageNotify(ctx context.Context) {
+	go func() {
+		time.Sleep(3 * time.Minute)
+		i.StorageNotifier <- struct{}{}
+	}()
+}
+
 func (i *Index) StorageAttach(ctx context.Context, si StorageInfo, st fsutil.FsStat) error {
 	i.lk.Lock()
 	defer i.lk.Unlock()
@@ -160,6 +202,7 @@ func (i *Index) StorageAttach(ctx context.Context, si StorageInfo, st fsutil.FsS
 		i.stores[si.ID].info.MaxStorage = si.MaxStorage
 		i.stores[si.ID].info.CanSeal = si.CanSeal
 		i.stores[si.ID].info.CanStore = si.CanStore
+		i.storageNotify(ctx)
 
 		return nil
 	}
@@ -169,6 +212,9 @@ func (i *Index) StorageAttach(ctx context.Context, si StorageInfo, st fsutil.FsS
 
 		lastHeartbeat: time.Now(),
 	}
+
+	i.storageNotify(ctx)
+
 	return nil
 }
 
@@ -262,6 +308,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft storif
 
 	storageIDs := map[ID]uint64{}
 	isprimary := map[ID]bool{}
+	storageIDType := map[ID]storiface.SectorFileType{}
 
 	for _, pathType := range storiface.PathTypes {
 		if ft&pathType == 0 {
@@ -269,8 +316,10 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft storif
 		}
 
 		for _, id := range i.sectors[Decl{s, pathType}] {
+			log.Debugf("%v/%v has %v", id, i.stores[id.storage].info.URLs, s)
 			storageIDs[id.storage]++
 			isprimary[id.storage] = isprimary[id.storage] || id.primary
+			storageIDType[id.storage] |= pathType
 		}
 	}
 
@@ -301,6 +350,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft storif
 
 			CanSeal:  st.info.CanSeal,
 			CanStore: st.info.CanStore,
+			PathType: storageIDType[id],
 
 			Primary: isprimary[id],
 		})
@@ -314,6 +364,7 @@ func (i *Index) StorageFindSector(ctx context.Context, s abi.SectorID, ft storif
 
 		for id, st := range i.stores {
 			if !st.info.CanSeal {
+				log.Debugf("%s is not for seal", st.info.ID)
 				continue
 			}
 
@@ -388,24 +439,26 @@ func (i *Index) StorageBestAlloc(ctx context.Context, allocate storiface.SectorF
 
 	for _, p := range i.stores {
 		if (pathType == storiface.PathSealing) && !p.info.CanSeal {
+			log.Debugf("%s is not suitable for %v", p.info.ID, pathType)
 			continue
 		}
 		if (pathType == storiface.PathStorage) && !p.info.CanStore {
+			log.Debugf("%s is not suitable for %v", p.info.ID, pathType)
 			continue
 		}
 
 		if spaceReq > uint64(p.fsi.Available) {
-			log.Debugf("not allocating on %s, out of space (available: %d, need: %d)", p.info.ID, p.fsi.Available, spaceReq)
+			log.Debugf("not allocating on %s, out of space (available: %d, need: %d) [%v]", p.info.ID, p.fsi.Available, spaceReq, p.info.URLs)
 			continue
 		}
 
 		if time.Since(p.lastHeartbeat) > SkippedHeartbeatThresh {
-			log.Debugf("not allocating on %s, didn't receive heartbeats for %s", p.info.ID, time.Since(p.lastHeartbeat))
+			log.Debugf("not allocating on %s, didn't receive heartbeats for %s [%v]", p.info.ID, time.Since(p.lastHeartbeat), p.info.URLs)
 			continue
 		}
 
 		if p.heartbeatErr != nil {
-			log.Debugf("not allocating on %s, heartbeat error: %s", p.info.ID, p.heartbeatErr)
+			log.Debugf("not allocating on %s, heartbeat error: %s [%v]", p.info.ID, p.heartbeatErr, p.info.URLs)
 			continue
 		}
 

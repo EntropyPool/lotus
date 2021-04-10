@@ -6,12 +6,15 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
 	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
 
+	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/lotus/chain/gen/slashfilter"
+	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
@@ -19,11 +22,13 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/api/client"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/gen"
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/journal"
+	"github.com/filecoin-project/lotus/storage"
 
 	logging "github.com/ipfs/go-log/v2"
 	"go.opencensus.io/trace"
@@ -75,7 +80,8 @@ func NewMiner(api api.FullNode, epp gen.WinningPoStProver, addr address.Address,
 		evtTypes: [...]journal.EventType{
 			evtTypeBlockMined: j.RegisterEventType("miner", "block_mined"),
 		},
-		journal: j,
+		journal:        j,
+		chainEndpoints: map[string]chainEndpoint{},
 	}
 }
 
@@ -83,6 +89,9 @@ type Miner struct {
 	api api.FullNode
 
 	epp gen.WinningPoStProver
+
+	chainEndpoints map[string]chainEndpoint
+	storageMiner   *storage.Miner
 
 	lk       sync.Mutex
 	address  address.Address
@@ -98,6 +107,16 @@ type Miner struct {
 
 	evtTypes [1]journal.EventType
 	journal  journal.Journal
+
+	sealer sectorstorage.SectorManager
+}
+
+func (m *Miner) SetSealer(sealer sectorstorage.SectorManager) {
+	m.sealer = sealer
+}
+
+func (m *Miner) SetStorageMiner(sm *storage.Miner) {
+	m.storageMiner = sm
 }
 
 func (m *Miner) Address() address.Address {
@@ -145,6 +164,48 @@ func (m *Miner) niceSleep(d time.Duration) bool {
 	}
 }
 
+type chainEndpoint struct {
+	addr    string
+	headers http.Header
+	api     api.FullNode
+	closer  jsonrpc.ClientCloser
+}
+
+func (m *Miner) watchChainEndpoint(ctx context.Context, addr string, headers http.Header) {
+	api, closer, err := client.NewFullNodeRPC(ctx, addr, headers)
+	if err != nil {
+		log.Errorf("fail to watch chain endpoint %v: %v", addr, err)
+		return
+	}
+
+	m.chainEndpoints[addr] = chainEndpoint{
+		addr:    addr,
+		headers: headers,
+		api:     api,
+		closer:  closer,
+	}
+}
+
+func (m *Miner) updateChainEndpoints(ctx context.Context) {
+	endpoints, err := m.storageMiner.GetChainEndpoints(ctx)
+	if err != nil {
+		log.Errorf("fail to get chain endpoints: %v", err)
+		return
+	}
+
+	m.chainEndpoints["mainnode"] = chainEndpoint{
+		addr: "mainnode",
+		api:  m.api,
+	}
+
+	for addr, headers := range endpoints {
+		if _, ok := m.chainEndpoints[addr]; ok {
+			continue
+		}
+		m.watchChainEndpoint(ctx, addr, headers)
+	}
+}
+
 func (m *Miner) mine(ctx context.Context) {
 	ctx, span := trace.StartSpan(ctx, "/mine")
 	defer span.End()
@@ -165,16 +226,23 @@ minerLoop:
 		default:
 		}
 
+		if !m.sealer.GetPlayAsMaster(ctx) {
+			log.Infof("I'm not master, do not process mining")
+			m.niceSleep(time.Second * 10)
+			continue
+		}
+
+		m.updateChainEndpoints(ctx)
+
 		var base *MiningBase
 		var onDone func(bool, abi.ChainEpoch, error)
 		var injectNulls abi.ChainEpoch
 
 		for {
-			prebase, err := m.GetBestMiningCandidate(ctx)
+			prebase, err := m.GetBestMiningCandidateFromMultiFullnode(ctx)
 			if err != nil {
-				log.Errorf("failed to get best mining candidate: %s", err)
-				if !m.niceSleep(time.Second * 5) {
-					continue minerLoop
+				if !m.niceSleep(time.Second * 1) {
+					return
 				}
 				continue
 			}
@@ -343,6 +411,67 @@ func (m *Miner) GetBestMiningCandidate(ctx context.Context) (*MiningBase, error)
 	return m.lastWork, nil
 }
 
+func (m *Miner) GetBestMiningCandidateFromMultiFullnode(ctx context.Context) (*MiningBase, error) {
+	var mb *MiningBase
+	var mbe *MiningBase
+	var err error
+
+	for addr, endpoint := range m.chainEndpoints {
+		mbe, err = m.GetBestMiningCandidateFromFullnode(ctx, endpoint.api)
+		if err != nil {
+			log.Errorf("fail to get mining candidate from %v: %v", addr, err)
+			delete(m.chainEndpoints, addr)
+			if endpoint.closer != nil {
+				endpoint.closer()
+			}
+			continue
+		}
+		log.Infof("success to get mining candidate from %v | %v", addr, mbe.TipSet.Height())
+		mb = mbe
+	}
+
+	if mb == nil {
+		return nil, err
+	}
+
+	return mb, nil
+}
+
+func (m *Miner) GetBestMiningCandidateFromFullnode(ctx context.Context, api api.FullNode) (*MiningBase, error) {
+	m.lk.Lock()
+	defer m.lk.Unlock()
+
+	bts, err := api.ChainHead(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if m.lastWork != nil {
+		if m.lastWork.TipSet.Equals(bts) {
+			return m.lastWork, nil
+		}
+
+		btsw, err := api.ChainTipSetWeight(ctx, bts.Key())
+		if err != nil {
+			return nil, err
+		}
+		ltsw, err := api.ChainTipSetWeight(ctx, m.lastWork.TipSet.Key())
+		if err != nil {
+			m.lastWork = nil
+			return nil, err
+		}
+
+		if types.BigCmp(btsw, ltsw) <= 0 {
+			return m.lastWork, nil
+		}
+	}
+
+	m.lastWork = &MiningBase{TipSet: bts}
+	m.api = api
+
+	return m.lastWork, nil
+}
+
 // mineOne attempts to mine a single block, and does so synchronously, if and
 // only if we are eligible to mine.
 //
@@ -364,10 +493,12 @@ func (m *Miner) mineOne(ctx context.Context, base *MiningBase) (*types.BlockMsg,
 		return nil, xerrors.Errorf("failed to get mining base info: %w", err)
 	}
 	if mbi == nil {
+		log.Warnf("cannot get mining base: %v | %v | %v", m.address, round, base.TipSet.Key())
 		return nil, nil
 	}
 	if !mbi.EligibleForMining {
 		// slashed or just have no power yet
+		log.Infof("%v is not eligible for mining", m.address)
 		return nil, nil
 	}
 
@@ -380,7 +511,9 @@ func (m *Miner) mineOne(ctx context.Context, base *MiningBase) (*types.BlockMsg,
 
 	tPowercheck := build.Clock.Now()
 
-	log.Infof("Time delta between now and our mining base: %ds (nulls: %d)", uint64(build.Clock.Now().Unix())-base.TipSet.MinTimestamp(), base.NullRounds)
+	log.Infof("Time delta between now and our mining base: %ds | %v (nulls: %d)",
+		uint64(build.Clock.Now().Unix())-base.TipSet.MinTimestamp(),
+		base.TipSet.Height(), base.NullRounds)
 
 	rbase := beaconPrev
 	if len(bvals) > 0 {
@@ -473,11 +606,13 @@ func (m *Miner) computeTicket(ctx context.Context, brand *types.BeaconEntry, bas
 
 	input, err := store.DrawRandomness(brand.Data, crypto.DomainSeparationTag_TicketProduction, round-build.TicketRandomnessLookback, buf.Bytes())
 	if err != nil {
+		log.Errorf("fail to draw randomness for %v: %v", m.address, err)
 		return nil, err
 	}
 
 	vrfOut, err := gen.ComputeVRF(ctx, m.api.WalletSign, mbi.WorkerKey, input)
 	if err != nil {
+		log.Errorf("fail to draw randomness for %v worker %v: %v", m.address, mbi.WorkerKey, err)
 		return nil, err
 	}
 

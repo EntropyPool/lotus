@@ -51,20 +51,29 @@ func (m *Sealing) checkPreCommitted(ctx statemachine.Context, sector SectorInfo)
 }
 
 func (m *Sealing) handleSealPrecommit1Failed(ctx statemachine.Context, sector SectorInfo) error {
+	log.Warnf("pre commit1 fails(%v) sector (%v)", sector.PreCommit1Fails, sector.SectorNumber)
+
 	if err := failedCooldown(ctx, sector); err != nil {
 		return err
+	}
+
+	if !checkDeals(sector.sealingCtx(ctx.Context()), sector) {
+		return ctx.Send(SectorRemove{})
 	}
 
 	return ctx.Send(SectorRetrySealPreCommit1{})
 }
 
 func (m *Sealing) handleSealPrecommit2Failed(ctx statemachine.Context, sector SectorInfo) error {
+	log.Warnf("pre commit2 fails(%v) sector (%v)", sector.PreCommit2Fails, sector.SectorNumber)
 	if err := failedCooldown(ctx, sector); err != nil {
 		return err
 	}
 
-	if sector.PreCommit2Fails > 3 {
-		return ctx.Send(SectorRetrySealPreCommit1{})
+	if sector.PreCommit2Fails > 5 {
+		if !checkDeals(sector.sealingCtx(ctx.Context()), sector) {
+			return ctx.Send(SectorRemove{})
+		}
 	}
 
 	return ctx.Send(SectorRetrySealPreCommit2{})
@@ -99,6 +108,8 @@ func (m *Sealing) handlePreCommitFailed(ctx statemachine.Context, sector SectorI
 			return ctx.Send(SectorRetryPreCommitWait{})
 		case exitcode.SysErrOutOfGas:
 			// API error in PreCommitWait AND gas estimator guessed a wrong number in PreCommit
+			return ctx.Send(SectorRetryPreCommit{})
+		case exitcode.SysErrInsufficientFunds:
 			return ctx.Send(SectorRetryPreCommit{})
 		default:
 			// something else went wrong
@@ -156,7 +167,7 @@ func (m *Sealing) handlePreCommitFailed(ctx statemachine.Context, sector SectorI
 		return ctx.Send(SectorRetryWaitSeed{})
 	}
 
-	if sector.PreCommitMessage != nil {
+	if sector.PreCommitMessage == nil {
 		log.Warn("retrying precommit even though the message failed to apply")
 	}
 
@@ -167,6 +178,11 @@ func (m *Sealing) handlePreCommitFailed(ctx statemachine.Context, sector SectorI
 	return ctx.Send(SectorRetryPreCommit{})
 }
 
+func (m *Sealing) handleUnknownState(ctx statemachine.Context, sector SectorInfo) error {
+	log.Errorf("handleUnknownState: unknow state %v sector %v", sector.State, sector.SectorNumber)
+	return ctx.Send(SectorRemove{})
+}
+
 func (m *Sealing) handleComputeProofFailed(ctx statemachine.Context, sector SectorInfo) error {
 	// TODO: Check sector files
 
@@ -174,7 +190,7 @@ func (m *Sealing) handleComputeProofFailed(ctx statemachine.Context, sector Sect
 		return err
 	}
 
-	if sector.InvalidProofs > 1 {
+	if sector.InvalidProofs > 180 {
 		return ctx.Send(SectorSealPreCommit1Failed{xerrors.Errorf("consecutive compute fails")})
 	}
 
@@ -210,6 +226,7 @@ func (m *Sealing) handleCommitFailed(ctx statemachine.Context, sector SectorInfo
 			return ctx.Send(SectorRetryCommitWait{})
 		case exitcode.SysErrOutOfGas:
 			// API error in CommitWait AND gas estimator guessed a wrong number in SubmitCommit
+			log.Errorf("handleCommitting: sector %d goto retry submit by out of gas", sector.SectorNumber)
 			return ctx.Send(SectorRetrySubmitCommit{})
 		default:
 			// something else went wrong
@@ -224,9 +241,9 @@ func (m *Sealing) handleCommitFailed(ctx statemachine.Context, sector SectorInfo
 		case *ErrBadCommD:
 			return ctx.Send(SectorSealPreCommit1Failed{xerrors.Errorf("bad CommD error: %w", err)})
 		case *ErrExpiredTicket:
-			return ctx.Send(SectorTicketExpired{xerrors.Errorf("ticket expired error, removing sector: %w", err)})
+			return ctx.Send(SectorSealPreCommit1Failed{xerrors.Errorf("ticket expired error: %w", err)})
 		case *ErrBadTicket:
-			return ctx.Send(SectorTicketExpired{xerrors.Errorf("expired ticket, removing sector: %w", err)})
+			return ctx.Send(SectorSealPreCommit1Failed{xerrors.Errorf("bad ticket: %w", err)})
 		case *ErrInvalidDeals:
 			log.Warnf("invalid deals in sector %d: %v", sector.SectorNumber, err)
 			return ctx.Send(SectorInvalidDealIDs{Return: RetCommitFailed})
@@ -361,7 +378,8 @@ func (m *Sealing) handleRecoverDealIDs(ctx statemachine.Context, sector SectorIn
 		if p.DealInfo == nil {
 			exp := zerocomm.ZeroPieceCommitment(p.Piece.Size.Unpadded())
 			if !p.Piece.PieceCID.Equals(exp) {
-				return xerrors.Errorf("sector %d piece %d had non-zero PieceCID %+v", sector.SectorNumber, i, p.Piece.PieceCID)
+				log.Errorf("sector %d piece %d had non-zero PieceCID %+v", sector.SectorNumber, i, p.Piece.PieceCID)
+				return ctx.Send(SectorRemove{})
 			}
 			paddingPieces++
 			continue

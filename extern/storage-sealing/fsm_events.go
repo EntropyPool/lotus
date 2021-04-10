@@ -164,6 +164,7 @@ func (evt SectorSealPreCommit1Failed) FormatError(xerrors.Printer) (next error) 
 func (evt SectorSealPreCommit1Failed) apply(si *SectorInfo) {
 	si.InvalidProofs = 0 // reset counter
 	si.PreCommit2Fails = 0
+	si.PreCommit1Fails++
 }
 
 type SectorSealPreCommit2Failed struct{ error }
@@ -244,6 +245,10 @@ func (evt SectorCommitSubmitted) apply(state *SectorInfo) {
 type SectorProving struct{}
 
 func (evt SectorProving) apply(*SectorInfo) {}
+
+type SectorMayProving struct{}
+
+func (evt SectorMayProving) apply(*SectorInfo) {}
 
 type SectorFinalized struct{}
 

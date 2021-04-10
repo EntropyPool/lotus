@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/filecoin-project/go-state-types/network"
@@ -42,6 +43,7 @@ var log = logging.Logger("storageminer")
 
 type Miner struct {
 	api     storageMinerApi
+	haApis  []storageMinerApi
 	feeCfg  config.MinerFeeConfig
 	h       host.Host
 	sealer  sectorstorage.SectorManager
@@ -50,7 +52,8 @@ type Miner struct {
 	verif   ffiwrapper.Verifier
 	addrSel *AddressSelector
 
-	maddr address.Address
+	chainEndpoints map[string]http.Header
+	maddr          address.Address
 
 	getSealConfig dtypes.GetSealingConfigFunc
 	sealing       *sealing.Sealing
@@ -58,6 +61,9 @@ type Miner struct {
 	sealingEvtType journal.EventType
 
 	journal journal.Journal
+
+	wdpostChecker chan uint64
+	wdpostResult  chan func() ([]miner.SubmitWindowedPoStParams, error)
 }
 
 // SealingStateEvt is a journal event that records a sector state transition.
@@ -99,8 +105,10 @@ type storageMinerApi interface {
 	GasEstimateMessageGas(context.Context, *types.Message, *api.MessageSendSpec, types.TipSetKey) (*types.Message, error)
 	GasEstimateFeeCap(context.Context, *types.Message, int64, types.TipSetKey) (types.BigInt, error)
 	GasEstimateGasPremium(_ context.Context, nblocksincl uint64, sender address.Address, gaslimit int64, tsk types.TipSetKey) (types.BigInt, error)
+	GasEstimateGasLimit(context.Context, *types.Message, types.TipSetKey) (int64, error)
 
 	ChainHead(context.Context) (*types.TipSet, error)
+	ChainComputeBaseFee(ctx context.Context, ts *types.TipSet) (abi.TokenAmount, error)
 	ChainNotify(context.Context) (<-chan []*api.HeadChange, error)
 	ChainGetRandomnessFromTickets(ctx context.Context, tsk types.TipSetKey, personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) (abi.Randomness, error)
 	ChainGetRandomnessFromBeacon(ctx context.Context, tsk types.TipSetKey, personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) (abi.Randomness, error)
@@ -114,6 +122,11 @@ type storageMinerApi interface {
 	WalletSign(context.Context, address.Address, []byte) (*crypto.Signature, error)
 	WalletBalance(context.Context, address.Address) (types.BigInt, error)
 	WalletHas(context.Context, address.Address) (bool, error)
+
+	SetMaxPreCommitGasFee(context.Context, abi.TokenAmount) error
+	SetMaxCommitGasFee(context.Context, abi.TokenAmount) error
+	GetMaxPreCommitGasFee(context.Context) (abi.TokenAmount, error)
+	GetMaxCommitGasFee(context.Context) (abi.TokenAmount, error)
 }
 
 func NewMiner(api storageMinerApi, maddr address.Address, h host.Host, ds datastore.Batching, sealer sectorstorage.SectorManager, sc sealing.SectorIDCounter, verif ffiwrapper.Verifier, gsd dtypes.GetSealingConfigFunc, feeCfg config.MinerFeeConfig, journal journal.Journal, as *AddressSelector) (*Miner, error) {
@@ -131,6 +144,10 @@ func NewMiner(api storageMinerApi, maddr address.Address, h host.Host, ds datast
 		getSealConfig:  gsd,
 		journal:        journal,
 		sealingEvtType: journal.RegisterEventType("storage", "sealing_states"),
+
+		chainEndpoints: map[string]http.Header{},
+		wdpostChecker:  make(chan uint64),
+		wdpostResult:   make(chan func() ([]miner.SubmitWindowedPoStParams, error)),
 	}
 
 	return m, nil
@@ -182,6 +199,30 @@ func (m *Miner) handleSealingNotifications(before, after sealing.SectorInfo) {
 
 func (m *Miner) Stop(ctx context.Context) error {
 	return m.sealing.Stop(ctx)
+}
+
+func (m *Miner) UpdateChainEndpoints(ctx context.Context, endpoints map[string]http.Header) error {
+	for addr, header := range endpoints {
+		m.chainEndpoints[addr] = header
+	}
+	return nil
+}
+
+func (m *Miner) GetChainEndpoints(ctx context.Context) (map[string]http.Header, error) {
+	return m.chainEndpoints, nil
+}
+
+func (m *Miner) CheckWindowPoStListener(ctx context.Context) (chan uint64, chan func() ([]miner.SubmitWindowedPoStParams, error)) {
+	return m.wdpostChecker, m.wdpostResult
+}
+
+func (m *Miner) CheckWindowPoSt(ctx context.Context, deadline uint64) ([]miner.SubmitWindowedPoStParams, error) {
+	log.Warnf("START CHECK WINDOW POST --- %v", deadline)
+	m.wdpostChecker <- deadline
+	log.Warnf("WAIT CHECK WINDOW POST --- %v", deadline)
+	posts, err := (<-m.wdpostResult)()
+	log.Warnf("FINISH CHECK WINDOW POST --- %v", deadline)
+	return posts, err
 }
 
 func (m *Miner) runPreflightChecks(ctx context.Context) error {

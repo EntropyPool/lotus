@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/filecoin-project/lotus/api/client"
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p-core/host"
@@ -28,9 +29,12 @@ import (
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	sealing "github.com/filecoin-project/lotus/extern/storage-sealing"
+	proof2 "github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
+	storage2 "github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/api/apistruct"
+	miner2 "github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/markets/storageadapter"
 	"github.com/filecoin-project/lotus/miner"
@@ -340,6 +344,63 @@ func (sm *StorageMinerAPI) SectorGetSealDelay(ctx context.Context) (time.Duratio
 	return cfg.WaitDealsDelay, nil
 }
 
+func (sm *StorageMinerAPI) SealingSetPreferSectorOnChain(ctx context.Context, prefer bool) error {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return xerrors.Errorf("get config: %w", err)
+	}
+
+	cfg.PreferSectorOnChain = prefer
+
+	return sm.SetSealingConfigFunc(cfg)
+}
+
+func (sm *StorageMinerAPI) SealingGetPreferSectorOnChain(ctx context.Context) (bool, error) {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return false, xerrors.Errorf("get config: %w", err)
+	}
+	return cfg.PreferSectorOnChain, nil
+}
+
+func (sm *StorageMinerAPI) SealingSetEnableAutoPledge(ctx context.Context, enable bool) error {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return xerrors.Errorf("get config: %w", err)
+	}
+
+	cfg.EnableAutoPledge = enable
+
+	return sm.SetSealingConfigFunc(cfg)
+}
+
+func (sm *StorageMinerAPI) SealingGetEnableAutoPledge(ctx context.Context) (bool, error) {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return false, xerrors.Errorf("get config: %w", err)
+	}
+	return cfg.EnableAutoPledge, nil
+}
+
+func (sm *StorageMinerAPI) SealingSetAutoPledgeBalanceThreshold(ctx context.Context, threshold abi.TokenAmount) error {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return xerrors.Errorf("get config: %w", err)
+	}
+
+	cfg.AutoPledgeBalanceThreshold = threshold
+
+	return sm.SetSealingConfigFunc(cfg)
+}
+
+func (sm *StorageMinerAPI) SealingGetAutoPledgeBalanceThreshold(ctx context.Context) (abi.TokenAmount, error) {
+	cfg, err := sm.GetSealingConfigFunc()
+	if err != nil {
+		return abi.NewTokenAmount(0), xerrors.Errorf("get config: %w", err)
+	}
+	return cfg.AutoPledgeBalanceThreshold, nil
+}
+
 func (sm *StorageMinerAPI) SectorSetExpectedSealDuration(ctx context.Context, delay time.Duration) error {
 	return sm.SetExpectedSealDurationFunc(delay)
 }
@@ -350,6 +411,22 @@ func (sm *StorageMinerAPI) SectorGetExpectedSealDuration(ctx context.Context) (t
 
 func (sm *StorageMinerAPI) SectorsUpdate(ctx context.Context, id abi.SectorNumber, state api.SectorState) error {
 	return sm.Miner.ForceSectorState(ctx, id, sealing.SectorState(state))
+}
+
+func (sm *StorageMinerAPI) SetMaxPreCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return sm.Miner.SetMaxPreCommitGasFee(ctx, fee)
+}
+
+func (sm *StorageMinerAPI) SetMaxCommitGasFee(ctx context.Context, fee abi.TokenAmount) error {
+	return sm.Miner.SetMaxCommitGasFee(ctx, fee)
+}
+
+func (sm *StorageMinerAPI) GetMaxPreCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return sm.Miner.GetMaxPreCommitGasFee(ctx)
+}
+
+func (sm *StorageMinerAPI) GetMaxCommitGasFee(ctx context.Context) (abi.TokenAmount, error) {
+	return sm.Miner.GetMaxCommitGasFee(ctx)
 }
 
 func (sm *StorageMinerAPI) SectorRemove(ctx context.Context, id abi.SectorNumber) error {
@@ -372,6 +449,84 @@ func (sm *StorageMinerAPI) SectorMarkForUpgrade(ctx context.Context, id abi.Sect
 	return sm.Miner.MarkForUpgrade(id)
 }
 
+func (sm *StorageMinerAPI) CheckCurrentMaster(ctx context.Context, addr string) error {
+	masterProver, err := sm.StorageMgr.GetMasterProver(ctx)
+	if err != nil {
+		return err
+	}
+
+	if masterProver != addr {
+		return xerrors.Errorf("master address %v != %v", masterProver, addr)
+	}
+
+	return nil
+}
+
+func (sm *StorageMinerAPI) AnnounceMaster(ctx context.Context, addrMaster string, headersMaster http.Header, addrSlave string, headersSlave http.Header) error {
+	minerApi, closer, err := client.NewStorageMinerRPC(ctx, addrMaster, headersMaster)
+	if err != nil {
+		return err
+	}
+	defer closer()
+
+	sm.StorageMgr.SetMasterProver(ctx, addrMaster)
+
+	return minerApi.SlaveConnect(ctx, addrSlave, headersSlave)
+}
+
+func (sm *StorageMinerAPI) SlaveConnect(ctx context.Context, addr string, headers http.Header) error {
+	if sm.StorageMgr.SlaveProverConnected(ctx, addr) {
+		return nil
+	}
+
+	minerApi, closer, err := client.NewStorageMinerRPC(ctx, addr, headers)
+	if err != nil {
+		return err
+	}
+
+	return sm.StorageMgr.SlaveProverConnect(ctx, addr, minerApi, closer)
+}
+
+func (sm *StorageMinerAPI) CheckMaster(ctx context.Context) error {
+	return nil
+}
+
+func (sm *StorageMinerAPI) SetPlayAsMaster(ctx context.Context, master bool, addr string) error {
+	return sm.StorageMgr.SetPlayAsMaster(ctx, master, addr)
+}
+
+func (sm *StorageMinerAPI) SetPlayAsLord(ctx context.Context, lord bool) error {
+	return sm.StorageMgr.SetPlayAsLord(ctx, lord)
+}
+
+func (sm *StorageMinerAPI) GetPlayAsMaster(ctx context.Context) bool {
+	return sm.StorageMgr.GetPlayAsMaster(ctx)
+}
+
+func (sm *StorageMinerAPI) GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) {
+	proofs, sectors, err := sm.StorageMgr.GenerateWindowPoSt(ctx, minerID, sectorInfo, randomness)
+	return api.GeneratePoStOutput{
+		Proofs:  proofs,
+		Sectors: sectors,
+	}, err
+}
+
+func (sm *StorageMinerAPI) NotifySectorProving(ctx context.Context, sector storage2.SectorRef, infos []stores.SectorStorageInfo) error {
+	return sm.StorageMgr.NotifySectorProving(ctx, sector, infos)
+}
+
+func (sm *StorageMinerAPI) UpdateChainEndpoints(ctx context.Context, endpoints map[string]http.Header) error {
+	return sm.Miner.UpdateChainEndpoints(ctx, endpoints)
+}
+
+func (sm *StorageMinerAPI) GetChainEndpoints(ctx context.Context) (map[string]http.Header, error) {
+	return sm.Miner.GetChainEndpoints(ctx)
+}
+
+func (sm *StorageMinerAPI) CheckWindowPoSt(ctx context.Context, deadline uint64) ([]miner2.SubmitWindowedPoStParams, error) {
+	return sm.Miner.CheckWindowPoSt(ctx, deadline)
+}
+
 func (sm *StorageMinerAPI) WorkerConnect(ctx context.Context, url string) error {
 	w, err := connectRemoteWorker(ctx, sm, url)
 	if err != nil {
@@ -389,6 +544,30 @@ func (sm *StorageMinerAPI) SealingSchedDiag(ctx context.Context, doSched bool) (
 
 func (sm *StorageMinerAPI) SealingAbort(ctx context.Context, call storiface.CallID) error {
 	return sm.StorageMgr.Abort(ctx, call)
+}
+
+func (sm *StorageMinerAPI) SetWorkerReservedSpace(ctx context.Context, address string, storePrefix string, reserved int64) error {
+	return sm.StorageMgr.SetWorkerReservedSpace(ctx, address, storePrefix, reserved)
+}
+
+func (sm *StorageMinerAPI) SetWorkerMode(ctx context.Context, address string, mode string) error {
+	return sm.StorageMgr.SetWorkerMode(ctx, address, mode)
+}
+
+func (sm *StorageMinerAPI) SetScheduleDebugEnable(ctx context.Context, enable bool) error {
+	return sm.StorageMgr.SetScheduleDebugEnable(ctx, enable)
+}
+
+func (sm *StorageMinerAPI) SetScheduleConcurrent(ctx context.Context, idleCpus int, usableCpus int, apConcurrent int) error {
+	return sm.StorageMgr.SetScheduleConcurrent(ctx, idleCpus, usableCpus, apConcurrent)
+}
+
+func (sm *StorageMinerAPI) SetScheduleGpuConcurrentTasks(ctx context.Context, gpuTasks int) error {
+	return sm.StorageMgr.SetScheduleGpuConcurrentTasks(ctx, gpuTasks)
+}
+
+func (sm *StorageMinerAPI) ScheduleAbort(ctx context.Context, sector sto.SectorRef) error {
+	return sm.StorageMgr.ScheduleAbort(ctx, sector)
 }
 
 func (sm *StorageMinerAPI) MarketImportDealData(ctx context.Context, propCid cid.Cid, path string) error {
@@ -620,6 +799,14 @@ func (sm *StorageMinerAPI) DealsSetPieceCidBlocklist(ctx context.Context, cids [
 	return sm.SetStorageDealPieceCidBlocklistConfigFunc(cids)
 }
 
+func (sm *StorageMinerAPI) StorageUpdateLocal(ctx context.Context, path string) error {
+	if sm.StorageMgr == nil {
+		return xerrors.Errorf("no storage manager")
+	}
+
+	return sm.StorageMgr.UpdateLocalStorage(ctx, path)
+}
+
 func (sm *StorageMinerAPI) StorageAddLocal(ctx context.Context, path string) error {
 	if sm.StorageMgr == nil {
 		return xerrors.Errorf("no storage manager")
@@ -684,6 +871,19 @@ func (sm *StorageMinerAPI) CheckProvable(ctx context.Context, pp abi.RegisteredP
 	}
 
 	return out, nil
+}
+
+func (sm *StorageMinerAPI) SetEnvironment(ctx context.Context, envName string, envVal string) error {
+	os.Setenv(envName, envVal)
+	return nil
+}
+
+func (sm *StorageMinerAPI) GetEnvironment(ctx context.Context, envName string) (string, error) {
+	val, ok := os.LookupEnv(envName)
+	if !ok {
+		return "", xerrors.Errorf("cannot find environment %v", envName)
+	}
+	return val, nil
 }
 
 func (sm *StorageMinerAPI) ActorAddressConfig(ctx context.Context) (api.AddressConfig, error) {

@@ -55,6 +55,11 @@ func (s *schedTestWorker) SealPreCommit2(ctx context.Context, sector storage.Sec
 	panic("implement me")
 }
 
+func (s *schedTestWorker) MovingCache(ctx context.Context, sector abi.SectoRef) error {
+	log.Warnw("sched test worker moving.")
+	return nil
+}
+
 func (s *schedTestWorker) SealCommit1(ctx context.Context, sector storage.SectorRef, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (storiface.CallID, error) {
 	panic("implement me")
 }

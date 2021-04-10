@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -15,7 +16,9 @@ import (
 	"github.com/urfave/cli/v2"
 	"golang.org/x/xerrors"
 
+	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
+	"github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
@@ -29,6 +32,12 @@ var sealingCmd = &cli.Command{
 		sealingWorkersCmd,
 		sealingSchedDiagCmd,
 		sealingAbortCmd,
+		scheduleAbortCmd,
+		scheduleEnableDebugCmd,
+		sealingGasAdjustCmd,
+		sealingGasParamCmd,
+		sealingSetWorkerModeCmd,
+		sealingSetWorkerReservedSpaceCmd,
 	},
 }
 
@@ -76,12 +85,53 @@ var sealingWorkersCmd = &cli.Command{
 				gpuUse = ""
 			}
 
-			var disabled string
-			if !stat.Enabled {
-				disabled = color.RedString(" (disabled)")
+			var flags string = " ("
+			if stat.Maintaining {
+				flags += color.RedString("M")
 			}
+			if stat.RejectNewTask {
+				flags += color.RedString("R")
+			}
+			flags += ")"
 
-			fmt.Printf("Worker %s, host %s%s\n", stat.id, color.MagentaString(stat.Info.Hostname), disabled)
+			addressStr := stat.Info.Address
+			if 0 == len(addressStr) {
+				addressStr = "localhost"
+			}
+			fmt.Printf("Worker %s (%s), host %s/%s%s\n", stat.id, stat.State,
+				color.MagentaString(stat.Info.Hostname),
+				color.MagentaString(addressStr), flags)
+
+			taskTypes := ""
+			sort.Slice(stat.Info.SupportTasks, func(i, j int) bool {
+				return strings.Compare(string(stat.Info.SupportTasks[i]), string(stat.Info.SupportTasks[j])) < 0
+			})
+
+			fmt.Printf("\tGRP:  %s\n", color.MagentaString(stat.Info.GroupName))
+			for _, taskType := range stat.Info.SupportTasks {
+				taskTypes = fmt.Sprintf("%s\n\t      ", taskTypes)
+				maxConcurrent := stat.Tasks[taskType].MaxConcurrent
+				taskTypes = fmt.Sprintf("%s| %4s | %7d | %8d | %8d | %7d | %13d |",
+					taskTypes, taskType.Short(),
+					stat.Tasks[taskType].Running, stat.Tasks[taskType].Prepared,
+					stat.Tasks[taskType].Cleaning, stat.Tasks[taskType].Waiting,
+					maxConcurrent)
+			}
+			fmt.Printf("\t      ------------------------------------------------------------------\n")
+			fmt.Printf("\tTSK:  | Type | Running | Prepared | Cleaning | Waiting | MaxConcurrent |%s\n", taskTypes)
+			fmt.Printf("\t      ------------------------------------------------------------------\n")
+
+			workerStores := ""
+			for _, store := range stat.Stores {
+				workerStores = fmt.Sprintf("%s\n\t      ", workerStores)
+				workerStores = fmt.Sprintf("%s| %8s | %14v | %14v | %14v | %10v |",
+					workerStores, strings.Split(store.ID, "-")[0],
+					store.Total, store.Available,
+					store.Reserved, store.MaxReached)
+			}
+			fmt.Printf("\t      ----------------------------------------------------------------------------\n")
+			fmt.Printf("\tSTO:  |    ID    |      Total     |      Avail     |      Rsvd      | MaxReached |%s\n", workerStores)
+			fmt.Printf("\t      ----------------------------------------------------------------------------\n")
 
 			var barCols = uint64(64)
 			cpuBars := int(stat.CpuUse * barCols / stat.Info.Resources.CPUs)
@@ -184,7 +234,7 @@ var sealingJobsCmd = &cli.Command{
 		}
 
 		for wid, st := range wst {
-			workerHostnames[wid] = st.Info.Hostname
+			workerHostnames[wid] = st.Info.Address
 		}
 
 		tw := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
@@ -303,5 +353,302 @@ var sealingAbortCmd = &cli.Command{
 		fmt.Printf("aborting job %s, task %s, sector %d, running on host %s\n", job.ID.String(), job.Task.Short(), job.Sector.Number, job.Hostname)
 
 		return nodeApi.SealingAbort(ctx, job.ID)
+	},
+}
+
+var scheduleAbortCmd = &cli.Command{
+	Name:      "sched-abort",
+	Usage:     "Abort a schedule waiting job",
+	ArgsUsage: "[sector]",
+	Action: func(cctx *cli.Context) error {
+		if cctx.Args().Len() != 1 {
+			return xerrors.Errorf("expected 1 argument")
+		}
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		ctx := lcli.ReqContext(cctx)
+
+		jobs, err := nodeApi.WorkerJobs(ctx)
+		if err != nil {
+			return xerrors.Errorf("getting worker jobs: %w", err)
+		}
+
+		var job *storiface.WorkerJob
+	outer:
+		for _, workerJobs := range jobs {
+			for _, j := range workerJobs {
+				number, _ := strconv.ParseUint(cctx.Args().First(), 10, 64)
+				if uint(j.Sector.Number) == uint(number) {
+					j := j
+					job = &j
+					break outer
+				}
+			}
+		}
+
+		if job == nil {
+			return xerrors.Errorf("job with specified id prefix not found")
+		}
+
+		fmt.Printf("aborting job %s, task %s, sector %d, running on host %s\n", job.ID.String(), job.Task.Short(), job.Sector.Number, job.Hostname)
+
+		sector := storage.SectorRef{
+			ID:        job.Sector,
+			ProofType: 0,
+		}
+
+		return nodeApi.ScheduleAbort(ctx, sector)
+	},
+}
+
+var sealingGasAdjustCmd = &cli.Command{
+	Name:  "sealing-adjust",
+	Usage: "Adjust sealing gas",
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "prefer-sector-on-chain",
+			Value: true,
+		},
+		&cli.Float64Flag{
+			Name:  "max-pre-commit-gas-fee",
+			Value: 0.07,
+		},
+		&cli.Float64Flag{
+			Name:  "max-commit-gas-fee",
+			Value: 0.3,
+		},
+		&cli.BoolFlag{
+			Name:  "enable-auto-pledge",
+			Value: true,
+		},
+		&cli.IntFlag{
+			Name:  "auto-pledge-balance-threshold",
+			Value: 300,
+		},
+		&cli.IntFlag{
+			Name:  "sched-idle-cpus",
+			Value: 0,
+		},
+		&cli.IntFlag{
+			Name:  "sched-usable-cpus",
+			Value: 0,
+		},
+		&cli.IntFlag{
+			Name:  "sched-gpu-tasks",
+			Value: 0,
+		},
+		&cli.IntFlag{
+			Name:  "sched-concurrent-add-piece",
+			Value: 0,
+		},
+	},
+	Action: func(cctx *cli.Context) error {
+		preferSectorOnChain := cctx.Bool("prefer-sector-on-chain")
+		maxPrecommitGasFee := cctx.Float64("max-pre-commit-gas-fee")
+		maxCommitGasFee := cctx.Float64("max-commit-gas-fee")
+		autoPledgeBalanceThreshold := cctx.Int("auto-pledge-balance-threshold")
+		enableAutoPledge := cctx.Bool("enable-auto-pledge")
+		schedIdleCpus := cctx.Int("sched-idle-cpus")
+		schedUsableCpus := cctx.Int("sched-usable-cpus")
+		schedGpuTasks := cctx.Int("sched-gpu-tasks")
+		schedConcurrentAddPiece := cctx.Int("sched-concurrent-add-piece")
+
+		ctx := lcli.ReqContext(cctx)
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		err = nodeApi.SealingSetPreferSectorOnChain(ctx, preferSectorOnChain)
+		if err != nil {
+			return err
+		}
+
+		gasFee := abi.TokenAmount(types.MustParseFIL(fmt.Sprintf("%v FIL", maxPrecommitGasFee)))
+		err = nodeApi.SetMaxPreCommitGasFee(ctx, gasFee)
+		if err != nil {
+			return err
+		}
+
+		gasFee = abi.TokenAmount(types.MustParseFIL(fmt.Sprintf("%v FIL", maxCommitGasFee)))
+		err = nodeApi.SetMaxCommitGasFee(ctx, gasFee)
+		if err != nil {
+			return err
+		}
+
+		err = nodeApi.SealingSetEnableAutoPledge(ctx, enableAutoPledge)
+		if err != nil {
+			return err
+		}
+
+		balance := abi.TokenAmount(types.MustParseFIL(fmt.Sprintf("%v FIL", autoPledgeBalanceThreshold)))
+		err = nodeApi.SealingSetAutoPledgeBalanceThreshold(ctx, balance)
+		if err != nil {
+			return err
+		}
+
+		err = nodeApi.SetScheduleConcurrent(ctx, schedIdleCpus, schedUsableCpus, schedConcurrentAddPiece)
+		if err != nil {
+			return err
+		}
+
+		err = nodeApi.SetScheduleGpuConcurrentTasks(ctx, schedGpuTasks)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Sealing Adjust ---\n")
+		fmt.Printf("  PreCommit GAS:             %v FIL\n", maxPrecommitGasFee)
+		fmt.Printf("  Commit GAS:                %v FIL\n", maxCommitGasFee)
+		fmt.Printf("  Prefer Sector On Chain:    %v\n", preferSectorOnChain)
+		fmt.Printf("  Enable Auto Pledge:        %v\n", enableAutoPledge)
+		fmt.Printf("  Auto Pledge Threshold:     %v FIL\n", autoPledgeBalanceThreshold)
+		fmt.Printf("  Sched CPUs:                I %v / U %v / AP %v\n", schedIdleCpus, schedUsableCpus, schedConcurrentAddPiece)
+		fmt.Printf("  Sched GPU Tasks:           %v\n", schedGpuTasks)
+
+		return nil
+	},
+}
+
+var sealingGasParamCmd = &cli.Command{
+	Name:  "sealing-params",
+	Usage: "Get sealing paraeters",
+	Action: func(cctx *cli.Context) error {
+		ctx := lcli.ReqContext(cctx)
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		preferSectorOnChain, err := nodeApi.SealingGetPreferSectorOnChain(ctx)
+		if err != nil {
+			return err
+		}
+
+		maxPrecommitGasFee, err := nodeApi.GetMaxPreCommitGasFee(ctx)
+		if err != nil {
+			return err
+		}
+
+		maxCommitGasFee, err := nodeApi.GetMaxCommitGasFee(ctx)
+		if err != nil {
+			return err
+		}
+
+		enableAutoPledge, err := nodeApi.SealingGetEnableAutoPledge(ctx)
+		if err != nil {
+			return err
+		}
+
+		autoPledgeBalanceThreshold, err := nodeApi.SealingGetAutoPledgeBalanceThreshold(ctx)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Sealing Parameters ---\n")
+		fmt.Printf("  PreCommit GAS:             %v\n", types.FIL(maxPrecommitGasFee).Short())
+		fmt.Printf("  Commit GAS:                %v\n", types.FIL(maxCommitGasFee).Short())
+		fmt.Printf("  Prefer Sector On Chain:    %v\n", preferSectorOnChain)
+		fmt.Printf("  Enable Auto Pledge:        %v\n", enableAutoPledge)
+		fmt.Printf("  Auto Pledge Threshold:     %v\n", types.FIL(autoPledgeBalanceThreshold).Short())
+
+		return nil
+	},
+}
+
+var sealingSetWorkerModeCmd = &cli.Command{
+	Name:  "set-worker-mode",
+	Usage: "Set worker mode",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name: "address",
+		},
+		&cli.StringFlag{
+			Name:  "mode",
+			Value: "maintaining",
+			Usage: "worker mode [maintaining | normal]",
+		},
+	},
+	Action: func(cctx *cli.Context) error {
+		address := cctx.String("address")
+		mode := cctx.String("mode")
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		ctx := lcli.ReqContext(cctx)
+
+		return nodeApi.SetWorkerMode(ctx, address, mode)
+	},
+}
+
+var sealingSetWorkerReservedSpaceCmd = &cli.Command{
+	Name:  "set-worker-reserved-space",
+	Usage: "Set worker store's reserved space",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name: "address",
+		},
+		&cli.StringFlag{
+			Name:  "store-id",
+			Value: "",
+		},
+		&cli.Int64Flag{
+			Name:  "reserved-space",
+			Value: 0,
+		},
+	},
+	Action: func(cctx *cli.Context) error {
+		address := cctx.String("address")
+		storeID := cctx.String("store-id")
+		reserved := cctx.Int64("reserved-space")
+
+		if "" == storeID {
+			return nil
+		}
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		ctx := lcli.ReqContext(cctx)
+
+		return nodeApi.SetWorkerReservedSpace(ctx, address, storeID, reserved)
+	},
+}
+
+var scheduleEnableDebugCmd = &cli.Command{
+	Name:      "sched-enable-debug",
+	Usage:     "Enable more debug information of schedule",
+	ArgsUsage: "[true|false]",
+	Action: func(cctx *cli.Context) error {
+		if cctx.Args().Len() != 1 {
+			return xerrors.Errorf("expected 1 argument")
+		}
+
+		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer closer()
+
+		ctx := lcli.ReqContext(cctx)
+		enable, _ := strconv.ParseBool(cctx.Args().First())
+
+		return nodeApi.SetScheduleDebugEnable(ctx, enable)
 	},
 }

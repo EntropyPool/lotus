@@ -2,12 +2,15 @@ package stores
 
 import (
 	"bytes"
+	"io/ioutil"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/mitchellh/go-homedir"
 	"golang.org/x/xerrors"
+
+	"os"
 )
 
 func move(from, to string) error {
@@ -33,10 +36,48 @@ func move(from, to string) error {
 	//  can do better
 
 	var errOut bytes.Buffer
-	cmd := exec.Command("/usr/bin/env", "mv", "-t", toDir, from) // nolint
+	cmd := exec.Command("/usr/bin/env", "mv", "-v", "-t", toDir, from) // nolint
 	cmd.Stderr = &errOut
 	if err := cmd.Run(); err != nil {
 		return xerrors.Errorf("exec mv (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+	}
+
+	return nil
+}
+
+func upload(from string, prefix string, objName string, cli *OSSClient, removeSrc bool) error {
+	stat, err := os.Stat(from)
+	if err != nil {
+		return err
+	}
+
+	if stat.IsDir() {
+		ents, err := ioutil.ReadDir(from)
+		if err != nil {
+			return err
+		}
+		for _, ent := range ents {
+			filePath := filepath.Join(from, ent.Name())
+			entObjName := filepath.Join(objName, ent.Name())
+			err = cli.UploadObject(prefix, entObjName, filePath)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		err = cli.UploadObject(prefix, objName, from)
+		if err != nil {
+			return err
+		}
+	}
+
+	if removeSrc {
+		var errOut bytes.Buffer
+		cmd := exec.Command("/usr/bin/env", "rm", "-rf", from) // nolint
+		cmd.Stderr = &errOut
+		if err := cmd.Run(); err != nil {
+			return xerrors.Errorf("exec mv (stderr: %s): %w", strings.TrimSpace(errOut.String()), err)
+		}
 	}
 
 	return nil

@@ -235,10 +235,19 @@ func StorageMiner(fc config.MinerFeeConfig) func(params StorageMinerParams) (*st
 			return nil, err
 		}
 
+		fps.SetSealer(sealer)
+
 		sm, err := storage.NewMiner(api, maddr, h, ds, sealer, sc, verif, gsd, fc, j, as)
 		if err != nil {
 			return nil, err
 		}
+
+		fps.SetChainEndpointsFetcher(func(ctx context.Context) (map[string]http.Header, error) {
+			return sm.GetChainEndpoints(ctx)
+		})
+		fps.SetWindowPoStCheckerListener(func(ctx context.Context) (chan uint64, chan func() ([]miner.SubmitWindowedPoStParams, error)) {
+			return sm.CheckWindowPoStListener(ctx)
+		})
 
 		lc.Append(fx.Hook{
 			OnStart: func(context.Context) error {
@@ -438,13 +447,15 @@ func StagingGraphsync(mctx helpers.MetricsCtx, lc fx.Lifecycle, ibs dtypes.Stagi
 	return gs
 }
 
-func SetupBlockProducer(lc fx.Lifecycle, ds dtypes.MetadataDS, api lapi.FullNode, epp gen.WinningPoStProver, sf *slashfilter.SlashFilter, j journal.Journal) (*lotusminer.Miner, error) {
+func SetupBlockProducer(lc fx.Lifecycle, ds dtypes.MetadataDS, api lapi.FullNode, epp gen.WinningPoStProver, sf *slashfilter.SlashFilter, j journal.Journal, sealer sectorstorage.SectorManager, sm *storage.Miner) (*lotusminer.Miner, error) {
 	minerAddr, err := minerAddrFromDS(ds)
 	if err != nil {
 		return nil, err
 	}
 
 	m := lotusminer.NewMiner(api, epp, minerAddr, sf, j)
+	m.SetSealer(sealer)
+	m.SetStorageMiner(sm)
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
@@ -820,11 +831,14 @@ func NewSetSealConfigFunc(r repo.LockedRepo) (dtypes.SetSealingConfigFunc, error
 	return func(cfg sealiface.Config) (err error) {
 		err = mutateCfg(r, func(c *config.StorageMiner) {
 			c.Sealing = config.SealingConfig{
-				MaxWaitDealsSectors:       cfg.MaxWaitDealsSectors,
-				MaxSealingSectors:         cfg.MaxSealingSectors,
-				MaxSealingSectorsForDeals: cfg.MaxSealingSectorsForDeals,
-				WaitDealsDelay:            config.Duration(cfg.WaitDealsDelay),
-				AlwaysKeepUnsealedCopy:    cfg.AlwaysKeepUnsealedCopy,
+				MaxWaitDealsSectors:        cfg.MaxWaitDealsSectors,
+				MaxSealingSectors:          cfg.MaxSealingSectors,
+				MaxSealingSectorsForDeals:  cfg.MaxSealingSectorsForDeals,
+				WaitDealsDelay:             config.Duration(cfg.WaitDealsDelay),
+				AlwaysKeepUnsealedCopy:     cfg.AlwaysKeepUnsealedCopy,
+				PreferSectorOnChain:        cfg.PreferSectorOnChain,
+				EnableAutoPledge:           cfg.EnableAutoPledge,
+				AutoPledgeBalanceThreshold: types.FIL(cfg.AutoPledgeBalanceThreshold),
 			}
 		})
 		return
@@ -835,11 +849,14 @@ func NewGetSealConfigFunc(r repo.LockedRepo) (dtypes.GetSealingConfigFunc, error
 	return func() (out sealiface.Config, err error) {
 		err = readCfg(r, func(cfg *config.StorageMiner) {
 			out = sealiface.Config{
-				MaxWaitDealsSectors:       cfg.Sealing.MaxWaitDealsSectors,
-				MaxSealingSectors:         cfg.Sealing.MaxSealingSectors,
-				MaxSealingSectorsForDeals: cfg.Sealing.MaxSealingSectorsForDeals,
-				WaitDealsDelay:            time.Duration(cfg.Sealing.WaitDealsDelay),
-				AlwaysKeepUnsealedCopy:    cfg.Sealing.AlwaysKeepUnsealedCopy,
+				MaxWaitDealsSectors:        cfg.Sealing.MaxWaitDealsSectors,
+				MaxSealingSectors:          cfg.Sealing.MaxSealingSectors,
+				MaxSealingSectorsForDeals:  cfg.Sealing.MaxSealingSectorsForDeals,
+				WaitDealsDelay:             time.Duration(cfg.Sealing.WaitDealsDelay),
+				AlwaysKeepUnsealedCopy:     cfg.Sealing.AlwaysKeepUnsealedCopy,
+				PreferSectorOnChain:        cfg.Sealing.PreferSectorOnChain,
+				EnableAutoPledge:           cfg.Sealing.EnableAutoPledge,
+				AutoPledgeBalanceThreshold: abi.TokenAmount(cfg.Sealing.AutoPledgeBalanceThreshold),
 			}
 		})
 		return

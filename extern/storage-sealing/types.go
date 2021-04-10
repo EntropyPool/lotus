@@ -80,6 +80,8 @@ type SectorInfo struct {
 	TicketEpoch   abi.ChainEpoch
 	PreCommit1Out storage.PreCommit1Out
 
+	PreCommit1Fails uint64
+
 	// PreCommit2
 	CommD *cid.Cid
 	CommR *cid.Cid

@@ -3,6 +3,7 @@ package stores
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math/bits"
@@ -15,6 +16,8 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/hashicorp/go-multierror"
+
 	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	"github.com/filecoin-project/lotus/extern/sector-storage/tarutil"
@@ -22,7 +25,7 @@ import (
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/specs-storage/storage"
 
-	"github.com/hashicorp/go-multierror"
+	files "github.com/ipfs/go-ipfs-files"
 	"golang.org/x/xerrors"
 )
 
@@ -134,15 +137,28 @@ func (r *Remote) AcquireSector(ctx context.Context, s storage.SectorRef, existin
 			continue
 		}
 
-		dest := storiface.PathByType(apaths, fileType)
 		storageID := storiface.PathByType(ids, fileType)
+		storageIDExt := storiface.PathExtByType(ids, fileType)
 
-		url, err := r.acquireFromRemote(ctx, s.ID, fileType, dest)
-		if err != nil {
-			return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+		var url string
+
+		destSectorPath := storiface.PathExtByType(apaths, fileType)
+		if destSectorPath.Oss {
+			url, err = r.acquireFromRemoteWithOss(ctx, s.ID, fileType, destSectorPath)
+			if err != nil {
+				return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+			}
+			storiface.SetPathExtByType(&paths, fileType, destSectorPath.Oss, destSectorPath.Private, destSectorPath.OssInfo)
+		} else {
+			destPath := storiface.PathByType(apaths, fileType)
+			url, err = r.acquireFromRemote(ctx, s.ID, fileType, destPath)
+			if err != nil {
+				return storiface.SectorPaths{}, storiface.SectorPaths{}, err
+			}
+			storiface.SetPathByType(&paths, fileType, destPath)
 		}
 
-		storiface.SetPathByType(&paths, fileType, dest)
+		storiface.SetPathExtByType(&stores, fileType, storageIDExt.Oss, storageIDExt.Private, storageIDExt.OssInfo)
 		storiface.SetPathByType(&stores, fileType, storageID)
 
 		if err := r.index.StorageDeclareSector(ctx, ID(storageID), s.ID, fileType, op == storiface.AcquireMove); err != nil {
@@ -172,7 +188,7 @@ func tempFetchDest(spath string, create bool) (string, error) {
 	return filepath.Join(tempdir, b), nil
 }
 
-func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType storiface.SectorFileType, dest string) (string, error) {
+func (r *Remote) acquireFromRemoteWithOss(ctx context.Context, s abi.SectorID, fileType storiface.SectorFileType, dest storiface.SectorPath) (string, error) {
 	si, err := r.index.StorageFindSector(ctx, s, fileType, 0, false)
 	if err != nil {
 		return "", err
@@ -188,8 +204,54 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 
 	var merr error
 	for _, info := range si {
-		// TODO: see what we have local, prefer that
+		for _, url := range info.URLs {
+			urlWithOss := fmt.Sprintf("%s?oss=%v", url, dest.Oss)
+			urlWithOss = fmt.Sprintf("%s&oss_access_key=%v", urlWithOss, dest.OssInfo.AccessKey)
+			urlWithOss = fmt.Sprintf("%s&oss_secret_key=%v", urlWithOss, dest.OssInfo.SecretKey)
+			urlWithOss = fmt.Sprintf("%s&oss_url=%v", urlWithOss, dest.OssInfo.URL)
+			urlWithOss = fmt.Sprintf("%s&oss_bucket_name=%v", urlWithOss, dest.OssInfo.BucketName)
+			urlWithOss = fmt.Sprintf("%s&oss_prefix=%v", urlWithOss, dest.OssInfo.Prefix)
+			urlWithOss = fmt.Sprintf("%s&oss_region=%v", urlWithOss, dest.OssInfo.Region)
+			urlWithOss = fmt.Sprintf("%s&oss_part_size=%v", urlWithOss, dest.OssInfo.UploadPartSize)
 
+			if err := os.RemoveAll(dest.Path); err != nil {
+				return "", xerrors.Errorf("removing dest: %w", err)
+			}
+
+			err = r.fetch(ctx, urlWithOss, "", true)
+			if err != nil {
+				merr = multierror.Append(merr, xerrors.Errorf("fetch error %s (storage %s) %w", url, info.ID, err))
+				continue
+			}
+
+			return url, nil
+		}
+	}
+
+	return "", xerrors.Errorf("failed to acquire sector %v from remote (tried %v): %w", s, si, merr)
+}
+
+func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType storiface.SectorFileType, dest string) (string, error) {
+	si, err := r.index.StorageFindSector(ctx, s, fileType, 0, false)
+	if err != nil {
+		return "", err
+	}
+
+	if len(si) == 0 {
+		return "", xerrors.Errorf("failed to acquire sector %v from remote(%d): %w", s, fileType, storiface.ErrSectorNotFound)
+	}
+
+	sort.Slice(si, func(i, j int) bool {
+		return si[i].Weight < si[j].Weight
+	})
+
+	for _, info := range si {
+		log.Infow("acquire from remote", "URLs", info.URLs)
+	}
+	var merr error
+	for _, info := range si {
+		// TODO: see what we have local, prefer that
+		log.Debugw("acquire from remote", "URLs", info.URLs)
 		for _, url := range info.URLs {
 			tempDest, err := tempFetchDest(dest, true)
 			if err != nil {
@@ -200,7 +262,7 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 				return "", xerrors.Errorf("removing dest: %w", err)
 			}
 
-			err = r.fetch(ctx, url, tempDest)
+			err = r.fetch(ctx, url, tempDest, false)
 			if err != nil {
 				merr = multierror.Append(merr, xerrors.Errorf("fetch error %s (storage %s) -> %s: %w", url, info.ID, tempDest, err))
 				continue
@@ -211,8 +273,9 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 			}
 
 			if merr != nil {
-				log.Warnw("acquireFromRemote encountered errors when fetching sector from remote", "errors", merr)
+				return "", xerrors.Errorf("acquireFromRemote encountered errors when fetching sector from remote", "errors", merr)
 			}
+			log.Infof("fetch move over (storage %s) %s -> %s", info.ID, tempDest, dest)
 			return url, nil
 		}
 	}
@@ -220,11 +283,11 @@ func (r *Remote) acquireFromRemote(ctx context.Context, s abi.SectorID, fileType
 	return "", xerrors.Errorf("failed to acquire sector %v from remote (tried %v): %w", s, si, merr)
 }
 
-func (r *Remote) fetch(ctx context.Context, url, outname string) error {
+func (r *Remote) fetch(ctx context.Context, url, outname string, ossStore bool) error {
 	log.Infof("Fetch %s -> %s", url, outname)
 
 	if len(r.limit) >= cap(r.limit) {
-		log.Infof("Throttling fetch, %d already running", len(r.limit))
+		log.Debugf("Throttling fetch, %d already running", len(r.limit))
 	}
 
 	// TODO: Smarter throttling
@@ -253,6 +316,10 @@ func (r *Remote) fetch(ctx context.Context, url, outname string) error {
 
 	if resp.StatusCode != 200 {
 		return xerrors.Errorf("non-200 code: %d", resp.StatusCode)
+	}
+
+	if ossStore {
+		return nil
 	}
 
 	/*bar := pb.New64(w.sizeForType(typ))
@@ -288,6 +355,39 @@ func (r *Remote) fetch(ctx context.Context, url, outname string) error {
 			return err
 		}
 		return f.Close()
+	default:
+		return xerrors.Errorf("unknown content type: '%s'", mediatype)
+	}
+}
+
+func (r *Remote) fetchFile(ctx context.Context, url, outname string) error {
+	log.Debugf("Fetch File %s -> %s", url, outname)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return xerrors.Errorf("request: %w", err)
+	}
+	req.Header = r.auth
+	req = req.WithContext(ctx)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return xerrors.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close() // nolint
+
+	if resp.StatusCode != 200 {
+		return xerrors.Errorf("non-200 code: %d", resp.StatusCode)
+	}
+
+	mediatype, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if err != nil {
+		return xerrors.Errorf("parse media type: %w", err)
+	}
+
+	switch mediatype {
+	case "application/octet-stream":
+		return files.WriteTo(files.NewReaderFile(resp.Body), outname)
 	default:
 		return xerrors.Errorf("unknown content type: '%s'", mediatype)
 	}

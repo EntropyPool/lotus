@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	logging "github.com/ipfs/go-log/v2"
@@ -28,6 +29,7 @@ func (handler *FetchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mux.HandleFunc("/remote/stat/{id}", handler.remoteStatFs).Methods("GET")
 	mux.HandleFunc("/remote/{type}/{id}", handler.remoteGetSector).Methods("GET")
 	mux.HandleFunc("/remote/{type}/{id}", handler.remoteDeleteSector).Methods("DELETE")
+	mux.HandleFunc("/remote/{type}/{id}", handler.remoteMoveCacheSector).Methods("MOVE")
 
 	mux.ServeHTTP(w, r)
 }
@@ -72,6 +74,8 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	r.ParseForm()
+
 	// The caller has a lock on this sector already, no need to get one here
 
 	// passing 0 spt because we don't allocate anything
@@ -103,6 +107,51 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	oss := false
+	if _, ok := r.Form["oss"]; ok {
+		oss, err = strconv.ParseBool(r.Form["oss"][0])
+		if err != nil {
+			log.Errorf("%+v", err)
+			w.WriteHeader(500)
+			return
+		}
+	}
+
+	if oss {
+		partSize, err := strconv.ParseInt(r.Form["oss_part_size"][0], 10, 64)
+		if err != nil {
+			log.Errorf("fail to parse oss_part_size: %v", err)
+			partSize = 32 * 1024 * 1024
+		}
+
+		ossCli, err := NewOSSClientWithSingleBucket(StorageOSSInfo{
+			URL:            r.Form["oss_url"][0],
+			AccessKey:      r.Form["oss_access_key"][0],
+			SecretKey:      r.Form["oss_secret_key"][0],
+			BucketName:     r.Form["oss_bucket_name"][0],
+			Prefix:         r.Form["oss_prefix"][0],
+			Region:         r.Form["oss_region"][0],
+			UploadPartSize: partSize,
+			CanWrite:       true,
+		})
+
+		if err != nil {
+			log.Errorf("%+v", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		err = upload(path, vars["type"], vars["id"], ossCli, false)
+		if err != nil {
+			log.Errorf("%+v", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		w.WriteHeader(200)
+		return
+	}
+
 	var rd io.Reader
 	if stat.IsDir() {
 		rd, err = tarutil.TarDirectory(path)
@@ -125,8 +174,8 @@ func (handler *FetchHandler) remoteGetSector(w http.ResponseWriter, r *http.Requ
 }
 
 func (handler *FetchHandler) remoteDeleteSector(w http.ResponseWriter, r *http.Request) {
-	log.Infof("SERVE DELETE %s", r.URL)
 	vars := mux.Vars(r)
+	log.Infof("SERVE DELETE %s [%v]", r.URL, vars)
 
 	id, err := storiface.ParseSectorID(vars["id"])
 	if err != nil {
@@ -147,6 +196,40 @@ func (handler *FetchHandler) remoteDeleteSector(w http.ResponseWriter, r *http.R
 		w.WriteHeader(500)
 		return
 	}
+}
+
+func (handler *FetchHandler) remoteMoveCacheSector(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	log.Infof("SERVE MOVE %s [%v]", r.URL, vars)
+
+	id, err := storiface.ParseSectorID(vars["id"])
+	if err != nil {
+		log.Error("%+v", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	ft, err := ftFromString(vars["type"])
+	if err != nil {
+		log.Error("%+v", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	si := storage.SectorRef{
+		ID:        id,
+		ProofType: 0,
+	}
+
+	if err := handler.MoveCache(r.Context(), si, ft, false); err != nil {
+		log.Errorf("%+v", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(200)
+	log.Infof("SERVE MOVE over %s", r.URL)
+	return
 }
 
 func ftFromString(t string) (storiface.SectorFileType, error) {

@@ -6,10 +6,17 @@ require (
 	contrib.go.opencensus.io/exporter/jaeger v0.1.0
 	contrib.go.opencensus.io/exporter/prometheus v0.1.0
 	github.com/BurntSushi/toml v0.3.1
+	github.com/EntropyPool/entropy-logger v0.0.0-20210320022718-3091537e035f
+	github.com/EntropyPool/machine-spec v0.0.0-20210408033101-2db09d058812
 	github.com/GeertJohan/go.rice v1.0.0
 	github.com/Gurpartap/async v0.0.0-20180927173644-4f7f499dd9ee
+	github.com/Jeffail/gabs v1.4.0
+	github.com/NpoolDevOps/fbc-license v0.0.0
+	github.com/NpoolDevOps/fbc-license-service v0.0.0-20210324144427-1b800bab7127
+	github.com/NpoolRD/http-daemon v0.0.0-20210324100344-82fee56de8ac
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
+	github.com/aws/aws-sdk-go v1.32.11
 	github.com/buger/goterm v0.0.0-20200322175922-2f3e71b85129
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/cockroachdb/pebble v0.0.0-20201001221639-879f3bfeef07
@@ -49,8 +56,12 @@ require (
 	github.com/gbrlsnchs/jwt/v3 v3.0.0-beta.1
 	github.com/go-kit/kit v0.10.0
 	github.com/go-ole/go-ole v1.2.4 // indirect
+<<<<<<< HEAD
 	github.com/golang/mock v1.4.4
 	github.com/google/uuid v1.1.2
+=======
+	github.com/google/uuid v1.2.0
+>>>>>>> npool/master-entropy-v1.5.0
 	github.com/gorilla/mux v1.7.4
 	github.com/gorilla/websocket v1.4.2
 	github.com/hako/durafmt v0.0.0-20200710122514-c0fb7b4da026
@@ -127,9 +138,11 @@ require (
 	github.com/prometheus/client_golang v1.6.0
 	github.com/raulk/clock v1.1.0
 	github.com/raulk/go-watchdog v1.0.1
+	github.com/shirou/gopsutil v3.20.11+incompatible
+	github.com/shirou/gopsutil/v3 v3.20.11
 	github.com/stretchr/testify v1.7.0
 	github.com/syndtr/goleveldb v1.0.0
-	github.com/urfave/cli/v2 v2.2.0
+	github.com/urfave/cli/v2 v2.3.0
 	github.com/whyrusleeping/bencher v0.0.0-20190829221104-bb6607aa8bba
 	github.com/whyrusleeping/cbor-gen v0.0.0-20210219115102-f37d292932f2
 	github.com/whyrusleeping/ledger-filecoin-go v0.9.1-0.20201010031517-c3dcc1bddce4
@@ -142,7 +155,7 @@ require (
 	go.uber.org/fx v1.9.0
 	go.uber.org/multierr v1.6.0
 	go.uber.org/zap v1.16.0
-	golang.org/x/net v0.0.0-20201021035429-f5854403a974
+	golang.org/x/net v0.0.0-20201224014010-6772e930b67b
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 	golang.org/x/sys v0.0.0-20201119102817-f84b799fce68
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
@@ -156,6 +169,14 @@ replace github.com/filecoin-project/lotus => ./
 
 replace github.com/golangci/golangci-lint => github.com/golangci/golangci-lint v1.18.0
 
-replace github.com/filecoin-project/filecoin-ffi => ./extern/filecoin-ffi
+replace github.com/filecoin-project/filecoin-ffi => ../filecoin-ffi
 
 replace github.com/filecoin-project/test-vectors => ./extern/test-vectors
+
+replace github.com/elastic/go-sysinfo v1.3.0 => ../go-sysinfo
+
+replace github.com/dgraph-io/badger/v2 => github.com/dgraph-io/badger/v2 v2.0.1-rc1.0.20200716180832-3ab515320794
+
+replace github.com/filecoin-project/specs-storage => ../specs-storage
+
+replace github.com/NpoolDevOps/fbc-license => ../fbc-license

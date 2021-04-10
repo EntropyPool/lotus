@@ -86,6 +86,9 @@ type SealingConfig struct {
 	// todo TargetSealingSectors uint64
 
 	// todo TargetSectors - stop auto-pleding new sectors after this many sectors are sealed, default CC upgrade for deals sectors if above
+	PreferSectorOnChain        bool
+	EnableAutoPledge           bool
+	AutoPledgeBalanceThreshold types.FIL
 }
 
 type MinerFeeConfig struct {
@@ -232,17 +235,20 @@ func DefaultStorageMiner() *StorageMiner {
 		Common: defCommon(),
 
 		Sealing: SealingConfig{
-			MaxWaitDealsSectors:       2, // 64G with 32G sectors
-			MaxSealingSectors:         0,
-			MaxSealingSectorsForDeals: 0,
-			WaitDealsDelay:            Duration(time.Hour * 6),
+			MaxWaitDealsSectors:        2, // 64G with 32G sectors
+			MaxSealingSectors:          0,
+			MaxSealingSectorsForDeals:  0,
+			WaitDealsDelay:             Duration(time.Hour * 6),
+			PreferSectorOnChain:        true,
+			EnableAutoPledge:           true,
+			AutoPledgeBalanceThreshold: types.MustParseFIL("300"),
 		},
 
 		Storage: sectorstorage.SealerConfig{
-			AllowAddPiece:   true,
-			AllowPreCommit1: true,
-			AllowPreCommit2: true,
-			AllowCommit:     true,
+			AllowAddPiece:   false,
+			AllowPreCommit1: false,
+			AllowPreCommit2: false,
+			AllowCommit:     false,
 			AllowUnseal:     true,
 
 			// Default to 10 - tcp should still be able to figure this out, and

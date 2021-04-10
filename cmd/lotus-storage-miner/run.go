@@ -21,6 +21,7 @@ import (
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/go-jsonrpc/auth"
 
+	lic "github.com/NpoolDevOps/fbc-license"
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/api/apistruct"
 	"github.com/filecoin-project/lotus/build"
@@ -55,6 +56,12 @@ var runCmd = &cli.Command{
 			Usage: "manage open file limit",
 			Value: true,
 		},
+		&cli.StringFlag{
+			Name: "username",
+		},
+		&cli.StringFlag{
+			Name: "password",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		if !cctx.Bool("enable-gpu-proving") {
@@ -64,9 +71,14 @@ var runCmd = &cli.Command{
 			}
 		}
 
+		if cctx.String("username") == "" || cctx.String("password") == "" {
+			return xerrors.Errorf("invalid username or password")
+		}
+		go lic.LicenseChecker(cctx.String("username"), cctx.String("password"), false, "filecoin")
+
 		nodeApi, ncloser, err := lcli.GetFullNodeAPI(cctx)
 		if err != nil {
-			return xerrors.Errorf("getting full node api: %w", err)
+			return xerrors.Errorf("getting full node api: %s", err)
 		}
 		defer ncloser()
 
@@ -204,6 +216,10 @@ var runCmd = &cli.Command{
 			log.Warn("Graceful shutdown successful")
 		}()
 		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+
+		go MultiMinerRun(cctx, minerRepoPath)
+		go FeeAdjusterRun(cctx)
+		go ChainEndpointsWatcher(cctx, minerRepoPath)
 
 		return srv.Serve(manet.NetListener(lst))
 	},

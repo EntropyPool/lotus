@@ -9,6 +9,10 @@ import (
 )
 
 func (m *Manager) WorkerStats() map[uuid.UUID]storiface.WorkerStats {
+	if m.sched.useExtSched {
+		return m.sched.esched.WorkerStats()
+	}
+
 	m.sched.workersLk.RLock()
 	defer m.sched.workersLk.RUnlock()
 
@@ -30,8 +34,15 @@ func (m *Manager) WorkerStats() map[uuid.UUID]storiface.WorkerStats {
 }
 
 func (m *Manager) WorkerJobs() map[uuid.UUID][]storiface.WorkerJob {
+	if m.sched.useExtSched {
+		return m.sched.esched.WorkerJobs()
+	}
+
 	out := map[uuid.UUID][]storiface.WorkerJob{}
 	calls := map[storiface.CallID]struct{}{}
+
+	m.sched.workersLk.RLock()
+	defer m.sched.workersLk.RUnlock()
 
 	for _, t := range m.sched.workTracker.Running() {
 		out[uuid.UUID(t.worker)] = append(out[uuid.UUID(t.worker)], t.job)

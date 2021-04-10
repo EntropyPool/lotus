@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"golang.org/x/xerrors"
@@ -12,7 +13,9 @@ import (
 	"github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/api/client"
 	"github.com/filecoin-project/lotus/build"
+	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
@@ -25,10 +28,12 @@ import (
 
 type WindowPoStScheduler struct {
 	api              storageMinerApi
+	mainApi          storageMinerApi
 	feeCfg           config.MinerFeeConfig
 	addrSel          *AddressSelector
 	prover           storage.Prover
 	verifier         ffiwrapper.Verifier
+	sealer           sectorstorage.SectorManager
 	faultTracker     sectorstorage.FaultTracker
 	proofType        abi.RegisteredPoStProof
 	partitionSectors uint64
@@ -38,6 +43,9 @@ type WindowPoStScheduler struct {
 
 	evtTypes [4]journal.EventType
 	journal  journal.Journal
+
+	chainEndpointersFetcher func(context.Context) (map[string]http.Header, error)
+	wdpostCheckerListener   func(context.Context) (chan uint64, chan func() ([]miner.SubmitWindowedPoStParams, error))
 
 	// failed abi.ChainEpoch // eps
 	// failLk sync.Mutex
@@ -51,6 +59,7 @@ func NewWindowedPoStScheduler(api storageMinerApi, fc config.MinerFeeConfig, as 
 
 	return &WindowPoStScheduler{
 		api:              api,
+		mainApi:          api,
 		feeCfg:           fc,
 		addrSel:          as,
 		prover:           sb,
@@ -70,9 +79,68 @@ func NewWindowedPoStScheduler(api storageMinerApi, fc config.MinerFeeConfig, as 
 	}, nil
 }
 
+func (s *WindowPoStScheduler) SetSealer(sealer sectorstorage.SectorManager) {
+	s.sealer = sealer
+}
+
+func (s *WindowPoStScheduler) SetChainEndpointsFetcher(fetcher func(ctx context.Context) (map[string]http.Header, error)) {
+	s.chainEndpointersFetcher = fetcher
+}
+
+func (s *WindowPoStScheduler) SetWindowPoStCheckerListener(listener func(ctx context.Context) (chan uint64, chan func() ([]miner.SubmitWindowedPoStParams, error))) {
+	s.wdpostCheckerListener = listener
+}
+
 type changeHandlerAPIImpl struct {
 	storageMinerApi
 	*WindowPoStScheduler
+}
+
+func (s *WindowPoStScheduler) chainNotify(ctx context.Context) (<-chan []*api.HeadChange, error) {
+	ch, err := s.mainApi.ChainNotify(ctx)
+	if err == nil {
+		s.api = s.mainApi
+		return ch, nil
+	}
+
+	log.Errorf("ChainNotify error: %v", err)
+
+	endpoints, err := s.chainEndpointersFetcher(ctx)
+	if err != nil {
+		log.Errorf("fail to get chain endpoints: %v", err)
+		return nil, err
+	}
+
+	for addr, headers := range endpoints {
+		api, closer, err := client.NewFullNodeRPC(ctx, addr, headers)
+		if err != nil {
+			log.Errorf("fail to watch chain endpoint %v: %v", addr, err)
+			continue
+		}
+		defer closer()
+		ch, err = api.ChainNotify(ctx)
+		if err == nil {
+			s.api = api
+			return ch, nil
+		}
+		log.Errorf("ChainNotify error from %v: %v", addr, err)
+	}
+
+	return nil, xerrors.Errorf("cannot find suitable fullnode")
+}
+
+func (s *WindowPoStScheduler) checkWindowPoSt(ctx context.Context, deadline uint64, wdpostResult chan func() ([]miner.SubmitWindowedPoStParams, error)) {
+	go func() {
+		log.Warnf("CHECKING WINDOW POST ----- %v", deadline)
+		posts, err := s.runPost(ctx, dline.Info{
+			Index:                deadline,
+			WPoStPeriodDeadlines: miner.WPoStPeriodDeadlines,
+		}, nil)
+		log.Warnf("CHECKED WINDOW POST ----- %v", deadline)
+		wdpostResult <- (func() ([]miner.SubmitWindowedPoStParams, error) {
+			return posts, err
+		})
+	}()
 }
 
 func (s *WindowPoStScheduler) Run(ctx context.Context) {
@@ -86,10 +154,24 @@ func (s *WindowPoStScheduler) Run(ctx context.Context) {
 	var err error
 	var gotCur bool
 
+	wdpostChecker, wdpostResult := s.wdpostCheckerListener(ctx)
+
 	// not fine to panic after this point
 	for {
+		select {
+		case index := <-wdpostChecker:
+			s.checkWindowPoSt(ctx, index, wdpostResult)
+		default:
+		}
+
+		if !s.sealer.GetPlayAsMaster(ctx) {
+			log.Infof("I'm not master, do not process window post")
+			build.Clock.Sleep(10 * time.Second)
+			continue
+		}
+
 		if notifs == nil {
-			notifs, err = s.api.ChainNotify(ctx)
+			notifs, err = s.chainNotify(ctx)
 			if err != nil {
 				log.Errorf("ChainNotify error: %+v", err)
 

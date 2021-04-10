@@ -366,6 +366,10 @@ var provingCheckProvableCmd = &cli.Command{
 			Name:  "slow",
 			Usage: "run slower checks",
 		},
+		&cli.BoolFlag{
+			Name:  "full",
+			Usage: "run deadline full check",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		if cctx.Args().Len() != 1 {
@@ -415,35 +419,43 @@ var provingCheckProvableCmd = &cli.Command{
 		_, _ = fmt.Fprintln(tw, "deadline\tpartition\tsector\tstatus")
 
 		for parIdx, par := range partitions {
-			sectors := make(map[abi.SectorNumber]struct{})
+			fullDeadlineCheck := cctx.Bool("full")
+			if fullDeadlineCheck {
+				proofs, err := sapi.CheckWindowPoSt(ctx, dlIdx)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("Deadline: %v\n", proofs)
+			} else {
+				sectors := make(map[abi.SectorNumber]struct{})
 
-			sectorInfos, err := api.StateMinerSectors(ctx, addr, &par.LiveSectors, types.EmptyTSK)
-			if err != nil {
-				return err
-			}
+				sectorInfos, err := api.StateMinerSectors(ctx, addr, &par.LiveSectors, types.EmptyTSK)
+				if err != nil {
+					return err
+				}
 
-			var tocheck []storage.SectorRef
-			for _, info := range sectorInfos {
-				sectors[info.SectorNumber] = struct{}{}
-				tocheck = append(tocheck, storage.SectorRef{
-					ProofType: info.SealProof,
-					ID: abi.SectorID{
-						Miner:  abi.ActorID(mid),
-						Number: info.SectorNumber,
-					},
-				})
-			}
+				var tocheck []storage.SectorRef
+				for _, info := range sectorInfos {
+					sectors[info.SectorNumber] = struct{}{}
+					tocheck = append(tocheck, storage.SectorRef{
+						ProofType: info.SealProof,
+						ID: abi.SectorID{
+							Miner:  abi.ActorID(mid),
+							Number: info.SectorNumber,
+						},
+					})
+				}
+				bad, err := sapi.CheckProvable(ctx, info.WindowPoStProofType, tocheck, cctx.Bool("slow"))
+				if err != nil {
+					return err
+				}
 
-			bad, err := sapi.CheckProvable(ctx, info.WindowPoStProofType, tocheck, cctx.Bool("slow"))
-			if err != nil {
-				return err
-			}
-
-			for s := range sectors {
-				if err, exist := bad[s]; exist {
-					_, _ = fmt.Fprintf(tw, "%d\t%d\t%d\t%s\n", dlIdx, parIdx, s, color.RedString("bad")+fmt.Sprintf(" (%s)", err))
-				} else if !cctx.Bool("only-bad") {
-					_, _ = fmt.Fprintf(tw, "%d\t%d\t%d\t%s\n", dlIdx, parIdx, s, color.GreenString("good"))
+				for s := range sectors {
+					if err, exist := bad[s]; exist {
+						_, _ = fmt.Fprintf(tw, "%d\t%d\t%d\t%s\n", dlIdx, parIdx, s, color.RedString("bad")+fmt.Sprintf(" (%s)", err))
+					} else if !cctx.Bool("only-bad") {
+						_, _ = fmt.Fprintf(tw, "%d\t%d\t%d\t%s\n", dlIdx, parIdx, s, color.GreenString("good"))
+					}
 				}
 			}
 		}

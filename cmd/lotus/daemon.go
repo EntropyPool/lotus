@@ -27,6 +27,7 @@ import (
 	"golang.org/x/xerrors"
 	"gopkg.in/cheggaaa/pb.v1"
 
+	lic "github.com/NpoolDevOps/fbc-license"
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/stmgr"
@@ -152,9 +153,20 @@ var DaemonCmd = &cli.Command{
 			Name:  "restore-config",
 			Usage: "config file to use when restoring from backup",
 		},
+		&cli.StringFlag{
+			Name: "username",
+		},
+		&cli.StringFlag{
+			Name: "password",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		isLite := cctx.Bool("lite")
+
+		if cctx.String("username") == "" || cctx.String("password") == "" {
+			return xerrors.Errorf("invalid username or password")
+		}
+		go lic.LicenseChecker(cctx.String("username"), cctx.String("password"), false, "filecoin")
 
 		err := runmetrics.Enable(runmetrics.RunMetricOptions{
 			EnableCPU:    true,
