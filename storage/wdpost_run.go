@@ -697,29 +697,29 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 
 				log.Infow("computing window post", "batch", batchIdx, "elapsed", elapsed, "err", err, "faults", ps)
 
-				var checkRand abi.Randomness
-				if ts != nil {
-					headTs, err := s.api.ChainHead(ctx)
-					if err != nil {
-						postChanErr <- xerrors.Errorf("getting current head: %w", err)
-						return
-					}
-
-					checkRand, err = s.api.ChainGetRandomnessFromBeacon(ctx, headTs.Key(), crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
-					if err != nil {
-						postChanErr <- xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", ts.Height(), di, err)
-						return
-					}
-
-					if !bytes.Equal(checkRand, rand) {
-						log.Warnw("windowpost randomness changed", "old", rand, "new", checkRand, "ts-height", ts.Height(), "challenge-height", di.Challenge, "tsk", ts.Key())
-						continue
-					}
-				} else {
-					checkRand = randomness
-				}
-
 				if err == nil {
+					var checkRand abi.Randomness
+					if ts != nil {
+						headTs, err := s.api.ChainHead(ctx)
+						if err != nil {
+							postChanErr <- xerrors.Errorf("getting current head: %w", err)
+							return
+						}
+
+						checkRand, err = s.api.ChainGetRandomnessFromBeacon(ctx, headTs.Key(), crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
+						if err != nil {
+							postChanErr <- xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", ts.Height(), di, err)
+							return
+						}
+
+						if !bytes.Equal(checkRand, rand) {
+							log.Warnw("windowpost randomness changed", "old", rand, "new", checkRand, "ts-height", ts.Height(), "challenge-height", di.Challenge, "tsk", ts.Key())
+							continue
+						}
+					} else {
+						checkRand = randomness
+					}
+
 					// If we generated an incorrect proof, try again.
 					if correct, err := s.verifier.VerifyWindowPoSt(ctx, proof.WindowPoStVerifyInfo{
 						Randomness:        abi.PoStRandomness(checkRand),
