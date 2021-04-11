@@ -110,7 +110,7 @@ func NewIndex() *Index {
 		},
 		sectors:         map[Decl][]*declMeta{},
 		stores:          map[ID]*storageEntry{},
-		StorageNotifier: make(chan struct{}, 10),
+		StorageNotifier: make(chan struct{}, 1000000),
 	}
 }
 

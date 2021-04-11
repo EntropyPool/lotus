@@ -448,7 +448,7 @@ type edispatcher struct {
 	state                  string
 }
 
-const eschedWorkerBuckets = 10
+const eschedWorkerBuckets = 40
 
 var eschedUnassignedWorker = uuid.Must(uuid.Parse("11111111-2222-3333-4444-111111111111"))
 var eschedDebug = false
@@ -1476,13 +1476,14 @@ func (bucket *eWorkerBucket) onAddStore(w *eWorkerHandle, act eStoreAction) {
 	if _, ok := w.storeIDs[act.id]; ok {
 		stat := w.storeIDs[act.id]
 		if stat.space < act.stat.space {
-			debugFunc()("<%s> store %v is updating %v -> %v (%v | %v)",
-				eschedTag, act.id, stat.space, act.stat.space, stat.maxReached, act.stat.total)
+			debugFunc()("<%s> store %v | %v is updating %v -> %v (%v | %v)",
+				eschedTag, act.id, stat.URLs, stat.space, act.stat.space,
+				stat.maxReached, act.stat.total)
 			act.stat.maxReached = stat.maxReached
 			w.storeIDs[act.id] = act.stat
 		}
 	} else {
-		debugFunc()("<%s> store %v is adding %v | %v", eschedTag, act.id, act.stat.space, act.stat.total)
+		log.Infof("<%s> store %v |%v is adding %v | %v", eschedTag, act.id, act.stat.URLs, act.stat.space, act.stat.total)
 		w.storeIDs[act.id] = act.stat
 	}
 
@@ -1508,6 +1509,7 @@ func (bucket *eWorkerBucket) onStorageNotify(act eStoreAction) {
 		}
 	}
 	if nil == worker {
+		debugFunc()("<%s> cannot find worker for store %v in bucket %v", eschedTag, act.stat.URLs, bucket.id)
 		return
 	}
 	debugFunc()("<%s> %v store %v [bucket %d / worker %s]", eschedTag, act.act, act.id, bucket.id, worker.info.Address)
@@ -1952,27 +1954,27 @@ func (bucket *eWorkerBucket) addNewWorker(w *eWorkerHandle) {
 func newExtScheduler() *edispatcher {
 	dispatcher := &edispatcher{
 		nextWorker:             0,
-		newWorker:              make(chan *eWorkerHandle, 40),
-		dropWorker:             make(chan uuid.UUID, 10),
+		newWorker:              make(chan *eWorkerHandle, 40000),
+		dropWorker:             make(chan uuid.UUID, 1000),
 		taskUUID:               make(chan eTaskUUID, 10),
 		setWorkerMode:          make(chan eWorkerMode, 10),
 		setWorkerReservedSpace: make(chan eWorkerReservedSpace, 10),
 		abortTask:              make(chan storage.SectorRef, 10),
-		newRequest:             make(chan *eWorkerRequest, 1000),
+		newRequest:             make(chan *eWorkerRequest, 100000),
 		buckets:                make([]*eWorkerBucket, eschedWorkerBuckets),
 		reqQueue: &eRequestQueue{
 			reqs: make(map[sealtasks.TaskType][]*eWorkerRequest),
 		},
-		storageNotifier: make(chan eStoreAction, 10),
-		droppedWorker:   make(chan eTaskWorkerBindParam, 10),
-		taskCleaner:     make(chan *eWorkerTaskCleaning, 10),
+		storageNotifier: make(chan eStoreAction, 100000),
+		droppedWorker:   make(chan eTaskWorkerBindParam, 100),
+		taskCleaner:     make(chan *eWorkerTaskCleaning, 10000),
 		closing:         make(chan struct{}, 2),
 		taskWorkerBinder: &eTaskWorkerBinder{
 			binder: make(map[abi.SectorNumber]eTaskWorkerBindParam),
 		},
 		workerStatsQuery:  make(chan *eWorkerStatsParam, 10),
 		workerJobsQuery:   make(chan *eWorkerJobsParam, 10),
-		bucketPledgedJobs: make(chan *eBucketPledgedJobsParam, 0),
+		bucketPledgedJobs: make(chan *eBucketPledgedJobsParam, 10),
 		workerJobs:        make(map[uuid.UUID][]storiface.WorkerJob),
 		workerStats:       make(map[uuid.UUID]storiface.WorkerStats),
 		workerJobsResp:    make(chan map[uuid.UUID][]storiface.WorkerJob, 10),
@@ -1990,25 +1992,25 @@ func newExtScheduler() *edispatcher {
 			concurrentAP:           1,
 			idleCpus:               4,
 			schedulerWaker:         make(chan struct{}, 20),
-			schedulerRunner:        make(chan struct{}, 20000),
+			schedulerRunner:        make(chan struct{}, 20),
 			reqFinisher:            make(chan *eRequestFinisher),
-			notifier:               make(chan struct{}),
+			notifier:               make(chan struct{}, 10),
 			dropWorker:             make(chan uuid.UUID, 10),
 			taskUUID:               make(chan eTaskUUID, 10),
 			setWorkerMode:          make(chan eWorkerMode, 10),
 			setWorkerReservedSpace: make(chan eWorkerReservedSpace, 10),
 			abortTask:              make(chan storage.SectorRef, 10),
 			retRequest:             dispatcher.newRequest,
-			storageNotifier:        make(chan eStoreAction, 10),
+			storageNotifier:        make(chan eStoreAction, 100000),
 			droppedWorker:          dispatcher.droppedWorker,
 			taskWorkerBinder:       dispatcher.taskWorkerBinder,
 			taskCleaner:            dispatcher.taskCleaner,
-			taskCleanerHandler:     make(chan *eWorkerTaskCleaning, 10),
+			taskCleanerHandler:     make(chan *eWorkerTaskCleaning, 100000),
 			workerStatsQuery:       make(chan *eWorkerStatsParam, 10),
 			workerJobsQuery:        make(chan *eWorkerJobsParam, 10),
 			closing:                make(chan struct{}, 2),
 			ticker:                 time.NewTicker(3 * 60 * time.Second),
-			bucketPledgedJobs:      make(chan *eBucketPledgedJobsParam, 0),
+			bucketPledgedJobs:      make(chan *eBucketPledgedJobsParam, 10),
 		}
 		go dispatcher.buckets[i].scheduler()
 	}
@@ -2244,7 +2246,7 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	bucket := sh.buckets[workerBucketIndex]
 
 	bucket.addNewWorker(w)
-	log.Infof("<%s> added new worker %s to bucket", eschedTag, w.info.Address)
+	log.Infof("<%s> added new worker %s to bucket %v", eschedTag, w.info.Address, workerBucketIndex)
 }
 
 func (req *eWorkerRequest) dumpWorkerRequest() {
@@ -2289,7 +2291,7 @@ func (sh *edispatcher) dropWorkerFromBucket(wid uuid.UUID) {
 }
 
 func (sh *edispatcher) onStorageNotify(act eStoreAction) {
-	log.Infof("<%s> %v store %v", eschedTag, act.act, act.id)
+	log.Infof("<%s> %v store %v:%v", eschedTag, act.act, act.id, act.stat.URLs)
 	for _, bucket := range sh.buckets {
 		go func(bucket *eWorkerBucket) { bucket.storageNotifier <- act }(bucket)
 	}
