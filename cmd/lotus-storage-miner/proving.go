@@ -418,15 +418,15 @@ var provingCheckProvableCmd = &cli.Command{
 		tw := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
 		_, _ = fmt.Fprintln(tw, "deadline\tpartition\tsector\tstatus")
 
-		for parIdx, par := range partitions {
-			fullDeadlineCheck := cctx.Bool("full")
-			if fullDeadlineCheck {
-				proofs, err := sapi.CheckWindowPoSt(ctx, dlIdx)
-				if err != nil {
-					return err
-				}
-				fmt.Printf("Deadline: %v\n", proofs)
-			} else {
+		fullDeadlineCheck := cctx.Bool("full")
+		if fullDeadlineCheck {
+			proofs, err := sapi.CheckWindowPoSt(ctx, dlIdx)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Deadline: %v\n", proofs)
+		} else {
+			for parIdx, par := range partitions {
 				sectors := make(map[abi.SectorNumber]struct{})
 
 				sectorInfos, err := api.StateMinerSectors(ctx, addr, &par.LiveSectors, types.EmptyTSK)
