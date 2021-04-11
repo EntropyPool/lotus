@@ -695,7 +695,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 				}
 				elapsed := time.Since(tsStart)
 
-				log.Infow("computing window post", "batch", batchIdx, "elapsed", elapsed, "err", err)
+				log.Infow("computing window post", "batch", batchIdx, "elapsed", elapsed, "err", err, "faults", ps)
 
 				var checkRand abi.Randomness
 				if ts != nil {
@@ -719,22 +719,22 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 					checkRand = randomness
 				}
 
-				// If we generated an incorrect proof, try again.
-				if correct, err := s.verifier.VerifyWindowPoSt(ctx, proof.WindowPoStVerifyInfo{
-					Randomness:        abi.PoStRandomness(checkRand),
-					Proofs:            postOut,
-					ChallengedSectors: sinfos,
-					Prover:            abi.ActorID(mid),
-				}); err != nil {
-					log.Errorw("window post verification failed", "post", postOut, "error", err)
-					time.Sleep(5 * time.Second)
-					continue
-				} else if !correct {
-					log.Errorw("generated incorrect window post proof", "post", postOut, "error", err)
-					continue
-				}
-
 				if err == nil {
+					// If we generated an incorrect proof, try again.
+					if correct, err := s.verifier.VerifyWindowPoSt(ctx, proof.WindowPoStVerifyInfo{
+						Randomness:        abi.PoStRandomness(checkRand),
+						Proofs:            postOut,
+						ChallengedSectors: sinfos,
+						Prover:            abi.ActorID(mid),
+					}); err != nil {
+						log.Errorw("window post verification failed", "post", postOut, "error", err)
+						time.Sleep(5 * time.Second)
+						continue
+					} else if !correct {
+						log.Errorw("generated incorrect window post proof", "post", postOut, "error", err)
+						continue
+					}
+
 					// If we proved nothing, something is very wrong.
 					if len(postOut) == 0 {
 						postChanErr <- xerrors.Errorf("received no proofs back from generate window post")
