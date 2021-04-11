@@ -698,6 +698,12 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 				log.Infow("computing window post", "batch", batchIdx, "elapsed", elapsed, "err", err, "faults", ps)
 
 				if err == nil {
+					// If we proved nothing, something is very wrong.
+					if len(postOut) == 0 {
+						postChanErr <- xerrors.Errorf("received no proofs back from generate window post")
+						return
+					}
+
 					var checkRand abi.Randomness
 					if ts != nil {
 						headTs, err := s.api.ChainHead(ctx)
@@ -733,12 +739,6 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 					} else if !correct {
 						log.Errorw("generated incorrect window post proof", "post", postOut, "error", err)
 						continue
-					}
-
-					// If we proved nothing, something is very wrong.
-					if len(postOut) == 0 {
-						postChanErr <- xerrors.Errorf("received no proofs back from generate window post")
-						return
 					}
 
 					// If we generated an incorrect proof, try again.
