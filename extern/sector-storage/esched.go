@@ -1036,7 +1036,9 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) bool {
 	scheduled := false
 	for _, pq := range worker.priorityTasksQueue {
 		for _, typedTasks := range pq.typedTasksQueue {
+			remainReqs := make([]*eWorkerRequest, 0)
 			tasks := typedTasks.tasks
+
 			for {
 				if 0 == len(tasks) {
 					break
@@ -1055,13 +1057,15 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) bool {
 				if !typePreparing {
 					worker.preparingTasks.queue = append(worker.preparingTasks.queue, task)
 					go bucket.prepareTypedTask(worker, task)
+					tasks, _ = safeRemoveWorkerRequest(tasks, nil, task)
 					scheduled = true
+				} else {
+					tasks, remainReqs = safeRemoveWorkerRequest(tasks, remainReqs, task)
 				}
 				worker.preparingTasks.mutex.Unlock()
 
-				tasks, _ = safeRemoveWorkerRequest(tasks, nil, task)
 			}
-			typedTasks.tasks = tasks
+			typedTasks.tasks = remainReqs
 		}
 		if scheduled {
 			// Always run only one priority for each time
