@@ -120,4 +120,6 @@ type ConnMgrInfo struct {
 type GeneratePoStOutput struct {
 	Proofs  []proof2.PoStProof
 	Sectors []abi.SectorID
+	Error   string
+	Code    int
 }

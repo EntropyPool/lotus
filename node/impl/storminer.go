@@ -503,12 +503,23 @@ func (sm *StorageMinerAPI) GetPlayAsMaster(ctx context.Context) bool {
 	return sm.StorageMgr.GetPlayAsMaster(ctx)
 }
 
-func (sm *StorageMinerAPI) GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfo []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) {
-	proofs, sectors, err := sm.StorageMgr.GenerateWindowPoSt(ctx, minerID, sectorInfo, randomness)
+func (sm *StorageMinerAPI) GenerateWindowPoSt(ctx context.Context, minerID abi.ActorID, sectorInfos []proof2.SectorInfo, randomness abi.PoStRandomness) (api.GeneratePoStOutput, error) {
+	proofs, sectors, err := sm.StorageMgr.GenerateWindowPoSt(ctx, minerID, sectorInfos, randomness)
+
+	code := 0
+	msg := ""
+
+	if err != nil {
+		code = -1
+		msg = err.Error()
+	}
+
 	return api.GeneratePoStOutput{
 		Proofs:  proofs,
 		Sectors: sectors,
-	}, err
+		Error:   msg,
+		Code:    code,
+	}, nil
 }
 
 func (sm *StorageMinerAPI) NotifySectorProving(ctx context.Context, sector storage2.SectorRef, infos []stores.SectorStorageInfo) error {

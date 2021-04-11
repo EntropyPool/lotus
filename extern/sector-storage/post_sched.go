@@ -113,6 +113,17 @@ func (s *PoStScheduler) runTask(prover *SlaveProver, task *postTask) {
 		log.Infof("run task %v done", task.taskId)
 		prover.running = false
 
+		if err != nil {
+			log.Errorf("fail to run task by prover %v: %v", prover.addr, err)
+			task.scheduled = false
+			return
+		}
+
+		err = nil
+		if output.Code < 0 {
+			err = xerrors.Errorf("%v", output.Error)
+		}
+
 		s.taskFinished <- &postTaskOutput{
 			taskId:  task.taskId,
 			proofs:  output.Proofs,
