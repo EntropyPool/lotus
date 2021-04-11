@@ -888,10 +888,6 @@ func (bucket *eWorkerBucket) prepareTypedTask(worker *eWorkerHandle, task *eWork
 
 	task.startTime = time.Now().UnixNano()
 
-	worker.preparingTasks.mutex.Lock()
-	worker.preparingTasks.queue = append(worker.preparingTasks.queue, task)
-	worker.preparingTasks.mutex.Unlock()
-
 	err := task.prepare(task.ctx, worker.wt.worker(WorkerID(worker.wid), worker.info, worker.w))
 
 	worker.preparingTasks.mutex.Lock()
@@ -1046,9 +1042,24 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) bool {
 					break
 				}
 				task := tasks[0]
-				go bucket.prepareTypedTask(worker, task)
+
+				typePreparing := false
+				worker.preparingTasks.mutex.Lock()
+				for _, wTask := range worker.preparingTasks.queue {
+					if wTask.taskType == task.taskType {
+						typePreparing = true
+						break
+					}
+				}
+
+				if !typePreparing {
+					worker.preparingTasks.queue = append(worker.preparingTasks.queue, task)
+					go bucket.prepareTypedTask(worker, task)
+					scheduled = true
+				}
+				worker.preparingTasks.mutex.Unlock()
+
 				tasks, _ = safeRemoveWorkerRequest(tasks, nil, task)
-				scheduled = true
 			}
 			typedTasks.tasks = tasks
 		}
