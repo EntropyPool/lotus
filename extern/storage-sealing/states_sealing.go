@@ -639,6 +639,12 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 		}
 	}
 
+	minBaseFee := big.Mul(big.NewInt(build.MinimumBaseFee), big.NewInt(gasLimit))
+	if baseFee.LessThan(minBaseFee) {
+		baseFee = big.Mul(minBaseFee, big.NewInt(1252))
+		baseFee = big.Mul(baseFee, big.NewInt(1000))
+	}
+
 	goodFunds := big.Add(collateral, baseFee)
 
 	from, _, err = m.addrSel(ctx.Context(), mi, api.CommitAddr, goodFunds, collateral)
