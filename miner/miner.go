@@ -431,7 +431,7 @@ func (m *Miner) GetBestMiningCandidateFromMultiFullnode(ctx context.Context) (*M
 	}
 
 	if mb == nil {
-		return nil, err
+		return nil, xerrors.Errorf("cannot find suitable chain endpoint: %v", err)
 	}
 
 	return mb, nil
