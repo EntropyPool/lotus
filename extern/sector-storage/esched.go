@@ -402,6 +402,11 @@ var eschedTaskSingleRunning = map[sealtasks.TaskType][]sealtasks.TaskType{
 	// sealtasks.TTCommit2:    {sealtasks.TTPreCommit2},
 }
 
+var eschedTaskSinglePreparing = map[sealtasks.TaskType]struct{}{
+	sealtasks.TTFinalize: struct{}{},
+	sealtasks.TTFetch:    struct{}{},
+}
+
 const eschedWorkerJobs = "worker_jobs"
 const eschedWorkerStats = "worker_stats"
 
@@ -1046,24 +1051,38 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) bool {
 				}
 				task := tasks[0]
 
-				totalWorkers := 0
+				totalTasks := 0
 
-				worker.preparingTasks.mutex.Lock()
-				for _, wTask := range worker.preparingTasks.queue {
-					if wTask.taskType == task.taskType {
-						totalWorkers += 1
+				if _, ok := eschedTaskSinglePreparing[task.taskType]; ok {
+					worker.preparingTasks.mutex.Lock()
+					for _, wTask := range worker.preparingTasks.queue {
+						if wTask.taskType == task.taskType {
+							totalTasks += 1
+						}
 					}
+					worker.preparingTasks.mutex.Unlock()
+
+					worker.preparedTasks.mutex.Lock()
+					for _, wTask := range worker.preparedTasks.queue {
+						if wTask.taskType == task.taskType {
+							totalTasks += 1
+						}
+					}
+					worker.preparedTasks.mutex.Unlock()
+
+					totalTasks += worker.typedRunningTasks(task.taskType)
 				}
 
-				if totalWorkers < bucket.totalWorkers {
+				if totalTasks < bucket.totalWorkers {
+					worker.preparingTasks.mutex.Lock()
 					worker.preparingTasks.queue = append(worker.preparingTasks.queue, task)
+					worker.preparingTasks.mutex.Unlock()
 					go bucket.prepareTypedTask(worker, task)
 					tasks, _ = safeRemoveWorkerRequest(tasks, nil, task)
 					scheduled = true
 				} else {
 					tasks, remainReqs = safeRemoveWorkerRequest(tasks, remainReqs, task)
 				}
-				worker.preparingTasks.mutex.Unlock()
 
 			}
 			typedTasks.tasks = remainReqs
