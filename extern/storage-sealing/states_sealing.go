@@ -16,6 +16,7 @@ import (
 	"github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/actors"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/chain/actors/policy"
@@ -368,6 +369,12 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 		} else {
 			baseFee = big.Min(parentBaseFee, m.feeCfg.MaxPreCommitGasFee)
 		}
+	}
+
+	minBaseFee := big.Mul(big.NewInt(build.MinimumBaseFee), big.NewInt(gasLimit))
+	if baseFee.LessThan(minBaseFee) {
+		baseFee = big.Mul(minBaseFee, big.NewInt(1252))
+		baseFee = big.Mul(baseFee, big.NewInt(1000))
 	}
 
 	goodFunds := big.Add(deposit, baseFee)
