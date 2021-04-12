@@ -373,8 +373,7 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 
 	minBaseFee := big.Mul(big.NewInt(build.MinimumBaseFee), big.NewInt(gasLimit))
 	if baseFee.LessThan(minBaseFee) {
-		baseFee = big.Mul(minBaseFee, big.NewInt(1252))
-		baseFee = big.Mul(baseFee, big.NewInt(1000))
+		baseFee = big.Mul(minBaseFee, big.NewInt(10))
 	}
 
 	goodFunds := big.Add(deposit, baseFee)
@@ -641,8 +640,7 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 
 	minBaseFee := big.Mul(big.NewInt(build.MinimumBaseFee), big.NewInt(gasLimit))
 	if baseFee.LessThan(minBaseFee) {
-		baseFee = big.Mul(minBaseFee, big.NewInt(1252))
-		baseFee = big.Mul(baseFee, big.NewInt(1000))
+		baseFee = big.Mul(minBaseFee, big.NewInt(10))
 	}
 
 	goodFunds := big.Add(collateral, baseFee)
