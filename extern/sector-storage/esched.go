@@ -242,6 +242,7 @@ type eWorkerBucket struct {
 	usableCpus             int
 	gpuTasks               int
 	concurrentAP           int
+	totalWorkers           int
 	newWorker              chan *eWorkerHandle
 	workers                []*eWorkerHandle
 	reqQueue               *eRequestQueue
@@ -1045,16 +1046,16 @@ func (bucket *eWorkerBucket) scheduleTypedTasks(worker *eWorkerHandle) bool {
 				}
 				task := tasks[0]
 
-				typePreparing := false
+				totalWorkers := 0
+
 				worker.preparingTasks.mutex.Lock()
 				for _, wTask := range worker.preparingTasks.queue {
 					if wTask.taskType == task.taskType {
-						typePreparing = true
-						break
+						totalWorkers += 1
 					}
 				}
 
-				if !typePreparing {
+				if totalWorkers < bucket.totalWorkers {
 					worker.preparingTasks.queue = append(worker.preparingTasks.queue, task)
 					go bucket.prepareTypedTask(worker, task)
 					tasks, _ = safeRemoveWorkerRequest(tasks, nil, task)
@@ -2245,6 +2246,10 @@ func (sh *edispatcher) addNewWorkerToBucket(w *eWorkerHandle) {
 	workerBucketIndex := w.wIndex % eschedWorkerBuckets
 	bucket := sh.buckets[workerBucketIndex]
 
+	for _, bucket := range sh.buckets {
+		bucket.totalWorkers += 1
+	}
+
 	bucket.addNewWorker(w)
 	log.Infof("<%s> added new worker %s to bucket %v", eschedTag, w.info.Address, workerBucketIndex)
 }
@@ -2286,6 +2291,7 @@ func (sh *edispatcher) dropWorkerFromBucket(wid uuid.UUID) {
 	log.Infof("<%s> drop worker %v from all bucket", eschedTag, wid)
 	for _, bucket := range sh.buckets {
 		go func(bucket *eWorkerBucket) { bucket.dropWorker <- wid }(bucket)
+		bucket.totalWorkers -= 1
 	}
 	log.Infof("<%s> dropped worker %v from all bucket", eschedTag, wid)
 }
