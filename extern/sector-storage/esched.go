@@ -454,7 +454,7 @@ type edispatcher struct {
 	state                  string
 }
 
-const eschedWorkerBuckets = 40
+const eschedWorkerBuckets = 10
 
 var eschedUnassignedWorker = uuid.Must(uuid.Parse("11111111-2222-3333-4444-111111111111"))
 var eschedDebug = false
