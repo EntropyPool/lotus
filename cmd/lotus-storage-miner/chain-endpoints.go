@@ -64,6 +64,14 @@ func ChainEndpointsWatcher(cctx *cli.Context, rootPath string) {
 		log.Errorf("cannot read %v json: %v", minerChainEndpointsMeta, err)
 	}
 
+	apiInfos := []string{}
+	for ai, _ := range chp.apiInfos {
+		apiInfos = append(apiInfos, ai)
+	}
+	if 0 < len(apiInfos) {
+		os.Setenv(minerChainEndpointsEnvKey, strings.Join(apiInfos, ","))
+	}
+
 	ticker := time.NewTicker(5 * time.Minute)
 	for {
 		updateAndNotifyChainEndpoints(cctx, rootPath, chp)
@@ -107,7 +115,9 @@ var minerChainEndpointsCmd = &cli.Command{
 			if err != nil {
 				log.Warnf("cannot get environment %v: %v", minerChainEndpointsEnvKey, err)
 			} else {
-				endpoints = strings.Join([]string{endpoints}, old)
+				if 0 < len(old) {
+					endpoints = strings.Join([]string{endpoints, old}, ",")
+				}
 			}
 		}
 
