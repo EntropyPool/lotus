@@ -116,7 +116,7 @@ var minerChainEndpointsCmd = &cli.Command{
 				log.Warnf("cannot get environment %v: %v", minerChainEndpointsEnvKey, err)
 			} else {
 				if 0 < len(old) {
-					endpoints = strings.Join([]string{endpoints, old}, ",")
+					endpoints = strings.Join([]string{endpoints, old}, ";")
 				}
 			}
 		}
